@@ -1,0 +1,10 @@
+Target total customers: 42
+Customers in target present in other files (matched): 37
+Customers unique to target (not in any other file): 5
+
+Unique customers in target:
+BRITTEN
+MURPHY
+MWANGI
+SHAMPINATO
+WHITFIELD

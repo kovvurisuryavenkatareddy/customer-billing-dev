@@ -1,0 +1,14 @@
+Target total customers: 46
+Customers in target present in other files (matched): 37
+Customers unique to target (not in any other file): 9
+
+Unique customers in target:
+BLACKWELL
+CLARK
+GIBSON
+HACKETT
+KANE
+LEES
+MASON
+MORGAN
+ROGERS

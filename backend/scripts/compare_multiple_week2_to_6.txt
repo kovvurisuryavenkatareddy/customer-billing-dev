@@ -1,0 +1,8 @@
+Target total customers: 41
+Customers in target present in other files (matched): 38
+Customers unique to target (not in any other file): 3
+
+Unique customers in target:
+FLEMIMG
+WARREN
+WASHINGTON

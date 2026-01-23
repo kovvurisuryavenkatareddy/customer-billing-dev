@@ -1,0 +1,13 @@
+Target total customers: 39
+Customers in target present in other files (matched): 31
+Customers unique to target (not in any other file): 8
+
+Unique customers in target:
+BROOKS
+BROWN
+DUNN
+HOWARD
+MARTINEZ
+SPAMPINATO
+WHITE
+WILLIMS

@@ -1,0 +1,15 @@
+fastapi
+uvicorn
+pydantic
+pydantic[email]
+PyJWT
+email-validator
+python-multipart
+passlib
+bcrypt
+python-jose
+requests
+pandas
+openpyxl
+psycopg2-binary
+python-dotenv

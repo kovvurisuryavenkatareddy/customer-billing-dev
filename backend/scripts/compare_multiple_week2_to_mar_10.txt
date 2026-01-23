@@ -1,0 +1,5 @@
+Target total customers: 42
+Customers in target present in other files (matched): 42
+Customers unique to target (not in any other file): 0
+
+Unique customers in target:

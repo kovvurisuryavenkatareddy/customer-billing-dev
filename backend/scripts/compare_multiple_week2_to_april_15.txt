@@ -1,0 +1,12 @@
+Target total customers: 46
+Customers in target present in other files (matched): 39
+Customers unique to target (not in any other file): 7
+
+Unique customers in target:
+COPFEID
+GRA
+HART
+HUNTLEY
+MILLER
+MUSAWIR
+WEEDON

@@ -1,0 +1,9 @@
+Target total customers: 45
+Customers in target present in other files (matched): 41
+Customers unique to target (not in any other file): 4
+
+Unique customers in target:
+BEST
+PALMER
+STEWART
+THORTAN

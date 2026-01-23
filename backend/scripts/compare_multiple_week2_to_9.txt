@@ -1,0 +1,9 @@
+Target total customers: 39
+Customers in target present in other files (matched): 35
+Customers unique to target (not in any other file): 4
+
+Unique customers in target:
+CORNISH
+MURRILL
+UZZELL
+WHITTINGTON
