@@ -1,7 +1,10 @@
 import React, { useMemo, useCallback, useState, useEffect } from 'react';
-import { Table } from 'antd';
+import { Table, Button, Space, Typography } from 'antd';
+import { EditOutlined, PlusOutlined } from '@ant-design/icons';
 import { formatMMDDYYYY } from '../utils/dates';
 import CustomerEntryModal from './CustomerEntryModal';
+
+const { Link: TypographyLink } = Typography;
 
 export default function CustomerList({
   customers = [],
@@ -39,6 +42,8 @@ export default function CustomerList({
       lastName: c.last_name || '',
       dateOfBirth: c.date_of_birth || '',
       activeStatus: c.active_status || 'active',
+      idNumber: c.id_number || '',
+      fIdNumber: c.f_id_number || '',
       serviceName: c.service_name || 'No service',
         startDate: c.start_date,
         endDate: c.end_date,
@@ -63,6 +68,8 @@ export default function CustomerList({
     return dataSource.filter(row =>
       row.firstName.toLowerCase().includes(lowerSearch) ||
       row.lastName.toLowerCase().includes(lowerSearch) ||
+      (row.idNumber && String(row.idNumber).toLowerCase().includes(lowerSearch)) ||
+      (row.fIdNumber && String(row.fIdNumber).toLowerCase().includes(lowerSearch)) ||
       row.serviceName.toLowerCase().includes(lowerSearch) ||
       (row.startDate && formatDate(row.startDate).toLowerCase().includes(lowerSearch)) ||
       (row.endDate && formatDate(row.endDate).toLowerCase().includes(lowerSearch)) ||
@@ -113,29 +120,16 @@ export default function CustomerList({
       width: 170,
       sorter: (a, b) => (a.name || '').localeCompare(b.name || ''),
       render: (text, record) => (
-        <span
-          style={{
-            cursor: 'pointer',
-            color: '#007bff',
-            textDecoration: 'underline',
-            fontWeight: '500'
-          }}
+        <TypographyLink
+          className="customer-name font-semibold"
           onClick={() => {
             setSelectedCustomerId(record.customerId);
             setShowEntryModal(true);
           }}
-          onKeyDown={(e) => {
-            if (e.key === 'Enter' || e.key === ' ') {
-              e.preventDefault();
-              setSelectedCustomerId(record.customerId);
-              setShowEntryModal(true);
-            }
-          }}
           title="Click to view customer details"
-          aria-label={`View details for ${text}`}
         >
           {text || 'N/A'}
-        </span>
+        </TypographyLink>
       ),
     },
     {
@@ -149,6 +143,22 @@ export default function CustomerList({
         return new Date(a.dateOfBirth) - new Date(b.dateOfBirth);
       },
       render: (date) => formatDate(date),
+    },
+    {
+      title: 'ID #',
+      dataIndex: 'idNumber',
+      key: 'idNumber',
+      width: 100,
+      ellipsis: true,
+      render: (text) => text || '—',
+    },
+    {
+      title: 'F ID #',
+      dataIndex: 'fIdNumber',
+      key: 'fIdNumber',
+      width: 100,
+      ellipsis: true,
+      render: (text) => text || '—',
     },
     {
       title: 'Service Type',
@@ -283,9 +293,13 @@ export default function CustomerList({
       title: 'Actions',
       key: 'actions',
       width: 200,
+      fixed: 'right',
       render: (_, record) => (
-        <div style={{ display: 'flex', gap: '8px', justifyContent: 'center', flexWrap: 'wrap' }}>
-          <button
+        <Space size="small" wrap>
+          <Button
+            type="primary"
+            size="small"
+            icon={<EditOutlined />}
             onClick={() => onEdit({
               customer: record.customer,
               service: {
@@ -300,61 +314,18 @@ export default function CustomerList({
                 endDate: record.endDate,
               }
             })}
-            style={{
-              fontSize: '12px',
-              padding: '6px 14px',
-              whiteSpace: 'nowrap',
-              background: '#007bff',
-              color: 'white',
-              border: 'none',
-              borderRadius: '8px',
-              cursor: 'pointer',
-              fontWeight: '500',
-              transition: 'all 0.2s ease',
-              boxShadow: '0 2px 4px rgba(0, 123, 255, 0.2)'
-            }}
-            onMouseEnter={(e) => {
-              e.target.style.transform = 'translateY(-1px)';
-              e.target.style.boxShadow = '0 4px 8px rgba(0, 123, 255, 0.3)';
-              e.target.style.background = '#0056b3';
-            }}
-            onMouseLeave={(e) => {
-              e.target.style.transform = 'translateY(0)';
-              e.target.style.boxShadow = '0 2px 4px rgba(0, 123, 255, 0.2)';
-              e.target.style.background = '#007bff';
-            }}
           >
-            ✏️ Edit
-          </button>
-          <button
-            onClick={() => onAddService && onAddService(record.customer)}
-            style={{
-              fontSize: '12px',
-              padding: '6px 14px',
-              whiteSpace: 'nowrap',
-              background: '#28a745',
-              color: 'white',
-              border: 'none',
-              borderRadius: '8px',
-              cursor: 'pointer',
-              fontWeight: '500',
-              transition: 'all 0.2s ease',
-              boxShadow: '0 2px 4px rgba(40, 167, 69, 0.2)'
-            }}
-            onMouseEnter={(e) => {
-              e.target.style.transform = 'translateY(-1px)';
-              e.target.style.boxShadow = '0 4px 8px rgba(40, 167, 69, 0.3)';
-              e.target.style.background = '#1e7e34';
-            }}
-            onMouseLeave={(e) => {
-              e.target.style.transform = 'translateY(0)';
-              e.target.style.boxShadow = '0 2px 4px rgba(40, 167, 69, 0.2)';
-              e.target.style.background = '#28a745';
-            }}
+            Edit
+          </Button>
+          <Button
+            type="default"
+            size="small"
+            icon={<PlusOutlined />}
+            onClick={() => onAddService?.(record.customer)}
           >
-            ➕ Add
-          </button>
-        </div>
+            Add
+          </Button>
+        </Space>
       ),
     },
   ];
@@ -407,6 +378,8 @@ export default function CustomerList({
                     <span className="ledger-sno"></span>
                     <span className="ledger-name">Current Page Totals:</span>
                     <span className="ledger-dob"></span>
+                    <span className="ledger-id-number"></span>
+                    <span className="ledger-f-id-number"></span>
                     <span className="ledger-service"></span>
                     <span className="ledger-start"></span>
                     <span className="ledger-end"></span>
@@ -430,6 +403,8 @@ export default function CustomerList({
                     <span className="ledger-sno"></span>
                     <span className="ledger-name">All Pages Totals:</span>
                     <span className="ledger-dob"></span>
+                    <span className="ledger-id-number"></span>
+                    <span className="ledger-f-id-number"></span>
                     <span className="ledger-service"></span>
                     <span className="ledger-start"></span>
                     <span className="ledger-end"></span>

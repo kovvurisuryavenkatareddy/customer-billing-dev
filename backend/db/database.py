@@ -3,13 +3,20 @@ import traceback
 import psycopg2
 import psycopg2.extras
 
-DATABASE_URL = os.getenv('DATABASE_URL')
 # Optional schema to use for all connections. If set, we will ensure the schema
 # exists and set the session search_path so unqualified table names resolve
 # into this schema first.
 DATABASE_SCHEMA = os.getenv('DATABASE_SCHEMA') or 'public'
-if not DATABASE_URL:
-    raise RuntimeError('DATABASE_URL environment variable must be set for PostgreSQL connection.')
+
+def _get_database_url():
+    """Get DATABASE_URL from environment, raising error if not set."""
+    url = os.getenv('DATABASE_URL')
+    if not url:
+        raise RuntimeError(
+            'DATABASE_URL environment variable must be set for PostgreSQL connection. '
+            'Please create a .env file in the backend directory with: DATABASE_URL=postgresql://user:password@host:port/database'
+        )
+    return url
 
 class _PGConnWrapper:
     """Wrap a psycopg2 connection to provide a .cursor() returning a RealDictCursor
@@ -68,7 +75,8 @@ def get_db_connection():
     treating rows like dictionaries.
     """
     try:
-        conn = psycopg2.connect(DATABASE_URL)
+        database_url = _get_database_url()
+        conn = psycopg2.connect(database_url)
 
         # If a non-public schema is configured, try to ensure it exists and
         # set the search_path so unqualified table names use it.

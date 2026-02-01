@@ -1,60 +1,95 @@
-/* Global Reset & Base Styles - Matching task.html foundation */
+/**
+ * Tailwind base + components + utilities. Base styles aligned with previous design.
+ */
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
 
-* {
-  margin: 0;
-  padding: 0;
-  box-sizing: border-box;
+@layer base {
+  * {
+    @apply box-border;
+  }
+
+  body {
+    @apply m-0 font-sans antialiased bg-[#f4f7f9] text-[#333] leading-relaxed;
+    -moz-osx-font-smoothing: grayscale;
+  }
+
+  code {
+    @apply font-mono bg-[#f8f9fa] px-1.5 py-0.5 rounded text-sm;
+  }
+
+  h1, h2, h3, h4, h5, h6 {
+    @apply m-0 font-semibold;
+  }
+
+  ul, ol {
+    @apply list-inside;
+  }
+
+  /* Only non-AntD form elements; Ant Design inputs keep their own styling */
+  input:not([class*="ant-"]):not([class*="ant "]),
+  select:not([class*="ant-"]):not([class*="ant "]),
+  textarea:not([class*="ant-"]):not([class*="ant "]),
+  button:not([class*="ant-"]):not([class*="ant "]) {
+    font-family: inherit;
+    font-size: inherit;
+  }
+
+  button {
+    @apply cursor-pointer;
+  }
+
+  a {
+    @apply text-primary no-underline;
+  }
+
+  a:hover {
+    @apply underline;
+  }
 }
 
-body {
-  margin: 0;
-  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', 'Roboto', 'Oxygen',
-    'Ubuntu', 'Cantarell', 'Fira Sans', 'Droid Sans', 'Helvetica Neue',
-    sans-serif;
-  -webkit-font-smoothing: antialiased;
-  -moz-osx-font-smoothing: grayscale;
-  background-color: #f4f7f9;
-  color: #333;
-  line-height: 1.6;
+/* Sidebar open on mobile: prevent body scroll */
+body.sidebar-open-mobile {
+  overflow: hidden;
 }
 
-code {
-  font-family: source-code-pro, Menlo, Monaco, Consolas, 'Courier New',
-    monospace;
-  background-color: #f8f9fa;
-  padding: 2px 6px;
-  border-radius: 3px;
-  font-size: 0.9em;
+/* Add Customer form: visible inputs and labels */
+.add-customer-form label {
+  display: block;
+  font-weight: 500;
+  color: #1f2937;
+  margin-bottom: 6px;
+  font-size: 14px;
 }
-
-/* Normalize heading margins */
-h1, h2, h3, h4, h5, h6 {
-  margin: 0;
-  font-weight: 600;
+.add-customer-form input,
+.add-customer-form select,
+.add-customer-form textarea {
+  width: 100%;
+  max-width: 100%;
+  border: 2px solid #d1d5db;
+  border-radius: 8px;
+  padding: 10px 12px;
+  background: #fff;
+  color: #1f2937;
+  font-size: 15px;
+  line-height: 1.4;
 }
-
-/* Normalize list styles */
-ul, ol {
-  list-style-position: inside;
+.add-customer-form input::placeholder,
+.add-customer-form textarea::placeholder {
+  color: #9ca3af;
 }
-
-/* Form element normalization */
-input, select, textarea, button {
-  font-family: inherit;
-  font-size: inherit;
+.add-customer-form input:focus,
+.add-customer-form select:focus,
+.add-customer-form textarea:focus {
+  outline: none;
+  border-color: #007bff;
+  box-shadow: 0 0 0 3px rgba(0, 123, 255, 0.2);
 }
-
-/* Remove default button styles */
-button {
+.add-customer-form select {
   cursor: pointer;
+  appearance: auto;
 }
-
-/* Link styles */
-a {
-  color: #007bff;
-  text-decoration: none;
-}
-
-a:hover {
-  text-decoration: underline;
+.add-customer-form .form-row {
+  margin-bottom: 1.25rem;
 }
