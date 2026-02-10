@@ -170,7 +170,7 @@ export default function ServiceForm({ services = [], onSubmit, initial = null, o
       transition: 'all 0.3s ease'
     }}>
     <form onSubmit={handleSubmit}>
-      <div className="form-row">
+      <div className="flex flex-wrap items-center gap-3 mb-6 box-border w-full min-w-0">
         <label>Type of service</label>
         <select value={serviceType} onChange={(e) => setServiceType(e.target.value)}>
           <option value="">-- select --</option>
@@ -192,8 +192,8 @@ export default function ServiceForm({ services = [], onSubmit, initial = null, o
       </div>
 
       {!isUnitsServiceType(serviceType) && (
-      <div className="service-dates">
-        <div className="form-row">
+      <div className="flex gap-3 items-start mb-6">
+        <div className="flex flex-wrap items-center gap-3 mb-6 box-border w-full min-w-0">
           <label>Service start date</label>
           <div style={{ position: 'relative', flex: 1 }}>
             <input 
@@ -253,7 +253,7 @@ export default function ServiceForm({ services = [], onSubmit, initial = null, o
           </div>
         </div>
 
-        <div className="form-row">
+        <div className="flex flex-wrap items-center gap-3 mb-6 box-border w-full min-w-0">
           <label>Service end date</label>
           <div style={{ position: 'relative', flex: 1 }}>
             <input 
@@ -316,7 +316,7 @@ export default function ServiceForm({ services = [], onSubmit, initial = null, o
       )}
 
       {!isUnitsServiceType(serviceType) && (
-      <div className="form-row">
+      <div className="flex flex-wrap items-center gap-3 mb-6 box-border w-full min-w-0">
         <label>Number of days</label>
         <input 
           type="number" 
@@ -341,7 +341,7 @@ export default function ServiceForm({ services = [], onSubmit, initial = null, o
       )}
 
       {isUnitsServiceType(serviceType) && (
-      <div className="form-row">
+      <div className="flex flex-wrap items-center gap-3 mb-6 box-border w-full min-w-0">
         <label>Number of units</label>
         <input 
           type="number" 
@@ -364,12 +364,12 @@ export default function ServiceForm({ services = [], onSubmit, initial = null, o
       </div>
       )}
 
-      <div className="form-row">
+      <div className="flex flex-wrap items-center gap-3 mb-6 box-border w-full min-w-0">
         <label>Rate per day ($)</label>
         <input type="number" min="0" value={ratePerDay} readOnly />
       </div>
 
-      <div className="form-row">
+      <div className="flex flex-wrap items-center gap-3 mb-6 box-border w-full min-w-0">
         <label>Amount billed ($)</label>
         <input 
           type="number" 
@@ -389,7 +389,7 @@ export default function ServiceForm({ services = [], onSubmit, initial = null, o
         />
       </div>
 
-      <div className="form-row">
+      <div className="flex flex-wrap items-center gap-3 mb-6 box-border w-full min-w-0">
         <label>Date Submitted</label>
         <div style={{ position: 'relative', flex: 1 }}>
           <input 
@@ -449,12 +449,12 @@ export default function ServiceForm({ services = [], onSubmit, initial = null, o
         </div>
       </div>
 
-      <div className="form-row">
+      <div className="flex flex-wrap items-center gap-3 mb-6 box-border w-full min-w-0">
         <label>Amount paid ($)</label>
         <input type="number" min="0" value={amountPaid} onChange={(e) => setAmountPaid(e.target.value)} />
       </div>
 
-      <div className="form-row">
+      <div className="flex flex-wrap items-center gap-3 mb-6 box-border w-full min-w-0">
         <label>Date of payment</label>
         <div style={{ position: 'relative', flex: 1 }}>
           <input 
@@ -514,7 +514,7 @@ export default function ServiceForm({ services = [], onSubmit, initial = null, o
         </div>
       </div>
 
-      <div className="form-row">
+      <div className="flex flex-wrap items-center gap-3 mb-6 box-border w-full min-w-0">
         <label>Denial Code</label>
         <div style={{ position: 'relative' }}>
           <div
@@ -707,9 +707,9 @@ export default function ServiceForm({ services = [], onSubmit, initial = null, o
         </div>
       </div>
 
-      <div className="actions" style={{ justifyContent: 'space-between' }}>
+      <div className="flex gap-2 mt-4" style={{ justifyContent: 'space-between' }}>
         {onCancel && (
-          <button type="button" className="secondary" onClick={onCancel}>Cancel</button>
+          <button type="button" className="bg-secondary text-white py-3 px-6 rounded-lg font-medium cursor-pointer hover:bg-secondary-hover border-0" onClick={onCancel}>Cancel</button>
         )}
         <button type="submit">Add Service</button>
       </div>

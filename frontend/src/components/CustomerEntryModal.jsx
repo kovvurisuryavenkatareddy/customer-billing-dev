@@ -56,16 +56,16 @@ export default function CustomerEntryModal({ customerId, customerCode, onClose }
   if (!customerId) return null;
 
   return (
-    <div className="modal-overlay" onClick={(e) => e.target === e.currentTarget && onClose()}>
-      <div className="modal" style={{ maxWidth: '600px', width: '100%', maxHeight: '80vh', overflow: 'auto' }}>
-        <div className="modal-header">
-          <h3>
+    <div className="fixed inset-0 flex items-center justify-center bg-black/60 backdrop-blur-sm z-[1000]" onClick={(e) => e.target === e.currentTarget && onClose()}>
+      <div className="w-full max-w-[600px] max-h-[80vh] overflow-auto bg-white rounded-2xl shadow-2xl">
+        <div className="flex items-center justify-between px-6 py-5 border-b border-[#e9ecef] bg-gradient-to-br from-[#f8f9fa] to-[#e9ecef]">
+          <h3 className="m-0 text-xl text-[#1a253c]">
             {customer ? `${(customer.last_name || customer.lastName || '').trim()}${(customer.first_name || customer.firstName) ? (', ' + ((customer.first_name || customer.firstName || '').trim())) : ''}`.trim() : 'Participant Details'}
           </h3>
-          <button className="modal-close" onClick={onClose} aria-label="Close">&times;</button>
+          <button type="button" className="bg-transparent border-0 text-2xl cursor-pointer text-gray-500 p-0 w-8 h-8 flex items-center justify-center hover:text-gray-800 focus:outline-none" onClick={onClose} aria-label="Close">&times;</button>
         </div>
 
-        <div className="modal-body" style={{ padding: '20px' }}>
+        <div className="p-5 max-h-[65vh] overflow-y-auto overflow-x-hidden">
           {loading && <div style={{ textAlign: 'center', padding: '20px' }}>Loading...</div>}
 
           {error && (
@@ -81,6 +81,12 @@ export default function CustomerEntryModal({ customerId, customerCode, onClose }
               </div>
               <div>
                 <strong>DOB:</strong> {formatMMDDYYYY(customer.date_of_birth || customer.dob || customer.dateOfBirth || '') || '—'}
+              </div>
+              <div>
+                <strong>ID #:</strong> {(customer.id_number != null && customer.id_number !== '') ? customer.id_number : '—'}
+              </div>
+              <div>
+                <strong>F ID #:</strong> {(customer.f_id_number != null && customer.f_id_number !== '') ? customer.f_id_number : '—'}
               </div>
               <div>
                 <strong>Status:</strong>

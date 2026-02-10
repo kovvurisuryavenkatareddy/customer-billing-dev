@@ -1,0 +1,1363 @@
+/* Ant Design + ledger overrides only - rest replaced by Tailwind */
+:root { --primary: #007bff; --primary-hover: #0056b3; --text-primary: #1a253c; --text-body: #333; --filter-bg: #f8f9fa; }
+/* Ant Design Table Customization */
+.ant-table-wrapper {
+  width: 100% !important;
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.05);
+  border-radius: 8px;
+  overflow: hidden;
+}
+
+.ant-table {
+  width: 100% !important;
+  font-size: 14px;
+}
+
+.ant-table-content {
+  overflow-x: auto !important;
+}
+
+.ant-table table {
+  width: 100% !important;
+  min-width: 100%;
+  table-layout: fixed !important;
+}
+
+/* Clickable name cell/button style */
+.name-button {
+  background: transparent;
+  border: none;
+  color: var(--primary);
+  cursor: pointer;
+  font-weight: 600;
+  padding: 0;
+}
+.name-button:hover {
+  text-decoration: underline;
+}
+
+/* Name text variant: no background, no underline, no focus ring */
+.name-text {
+  background: transparent !important;
+  border: none !important;
+  color: var(--primary) !important;
+  cursor: pointer !important;
+  font-weight: 600 !important;
+  padding: 0 !important;
+  text-decoration: none !important;
+}
+.name-text:hover {
+  text-decoration: none !important;
+}
+.ant-table .name-text:focus,
+.ant-table .name-text:active,
+.ant-table .name-text:focus-visible {
+  background: transparent !important;
+  box-shadow: none !important;
+  outline: none !important;
+}
+
+/* Extra browser overrides to remove native focus/highlight on button elements */
+button.name-text,
+.ant-table td .name-text {
+  -webkit-appearance: none !important;
+  appearance: none !important;
+  -webkit-tap-highlight-color: transparent !important;
+  background: transparent !important;
+  box-shadow: none !important;
+  outline: none !important;
+  text-decoration: none !important;
+  border: none !important;
+  padding: 0 !important;
+}
+
+button.name-text:focus,
+button.name-text:active,
+button.name-text:focus-visible,
+.ant-table td .name-text:focus,
+.ant-table td .name-text:active,
+.ant-table td .name-text:focus-visible {
+  background: transparent !important;
+  box-shadow: none !important;
+  outline: none !important;
+  color: var(--primary) !important;
+}
+
+button.name-text::-moz-focus-inner {
+  border: 0 !important;
+  padding: 0 !important;
+}
+
+/* New class for customer name cells to avoid classname conflicts */
+.customer-name {
+  background: transparent !important;
+  border: none !important;
+  color: var(--primary) !important;
+  cursor: pointer !important;
+  font-weight: 600 !important;
+  padding: 0 !important;
+  text-decoration: underline !important;
+}
+.customer-name:hover {
+  text-decoration: underline !important;
+}
+.ant-table td .customer-name,
+.ant-table .customer-name,
+button.customer-name {
+  -webkit-appearance: none !important;
+  appearance: none !important;
+  -webkit-tap-highlight-color: transparent !important;
+  background: transparent !important;
+  box-shadow: none !important;
+  outline: none !important;
+  border: none !important;
+  padding: 0 !important;
+}
+.ant-table td .customer-name:focus,
+.ant-table td .customer-name:active,
+.ant-table td .customer-name:focus-visible,
+button.customer-name:focus,
+button.customer-name:active,
+button.customer-name:focus-visible {
+  background: transparent !important;
+  box-shadow: none !important;
+  outline: none !important;
+  color: var(--primary) !important;
+  text-decoration: underline !important;
+}
+.customer-name::-moz-focus-inner {
+  border: 0 !important;
+  padding: 0 !important;
+}
+
+/* Ensure customer-name stays transparent on row hover and when Ant adds hover classes */
+.ant-table-tbody > tr:hover > td .customer-name,
+.ant-table-cell.ant-table-cell-row-hover .customer-name,
+.ant-table-tbody > tr.ant-table-row:hover td .customer-name {
+  background: transparent !important;
+  background-color: transparent !important;
+  color: var(--primary) !important;
+  box-shadow: none !important;
+  outline: none !important;
+  text-decoration: underline !important;
+}
+
+/* Prevent any rounded pill effect on hover */
+.ant-table-tbody > tr:hover > td .customer-name,
+.ant-table-cell.ant-table-cell-row-hover .customer-name {
+  border-radius: 0 !important;
+}
+
+/* Plain link variant with no underline or focus background */
+.plain-link {
+  background: transparent !important;
+  border: none !important;
+  text-decoration: none !important;
+  padding: 0 !important;
+  color: #007bff !important;
+}
+.plain-link:hover {
+  text-decoration: none !important;
+}
+
+/* Customer name should always have underline */
+.customer-name.plain-link,
+.plain-link.customer-name {
+  text-decoration: underline !important;
+}
+
+.customer-name.plain-link:hover,
+.plain-link.customer-name:hover {
+  text-decoration: underline !important;
+}
+
+.plain-link:focus,
+.plain-link:active,
+.plain-link:focus-visible {
+  background: transparent !important;
+  outline: none !important;
+  box-shadow: none !important;
+}
+.plain-link::-moz-focus-inner { border: 0; }
+
+/* Stronger overrides for links inside the Ant table to remove focus background/outline */
+.ant-table .plain-link,
+.ant-table .plain-link:focus,
+.ant-table .plain-link:active,
+.ant-table .plain-link:focus-visible {
+  background: transparent !important;
+  box-shadow: none !important;
+  outline: none !important;
+  text-decoration: none !important;
+}
+
+/* Customer names in table should always have underline */
+.ant-table .customer-name,
+.ant-table .customer-name.plain-link,
+.ant-table .plain-link.customer-name,
+.ant-table .customer-name:focus,
+.ant-table .customer-name:active,
+.ant-table .customer-name:focus-visible,
+.ant-table .customer-name:hover {
+  text-decoration: underline !important;
+}
+
+/* Remove underline on hover for name-button when using plain-link */
+.name-button.plain-link:hover,
+.plain-link.name-button:hover {
+  text-decoration: none !important;
+}
+
+/* Customer name should always have underline, even in table cells */
+.ant-table td .customer-name,
+.ant-table-tbody > tr > td .customer-name,
+.ant-table-tbody > tr:hover > td .customer-name {
+  text-decoration: underline !important;
+}
+
+/* Pagination: enforce consistent item size and center icons */
+.ant-pagination-item,
+.ant-pagination-prev,
+.ant-pagination-next {
+  height: 36px !important;
+  min-width: 36px !important;
+  line-height: 36px !important;
+  display: inline-flex !important;
+  align-items: center !important;
+  justify-content: center !important;
+}
+
+.ant-pagination-item a {
+  width: 36px !important;
+  height: 36px !important;
+  display: inline-flex !important;
+  align-items: center !important;
+  justify-content: center !important;
+  line-height: 1 !important;
+  border-radius: 8px !important;
+}
+
+.ant-pagination-prev .anticon,
+.ant-pagination-next .anticon {
+  width: 14px !important;
+  height: 14px !important;
+}
+
+.ant-pagination-prev .anticon svg,
+.ant-pagination-next .anticon svg {
+  width: 14px !important;
+  height: 14px !important;
+}
+
+.ant-table-thead > tr > th {
+  background: #007bff !important;
+  color: white !important;
+  font-weight: 600 !important;
+  text-transform: uppercase;
+  font-size: 12px;
+  letter-spacing: 0.5px;
+  padding: 16px 12px !important;
+  border: none !important;
+  white-space: nowrap;
+}
+
+.ant-table-thead > tr > th::before {
+  display: none !important;
+}
+
+/* Sort icons white color */
+.ant-table-thead > tr > th .ant-table-column-sorters,
+.ant-table-thead > tr > th .anticon {
+  color: white !important;
+}
+
+.ant-table-thead > tr > th:hover {
+  background: #0056b3 !important;
+}
+
+.ant-table-tbody > tr > td {
+  padding: 14px 12px !important;
+  border-bottom: 1px solid #f0f0f0 !important;
+  white-space: nowrap;
+  transition: background-color 0.2s ease;
+}
+
+.ant-table-tbody > tr:hover > td {
+  background-color: #e6f3ff !important;
+}
+
+.ant-table-tbody > tr:nth-child(even) {
+  background-color: #f8fbff;
+}
+
+/* Summary table - remove conflicting styles */
+.ant-table-summary {
+  background: transparent !important;
+  width: 100% !important;
+  table-layout: fixed !important;
+}
+
+.ant-table-wrapper .ant-table-summary {
+  table-layout: fixed !important;
+  width: 100% !important;
+}
+
+.ant-table-summary > tr {
+  width: 100% !important;
+}
+
+.ant-table-summary > tr > td {
+  padding: 0 !important;
+  border: none !important;
+  background: transparent !important;
+}
+
+/* Ledger-style totals - clean and aligned */
+.ledger-totals-row {
+  display: grid !important;
+  grid-template-columns: 80px 140px 20px 60px 160px 140px 90px 110px 140px 140px 110px 130px 120px !important;
+  align-items: center !important;
+  padding: 14px 12px !important;
+  font-weight: 600 !important;
+  border-bottom: 1px solid #e8e8e8 !important;
+  margin: 0 !important;
+  width: calc(100% - 24px) !important;
+  box-sizing: border-box !important;
+}
+
+.ledger-totals-row.current-page {
+  background-color: #fafafa !important;
+  border-top: 1px solid #e8e8e8 !important;
+}
+
+.ledger-totals-row.all-pages {
+  background-color: #f2f2f2 !important;
+  border-top: 1px solid #d0d0d0 !important;
+}
+
+/* Column alignment - match table exactly */
+.ledger-sno {
+  text-align: center !important;
+  padding-left: 4px !important;
+}
+
+.ledger-name {
+  text-align: left !important;
+  font-size: 14px !important;
+  font-weight: 600 !important;
+  color: #666 !important;
+  padding-left: 12px !important;
+}
+
+.ledger-dob,
+.ledger-service,
+.ledger-start,
+.ledger-end,
+.ledger-id-number,
+.ledger-f-id-number {
+  text-align: center !important;
+}
+
+.ledger-days {
+  text-align: center !important;
+}
+
+.ledger-rate {
+  text-align: right !important;
+  color: #999 !important;
+  font-weight: 400 !important;
+  padding-right: 24px !important;
+}
+
+.ledger-billed {
+  text-align: right !important;
+  font-family: monospace !important;
+  font-weight: 600 !important;
+  color: #333 !important;
+  padding-right: 12px !important;
+}
+
+.ledger-paid {
+  text-align: right !important;
+  font-family: monospace !important;
+  font-weight: 600 !important;
+  color: #333 !important;
+  padding-right: 12px !important;
+}
+
+.ledger-due {
+  text-align: right !important;
+  font-family: monospace !important;
+  font-weight: 600 !important;
+  color: #333 !important;
+  padding-right: 12px !important;
+}
+
+.ledger-due.positive {
+  color: #e74c3c !important;
+}
+
+.ledger-due.zero {
+  color: #999 !important;
+}
+
+.ledger-due.negative {
+  color: #e74c3c !important;
+}
+
+.ledger-payment,
+.ledger-actions {
+  text-align: center !important;
+}
+
+/* Total value styling */
+.total-value {
+  font-size: 14px !important;
+  font-weight: 700 !important;
+  font-family: 'Courier New', 'Monaco', 'Menlo', monospace !important;
+  letter-spacing: 0.5px !important;
+  white-space: nowrap !important;
+  text-align: right !important;
+  min-width: 100px !important;
+  flex-shrink: 0 !important;
+}
+
+/* Amount Billed - Green */
+.total-value.amount-billed {
+  color: #2ecc71 !important;
+}
+
+/* Amount Paid - Blue */
+.total-value.amount-paid {
+  color: #3498db !important;
+}
+
+/* Amount Due - Red for positive, Grey for zero, Red for negative */
+.total-value.amount-due.positive-due {
+  color: #e74c3c !important;
+}
+
+.total-value.amount-due.zero-due {
+  color: #95a5a6 !important;
+}
+
+.total-value.amount-due.negative-due {
+  color: #e74c3c !important;
+}
+
+
+/* Ensure table expands to fill container */
+.ant-table-container {
+  width: 100% !important;
+  border-radius: 8px;
+}
+
+/* Pagination styling */
+.ant-pagination {
+  margin-top: 20px !important;
+  display: flex !important;
+  justify-content: center !important;
+  align-items: center !important;
+  padding: 16px 0 !important;
+  flex-wrap: wrap;
+  gap: 4px;
+}
+
+/* Remove all borders from pagination buttons - global rule */
+.ant-pagination-item,
+.ant-pagination-prev,
+.ant-pagination-next,
+.ant-pagination-jump-prev,
+.ant-pagination-jump-next {
+  border: none !important;
+  outline: none !important;
+}
+
+.ant-pagination-item:hover,
+.ant-pagination-prev:hover,
+.ant-pagination-next:hover,
+.ant-pagination-jump-prev:hover,
+.ant-pagination-jump-next:hover,
+.ant-pagination-item:focus,
+.ant-pagination-prev:focus,
+.ant-pagination-next:focus,
+.ant-pagination-jump-prev:focus,
+.ant-pagination-jump-next:focus {
+  border: none !important;
+  outline: none !important;
+}
+
+.ant-pagination-item {
+  border-radius: 8px;
+  border: none !important;
+  background: #ffffff;
+  transition: all 0.2s ease;
+  margin: 0 3px;
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.05);
+}
+
+.ant-pagination-item a {
+  color: #495057 !important;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 100%;
+  height: 100%;
+  font-weight: 500;
+  border-radius: 7px;
+}
+
+.ant-pagination-item-active {
+  background: #007bff !important;
+  border: none !important;
+  box-shadow: 0 2px 8px rgba(0, 123, 255, 0.3);
+}
+
+.ant-pagination-item-active a {
+  color: #ffffff !important;
+  font-weight: 600;
+}
+
+.ant-pagination-item:hover {
+  border: none !important;
+  transform: translateY(-1px);
+  box-shadow: 0 3px 12px rgba(0, 123, 255, 0.15);
+}
+
+.ant-pagination-item:hover:not(.ant-pagination-item-active) a {
+  color: #007bff;
+}
+
+.ant-pagination-prev,
+.ant-pagination-next {
+  border: none !important;
+  background: #ffffff !important;
+  border-radius: 8px !important;
+  transition: all 0.2s ease !important;
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.05) !important;
+  display: inline-flex !important;
+  align-items: center !important;
+  justify-content: center !important;
+  min-width: 32px !important;
+  height: 32px !important;
+  line-height: 1 !important;
+  vertical-align: middle !important;
+  margin: 0 3px !important;
+}
+
+.ant-pagination-prev:hover,
+.ant-pagination-next:hover {
+  border: none !important;
+  background: #f8f9ff !important;
+  box-shadow: 0 3px 12px rgba(0, 123, 255, 0.15) !important;
+  transform: translateY(-1px) !important;
+}
+
+.ant-pagination-prev:hover .anticon,
+.ant-pagination-next:hover .anticon {
+  color: #007bff !important;
+}
+
+.ant-pagination-prev .anticon,
+.ant-pagination-next .anticon {
+  color: #333333 !important;
+  display: flex !important;
+  align-items: center !important;
+  justify-content: center !important;
+  line-height: 1 !important;
+  margin: 0 !important;
+  vertical-align: middle !important;
+  font-size: 12px !important;
+  width: 12px !important;
+  height: 12px !important;
+}
+
+.ant-pagination-prev .anticon svg,
+.ant-pagination-next .anticon svg {
+  display: inline-block !important;
+  vertical-align: middle !important;
+  width: 12px !important;
+  height: 12px !important;
+  margin: 0 !important;
+}
+
+/* Ensure pagination buttons are properly aligned */
+.ant-pagination-prev,
+.ant-pagination-next,
+.ant-pagination-item {
+  vertical-align: middle !important;
+  margin: 0 4px !important;
+}
+
+.ant-pagination-prev:focus,
+.ant-pagination-next:focus {
+  box-shadow: none !important;
+  outline: none !important;
+}
+
+.ant-pagination-jump-prev .ant-pagination-item-container .ant-pagination-item-link-icon,
+.ant-pagination-jump-next .ant-pagination-item-container .ant-pagination-item-link-icon {
+  color: #333333;
+}
+
+.ant-pagination-options {
+  display: inline-block;
+  margin-left: 8px;
+}
+
+.ant-pagination-options .ant-select {
+  border: 1px solid #d9d9d9;
+  border-radius: 4px;
+  min-width: 80px;
+}
+
+.ant-pagination-options .ant-select-selector {
+  border: none !important;
+}
+
+/* Pagination total text */
+.ant-pagination-total-text {
+  margin-right: 8px;
+  font-size: 14px;
+  color: #666;
+}
+
+
+/* Mobile responsive - simplify ledger layout */
+@media (max-width: 768px) {
+  .ledger-totals-row {
+    grid-template-columns: 1fr auto auto auto auto !important;
+    padding: 10px 8px !important;
+    gap: 8px !important;
+  }
+
+  .ledger-sno,
+  .ledger-dob,
+  .ledger-service,
+  .ledger-start,
+  .ledger-end,
+  .ledger-days,
+  .ledger-payment,
+  .ledger-actions {
+    display: none !important;
+  }
+
+  .ledger-name {
+    font-size: 12px !important;
+    grid-column: 1 !important;
+  }
+
+  .ledger-rate {
+    grid-column: 2 !important;
+    font-size: 12px !important;
+    width: 60px !important;
+  }
+
+  .ledger-billed,
+  .ledger-paid,
+  .ledger-due {
+    font-size: 12px !important;
+    padding-right: 4px !important;
+    width: 100px !important;
+  }
+
+  .ledger-billed {
+    grid-column: 3 !important;
+  }
+
+  .ledger-paid {
+    grid-column: 4 !important;
+  }
+
+  .ledger-due {
+    grid-column: 5 !important;
+  }
+}
+
+@media (max-width: 576px) {
+  .ledger-totals-row {
+    padding: 8px 6px !important;
+    gap: 4px !important;
+  }
+
+  .ledger-name {
+    font-size: 11px !important;
+  }
+
+  .ledger-rate {
+    font-size: 11px !important;
+    width: 50px !important;
+  }
+
+  .ledger-billed,
+  .ledger-paid,
+  .ledger-due {
+    font-size: 11px !important;
+    width: 80px !important;
+  }
+}
+
+/* Filter dropdown styling */
+.ant-table-filter-dropdown {
+  background: white;
+  border-radius: 8px;
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.15);
+}
+
+.ant-dropdown {
+  border-radius: 8px;
+}
+
+.ant-table-filter-dropdown .ant-checkbox-wrapper:hover {
+  background-color: #e6f3ff;
+}
+
+/* Input.Search: use Ant Design defaults (no global overrides that break layout) */
+
+/* Responsive Design - Mobile First */
+
+/* Large desktop styling improvements */
+@media (min-width: 1600px) {
+  .customers-container {
+    max-width: 1800px;
+  }
+  
+  .ant-table {
+    font-size: 15px;
+  }
+}
+
+/* Desktop improvements (1200px - 1599px) */
+@media (min-width: 1200px) and (max-width: 1599px) {
+  .customers-container {
+    max-width: 1400px;
+  }
+}
+
+/* Desktop (1024px - 1200px) */
+@media (min-width: 1024px) and (max-width: 1199px) {
+  .customers-container {
+    max-width: 100%;
+    padding: 1.5rem;
+  }
+  
+  .ant-table {
+    font-size: 13px;
+  }
+
+  .ant-table-thead > tr > th,
+  .ant-table-tbody > tr > td {
+    padding: 10px 8px !important;
+  }
+
+  .card {
+    padding: 1.5rem;
+  }
+}
+
+/* Tablet and below (1024px) */
+@media (max-width: 1024px) {
+  .customers-container {
+    padding: 1rem;
+  }
+  
+  .ant-table {
+    font-size: 13px;
+  }
+
+  .ant-table-thead > tr > th,
+  .ant-table-tbody > tr > td {
+    padding: 10px 8px !important;
+  }
+
+  .card {
+    padding: 1.5rem;
+  }
+}
+
+/* Tablet and below (768px) */
+@media (max-width: 768px) {
+  .customers-container {
+    padding: 0.75rem;
+    width: 100%;
+    max-width: 100%;
+  }
+  
+  /* Pagination responsive on tablet */
+  .ant-pagination {
+    margin-top: 12px !important;
+    padding: 12px 0 !important;
+    justify-content: center !important;
+    flex-wrap: wrap;
+    gap: 4px;
+  }
+  
+  .ant-pagination-total-text {
+    font-size: 12px;
+    margin-bottom: 8px;
+    width: 100%;
+    text-align: center;
+    order: -1;
+  }
+  
+  .ant-pagination-item,
+  .ant-pagination-prev,
+  .ant-pagination-next {
+    min-width: 30px !important;
+    height: 30px !important;
+    line-height: 30px !important;
+    font-size: 12px !important;
+    margin: 0 3px !important;
+  }
+  
+  .ant-pagination-item a {
+    font-size: 12px !important;
+  }
+  
+  .ant-pagination-options {
+    margin-left: 8px;
+    margin-top: 0;
+    width: auto;
+  }
+  
+  .ant-pagination-options .ant-select {
+    min-width: 75px;
+    font-size: 12px;
+  }
+
+  h1 {
+    font-size: 1.5rem;
+  }
+
+  h2 {
+    font-size: 1.25rem;
+  }
+
+  .card {
+    padding: 0.75rem;
+    border-radius: 8px;
+    width: 100%;
+    max-width: 100%;
+    margin-bottom: 0.75rem;
+  }
+  
+  .card h2 {
+    margin-bottom: 0.75rem;
+  }
+
+  .filter-section {
+    padding: 1rem;
+    width: 100%;
+  }
+
+  .filter-row {
+    flex-direction: column;
+    gap: 12px;
+  }
+
+  .filter-field {
+    width: 100%;
+    min-width: 0;
+  }
+
+  .action-buttons {
+    flex-direction: column;
+    gap: 6px;
+    width: 100%;
+  }
+
+  .edit-btn {
+    width: 100%;
+    font-size: 12px;
+    padding: 8px 12px;
+  }
+  
+  /* Ensure modals are responsive */
+  .modal {
+    width: 95vw !important;
+    max-width: 95vw !important;
+    margin: 10px auto !important;
+    padding: 0 !important;
+    max-height: 85vh;
+    overflow-y: auto;
+    box-sizing: border-box;
+  }
+
+  .modal-header {
+    padding: 1rem !important;
+    box-sizing: border-box;
+  }
+
+  .modal-body {
+    padding: 1rem !important;
+    box-sizing: border-box;
+    width: 100%;
+    overflow-x: hidden;
+  }
+  
+  .form-row {
+    gap: 10px;
+  }
+
+  /* Ant Design Table responsive adjustments */
+  .ant-table {
+    font-size: 12px;
+  }
+
+  .ant-table-thead > tr > th {
+    padding: 8px 4px !important;
+    font-size: 11px;
+  }
+
+  .ant-table-tbody > tr > td {
+    padding: 8px 4px !important;
+    font-size: 12px;
+  }
+
+  /* Pagination responsive adjustments for 1024px breakpoint */
+  .ant-pagination {
+    margin-top: 12px !important;
+    padding: 12px 0 !important;
+    justify-content: center !important;
+    flex-wrap: wrap;
+    gap: 4px;
+  }
+  
+  .ant-pagination-total-text {
+    font-size: 12px;
+    margin-right: 8px;
+    margin-bottom: 0;
+    width: auto;
+    text-align: left;
+    order: 0;
+  }
+
+  .ant-pagination-item,
+  .ant-pagination-prev,
+  .ant-pagination-next {
+    min-width: 30px;
+    height: 30px;
+    line-height: 30px;
+    font-size: 12px;
+    border: none !important;
+    background: #ffffff;
+    display: flex !important;
+    align-items: center !important;
+    justify-content: center !important;
+    margin: 0 3px !important;
+  }
+  
+  .ant-pagination-prev .anticon,
+  .ant-pagination-next .anticon {
+    display: flex !important;
+    align-items: center !important;
+    justify-content: center !important;
+    line-height: 1 !important;
+    margin: 0 !important;
+  }
+
+  .ant-pagination-item a {
+    color: #333333 !important;
+    font-size: 12px;
+  }
+
+  .ant-pagination-item-active {
+    background: #007bff !important;
+  }
+
+  .ant-pagination-item-active a {
+    color: #ffffff !important;
+  }
+  
+  .ant-pagination-options {
+    margin-left: 8px;
+    margin-top: 0;
+    width: auto;
+  }
+  
+  .ant-pagination-options .ant-select {
+    min-width: 75px;
+    font-size: 12px;
+  }
+}
+
+/* Tablet pagination (768px - 1024px) */
+@media (min-width: 768px) and (max-width: 1024px) {
+  .ant-pagination {
+    margin-top: 16px !important;
+    padding: 14px 0 !important;
+    justify-content: center !important;
+    gap: 4px;
+  }
+  
+  .ant-pagination-total-text {
+    font-size: 13px;
+    margin-right: 12px;
+    margin-bottom: 0;
+    width: auto;
+    order: 0;
+  }
+  
+  .ant-pagination-item,
+  .ant-pagination-prev,
+  .ant-pagination-next {
+    min-width: 30px !important;
+    height: 30px !important;
+    line-height: 30px !important;
+    font-size: 12px !important;
+    margin: 0 3px !important;
+  }
+  
+  .ant-pagination-item a {
+    font-size: 12px !important;
+  }
+  
+  .ant-pagination-prev .anticon,
+  .ant-pagination-next .anticon {
+    font-size: 11px !important;
+    width: 11px !important;
+    height: 11px !important;
+  }
+  
+  .ant-pagination-options {
+    margin-left: 8px;
+    margin-top: 0;
+    width: auto;
+  }
+  
+  .ant-pagination-options .ant-select {
+    min-width: 75px;
+    font-size: 12px;
+  }
+}
+
+/* Mobile phones (576px) */
+@media (max-width: 576px) {
+  .customers-container {
+    padding: 0.5rem;
+  }
+  
+  .customer-form-container {
+    padding: 0;
+    min-height: auto;
+  }
+  
+  .customer-form-container form {
+    padding: 0;
+  }
+
+  h1 {
+    font-size: 1.25rem;
+    margin-bottom: 0.75rem;
+  }
+
+  h2 {
+    font-size: 1.125rem;
+    margin-bottom: 0.75rem;
+  }
+
+  .card {
+    padding: 0.625rem;
+    margin-bottom: 0.625rem;
+  }
+  
+  /* Reduce card padding on mobile for forms */
+  .card h2 {
+    margin-bottom: 0.625rem;
+  }
+  
+  .card .customer-form-container {
+    margin-top: 0;
+  }
+
+  .filter-section {
+    padding: 0.75rem;
+  }
+
+  .modal {
+    width: 95vw !important;
+    max-width: 95vw !important;
+    margin: 10px auto !important;
+    padding: 0 !important;
+    max-height: 90vh;
+    overflow-y: auto;
+    overflow-x: hidden;
+    box-sizing: border-box;
+  }
+
+  .modal-header {
+    padding: 1rem !important;
+    box-sizing: border-box;
+    min-width: 0;
+  }
+
+  .modal-header h3 {
+    font-size: 1.125rem;
+    padding-right: 0.5rem;
+    word-wrap: break-word;
+    overflow-wrap: break-word;
+    margin: 0;
+    min-width: 0;
+    flex: 1;
+  }
+
+  .modal-body {
+    padding: 1rem !important;
+    box-sizing: border-box;
+    width: 100%;
+    overflow-x: hidden;
+    min-width: 0;
+  }
+
+  .form-row {
+    flex-direction: column;
+    margin-bottom: 0.75rem;
+    gap: 0.4rem;
+    align-items: flex-start;
+    width: 100%;
+    box-sizing: border-box;
+    margin-left: 0;
+    margin-right: 0;
+    padding: 0;
+  }
+
+  .form-row label {
+    margin-bottom: 0.2rem;
+    margin-right: 0;
+    width: 100%;
+    flex-basis: auto;
+    font-size: 0.875rem;
+  }
+  
+  .form-row input,
+  .form-row select {
+    width: 100% !important;
+    padding: 7px;
+    font-size: 0.9rem;
+    box-sizing: border-box;
+    margin: 0;
+    max-width: 100%;
+    min-width: 0;
+  }
+
+  /* Ensure all form elements inside modal are properly contained */
+  .modal-body * {
+    max-width: 100%;
+    box-sizing: border-box;
+  }
+
+  .modal-body input,
+  .modal-body select,
+  .modal-body textarea,
+  .modal-body label {
+    width: 100% !important;
+    max-width: 100% !important;
+    box-sizing: border-box;
+  }
+  
+  .service-dates {
+    flex-direction: column;
+    gap: 0.75rem;
+    margin-bottom: 0.75rem;
+  }
+  
+  .service-dates .form-row {
+    margin-bottom: 0;
+  }
+  
+  .resubmission-banner {
+    padding: 8px 12px;
+    margin-bottom: 10px;
+    font-size: 0.8rem;
+  }
+  
+  .actions {
+    flex-direction: column;
+    gap: 8px;
+  }
+  
+  .actions button {
+    width: 100%;
+  }
+
+  /* Compact buttons on mobile */
+  button {
+    font-size: 13px;
+    padding: 8px 12px;
+  }
+
+  .ant-table {
+    font-size: 11px;
+  }
+
+  .ant-table-thead > tr > th {
+    padding: 6px 2px;
+    font-size: 10px;
+  }
+
+  .ant-table-tbody > tr > td {
+    padding: 6px 2px;
+    font-size: 11px;
+  }
+
+  /* Pagination responsive on mobile */
+  .ant-pagination {
+    margin-top: 10px !important;
+    padding: 10px 0 !important;
+    justify-content: center !important;
+    gap: 3px;
+    flex-wrap: wrap;
+    max-width: 100%;
+    overflow-x: visible;
+  }
+  
+  .ant-pagination-total-text {
+    font-size: 11px;
+    margin-right: 0;
+    margin-bottom: 6px;
+    width: 100%;
+    text-align: center;
+    order: -1;
+    color: #666;
+    flex-basis: 100%;
+  }
+
+  .ant-pagination-item,
+  .ant-pagination-prev,
+  .ant-pagination-next,
+  .ant-pagination-jump-prev,
+  .ant-pagination-jump-next {
+    min-width: 26px !important;
+    height: 26px !important;
+    line-height: 26px !important;
+    font-size: 11px !important;
+    margin: 0 2px !important;
+    flex-shrink: 0;
+  }
+  
+  .ant-pagination-item a {
+    font-size: 11px !important;
+    padding: 0;
+    width: 100%;
+    height: 100%;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+  }
+  
+  .ant-pagination-prev,
+  .ant-pagination-next {
+    min-width: 26px !important;
+  }
+  
+  .ant-pagination-prev .anticon,
+  .ant-pagination-next .anticon {
+    font-size: 10px !important;
+    width: 10px !important;
+    height: 10px !important;
+  }
+  
+  .ant-pagination-prev .anticon svg,
+  .ant-pagination-next .anticon svg {
+    width: 10px !important;
+    height: 10px !important;
+  }
+  
+  /* Hide pagination options dropdown on very small screens */
+  .ant-pagination-options {
+    display: none !important;
+  }
+  
+  /* Hide jump buttons on mobile for cleaner look */
+  .ant-pagination-jump-prev,
+  .ant-pagination-jump-next {
+    display: none !important;
+  }
+  
+  /* Simple pagination style for mobile */
+  .ant-pagination-simple {
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    gap: 8px;
+    flex-wrap: wrap;
+    width: 100%;
+  }
+  
+  .ant-pagination-simple .ant-pagination-simple-pager {
+    display: flex;
+    align-items: center;
+    gap: 4px;
+  }
+  
+  .ant-pagination-simple .ant-pagination-simple-pager input {
+    width: 40px;
+    height: 26px;
+    text-align: center;
+    font-size: 12px;
+    border: 1px solid #d9d9d9;
+    border-radius: 4px;
+  }
+  
+  .ant-pagination-simple .ant-pagination-simple-pager span {
+    font-size: 12px;
+    color: #666;
+  }
+
+  /* Stack action buttons vertically on small screens */
+  .action-buttons {
+    flex-direction: column;
+    gap: 4px;
+  }
+
+  .action-buttons button {
+    width: 100%;
+    font-size: 11px;
+    padding: 6px 8px;
+  }
+}
+
+/* Desktop (1200px+) - Ensure proper scaling */
+@media (min-width: 1200px) {
+  .customers-container {
+    max-width: 1400px;
+    padding: 2rem;
+  }
+  
+  .modal {
+    max-width: 800px;
+  }
+  
+  .form-row {
+    gap: 16px;
+  }
+}
+
+/* Large desktop (1400px+) */
+@media (min-width: 1400px) {
+  .customers-container {
+    max-width: 1600px;
+  }
+  
+  .modal {
+    max-width: 900px;
+  }
+}
+
+/* Extra large desktop (1600px+) */
+@media (min-width: 1600px) {
+  .customers-container {
+    max-width: 1800px;
+    padding: 2.5rem;
+  }
+  
+  .modal {
+    max-width: 1000px;
+  }
+  
+  .ant-table {
+    font-size: 15px;
+  }
+}
+
+

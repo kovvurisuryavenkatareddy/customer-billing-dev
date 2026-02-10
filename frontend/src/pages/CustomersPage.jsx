@@ -1,16 +1,10 @@
 import React, { useState, useEffect } from 'react';
-import { Input } from 'antd';
-import { SearchOutlined } from '@ant-design/icons';
+import { Input, Card, Spin, Modal, Empty, Button } from 'antd';
 import CustomerSearch from '../components/CustomerSearch';
 import CustomerList from '../components/CustomerList';
 import CustomerForm from '../components/form';
-// Modal component removed — we render modal markup inline using the existing CSS classes
 import ServiceForm from '../components/ServiceForm';
-import '../styles/customers.css';
 import { API_BASE, getAuthHeaders, handle401Error } from '../utils/api';
-import { parseToDate } from '../utils/dates';
-
-const { Search } = Input;
 
 // Simple in-memory client-side store with optional server calls
 // accept optional AbortSignal to cancel in-flight fetches
@@ -163,6 +157,8 @@ export default function CustomersPage({ showAddForm = false, onNavigate }) {
           customer_code: payload.customer.customerCode,
           first_name: payload.customer.firstName,
           last_name: payload.customer.lastName,
+          id_number: payload.customer.idNumber || null,
+          f_id_number: payload.customer.fIdNumber || null,
           service_name: payload.service.serviceName,
           start_date: payload.service.startDate,
           end_date: payload.service.endDate,
@@ -343,142 +339,99 @@ export default function CustomersPage({ showAddForm = false, onNavigate }) {
 
   if (!servicesLoaded) {
     return (
-      <div className="customers-container loading-container">
-        <div className="loading-content">
-          <div className="spinner-large"></div>
-          <p>Loading services...</p>
-        </div>
+      <div className="w-full max-w-full mx-auto p-6 md:p-8 min-h-[300px] flex items-center justify-center">
+        <Spin size="large" tip="Loading services..." />
       </div>
     );
   }
 
+  const editTitle = editingItem ? (() => {
+    const c = editingItem?.customer || {};
+    const first = c.first_name || c.firstName || '';
+    const last = c.last_name || c.lastName || '';
+    return last && first ? `Edit service for ${last}, ${first}` : `Edit service for ${first || last || 'Customer'}`;
+  })() : '';
+
   return (
-    <div className="customers-container">
+    <div className="w-full max-w-full mx-auto p-4 md:p-8 box-border overflow-x-auto">
       {!showAddCustomer && <CustomerSearch onSearch={handleSearch} status={statusFilter} onStatusChange={handleStatusChange} />}
 
-      {(() => {
-        return (
-          <div>
-            {!showAddCustomer && (
-              <div className="card">
-                <div style={{ 
-                  display: 'flex', 
-                  alignItems: 'center', 
-                  justifyContent: 'space-between', 
-                  marginBottom: '20px',
-                  gap: '20px',
-                  flexWrap: 'wrap'
-                }}>
-                  <div style={{ display: 'flex', alignItems: 'center', gap: '15px', flex: '0 0 auto' }}>
-                    <h2 style={{ 
-                      margin: 0,
-                      fontSize: 'clamp(1.25rem, 2.5vw, 1.75rem)',
-                      whiteSpace: 'nowrap'
-                    }}>
-                      {statusFilter === 'active' ? 'Active' : statusFilter === 'inactive' ? 'Inactive' : 'All'} Participant Records
-                    </h2>
-                    
-                  </div>
-                  <div style={{
-                    flex: '1 1 auto',
-                    minWidth: '200px',
-                    maxWidth: '400px'
-                  }}>
-                    <Search
-                      placeholder="Search..."
-                      allowClear
-                      enterButton={<SearchOutlined />}
-                      size="middle"
-                      onSearch={setTableSearchText}
-                      onChange={(e) => setTableSearchText(e.target.value)}
-                      style={{ 
-                        width: '100%'
-                      }}
-                    />
-                  </div>
-                </div>
-                {notFound && customers.length === 0 ? (
-                  <div style={{ padding: '40px', textAlign: 'center' }}>
-                    <p style={{ fontSize: '16px', color: '#6c757d', marginBottom: '20px' }}>
-                      No customers found matching your search criteria.
-                    </p>
-                    <button 
-                      onClick={() => onNavigate && onNavigate('add-customer')}
-                      style={{ padding: '10px 20px', fontSize: '16px' }}
-                    >
-                      Add Customer
-                    </button>
-                  </div>
-                ) : (
-                  <div className="table-container">
-                    {loading && (
-                      <div className="table-loading-overlay">
-                        <div className="table-loading-content">
-                          <div className="spinner"></div>
-                          <p>Loading customers...</p>
-                        </div>
-                      </div>
-                    )}
-                    <CustomerList 
-                      customers={customers} 
-                      onEdit={handleEdit} 
-                      onUpdate={handleUpdate} 
-                      onAddService={handleAddService}
-                      onChangeStatus={handleChangeStatus}
-                      searchText={tableSearchText}
-                    />
+      <div>
+        {!showAddCustomer && (
+          <Card
+            className="mb-6 overflow-x-auto"
+            title={<span className="text-lg font-semibold">{statusFilter === 'active' ? 'Active' : statusFilter === 'inactive' ? 'Inactive' : 'All'} Participant Records</span>}
+            extra={
+              <Input.Search
+                placeholder="Search by name, ID, or service"
+                allowClear
+                enterButton
+                size="middle"
+                value={tableSearchText}
+                onSearch={setTableSearchText}
+                onChange={(e) => setTableSearchText(e.target.value)}
+              />
+            }
+          >
+            {notFound && customers.length === 0 ? (
+              <Empty
+                description="No customers found matching your search criteria."
+                className="py-10"
+              >
+                <Button type="primary" onClick={() => onNavigate?.('add-customer')}>Add Customer</Button>
+              </Empty>
+            ) : (
+              <div className="relative min-h-[200px]">
+                {loading && (
+                  <div className="absolute inset-0 flex items-center justify-center bg-white/80 z-10 rounded">
+                    <Spin tip="Loading customers..." />
                   </div>
                 )}
+                <CustomerList
+                  customers={customers}
+                  onEdit={handleEdit}
+                  onUpdate={handleUpdate}
+                  onAddService={handleAddService}
+                  onChangeStatus={handleChangeStatus}
+                  searchText={tableSearchText}
+                />
               </div>
             )}
+          </Card>
+        )}
 
-            {editingItem ? (
-              <div className="modal-overlay">
-                <div className="modal">
-                  <div className="modal-header">
-                    <h3>Edit service for {(() => {
-                      const c = editingItem?.customer || {};
-                      const first = c.first_name || c.firstName || '';
-                      const last = c.last_name || c.lastName || '';
-                      if (last && first) return `${last}, ${first}`;
-                      return first || last || 'Customer';
-                    })()}</h3>
-                    <button className="modal-close" onClick={handleCancelEdit}>×</button>
-                  </div>
-                  <div className="modal-body">
-                    <CustomerForm onSubmit={handleEditSubmit} onCancel={handleCancelEdit} services={services} initial={editingItem} />
-                  </div>
-                </div>
-              </div>
-            ) : addingServiceFor ? (
-              <div className="modal-overlay">
-                <div className="modal">
-                  <div className="modal-header">
-                    <h3>{`Add service for ${addingServiceFor.first_name} ${addingServiceFor.last_name}`}</h3>
-                    <button className="modal-close" onClick={handleCancelAddService}>×</button>
-                  </div>
-                  <div className="modal-body">
-                    <ServiceForm 
-                      services={services} 
-                      onSubmit={handleAddServiceSubmit}
-                      onCancel={handleCancelAddService}
-                    />
-                  </div>
-                </div>
-              </div>
-            ) : null}
+        <Modal
+          open={!!editingItem}
+          title={editTitle}
+          onCancel={handleCancelEdit}
+          footer={null}
+          width={640}
+          destroyOnClose
+          styles={{ body: { maxHeight: '65vh', overflowY: 'auto' } }}
+        >
+          {editingItem && <CustomerForm onSubmit={handleEditSubmit} onCancel={handleCancelEdit} services={services} initial={editingItem} />}
+        </Modal>
 
-            {/* Resubmission UI removed per requirements */}
+        <Modal
+          open={!!addingServiceFor}
+          title={addingServiceFor ? `Add service for ${addingServiceFor.first_name} ${addingServiceFor.last_name}` : ''}
+          onCancel={handleCancelAddService}
+          footer={null}
+          width={640}
+          destroyOnClose
+          styles={{ body: { maxHeight: '65vh', overflowY: 'auto' } }}
+        >
+          {addingServiceFor && (
+            <ServiceForm services={services} onSubmit={handleAddServiceSubmit} onCancel={handleCancelAddService} />
+          )}
+        </Modal>
 
-            {showAddCustomer && (
-              <div className="card mt-3">
-                <h2>Add New Customer</h2>
-                <CustomerForm onSubmit={handleSubmit} services={services} />
-              </div>
-            )}
-          </div>
-        );
-      })()}
+        {showAddCustomer && (
+          <Card title={<span className="text-xl font-bold text-[#1a253c]">Add New Customer</span>} className="mt-4 overflow-x-auto">
+            <CustomerForm onSubmit={handleSubmit} services={services} />
+          </Card>
+        )}
+      </div>
     </div>
   );
 }

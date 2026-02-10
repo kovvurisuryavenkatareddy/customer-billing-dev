@@ -58,6 +58,8 @@ class CustomerModel(BaseModel):
     dateOfBirth: Optional[str] = None
     activeStatus: Optional[str] = 'active'
     comments: Optional[str] = None
+    idNumber: Optional[str] = None
+    fIdNumber: Optional[str] = None
     class Config:
         schema_extra = {
             "example": {
@@ -121,6 +123,8 @@ def ensure_customers_table():
             date_of_birth TEXT,
             active_status TEXT DEFAULT 'active',
             billing_comments TEXT,
+            id_number TEXT,
+            f_id_number TEXT,
             created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
         )
         '''
@@ -163,6 +167,8 @@ def ensure_customers_columns():
         'date_of_birth': 'TEXT',
         'active_status': "TEXT DEFAULT 'active'",
         'billing_comments': 'TEXT',
+        'id_number': 'TEXT',
+        'f_id_number': 'TEXT',
     }
     conn = get_db_connection()
     cur = conn.cursor()
@@ -323,7 +329,9 @@ def create_customer(payload: CreateCustomerPayload, current_user: dict = Depends
         dob = customer.get('dob') or customer.get('dateOfBirth') or customer.get('date_of_birth')
         # Accept active_status, default to 'active'
         active_status = customer.get('activeStatus') or customer.get('active_status') or 'active'
-        
+        id_number = customer.get('idNumber') or customer.get('id_number') or None
+        f_id_number = customer.get('fIdNumber') or customer.get('f_id_number') or None
+
         # Check for duplicate customer by name + DOB first
         first_name = customer.get('firstName')
         last_name = customer.get('lastName')
@@ -350,8 +358,8 @@ def create_customer(payload: CreateCustomerPayload, current_user: dict = Depends
         else:
             # Create new customer
             cur.execute(
-                'INSERT INTO customers (customer_code, last_name, first_name, date_of_birth, active_status) VALUES (?,?,?,?,?) RETURNING id',
-                (customer_code, last_name, first_name, dob, active_status)
+                'INSERT INTO customers (customer_code, last_name, first_name, date_of_birth, active_status, id_number, f_id_number) VALUES (?,?,?,?,?,?,?) RETURNING id',
+                (customer_code, last_name, first_name, dob, active_status, id_number, f_id_number)
             )
             customer_id = cur.fetchone()['id']
 
@@ -413,6 +421,8 @@ def create_customer(payload: CreateCustomerPayload, current_user: dict = Depends
         'last_name': customer.get('lastName'),
         'date_of_birth': dob,
         'active_status': active_status,
+        'id_number': id_number,
+        'f_id_number': f_id_number,
     }
 
 
@@ -538,6 +548,8 @@ def list_customers(
             'date_of_birth': r['date_of_birth'] if 'date_of_birth' in r.keys() else None,
             'active_status': r['active_status'] if 'active_status' in r.keys() else 'active',
             'total_amount_due': r['total_amount_due'],
+            'id_number': r.get('id_number'),
+            'f_id_number': r.get('f_id_number'),
         }
         customers.append(cust)
         ids.append(r['id'])
@@ -618,6 +630,10 @@ def get_customer(customer_id: int, current_user: dict = Depends(get_current_user
     # normalize active_status key for response if missing
     if 'active_status' not in customer:
         customer['active_status'] = 'active'
+    if 'id_number' not in customer:
+        customer['id_number'] = None
+    if 'f_id_number' not in customer:
+        customer['f_id_number'] = None
     return customer
 
 
@@ -686,15 +702,22 @@ def update_customer(customer_id: int, payload: UpdateCustomerPayload, current_us
         else:
             comments_val = existing.get('billing_comments') if isinstance(existing, dict) else existing['billing_comments']
 
+        has_id_number = 'idNumber' in customer or 'id_number' in customer
+        id_number_val = customer.get('idNumber') or customer.get('id_number') if has_id_number else (existing.get('id_number') if isinstance(existing, dict) else existing.get('id_number'))
+        has_f_id_number = 'fIdNumber' in customer or 'f_id_number' in customer
+        f_id_number_val = customer.get('fIdNumber') or customer.get('f_id_number') if has_f_id_number else (existing.get('f_id_number') if isinstance(existing, dict) else existing.get('f_id_number'))
+
         # Update customer record
         cur.execute(
-            'UPDATE customers SET last_name = ?, first_name = ?, billing_comments = ?, date_of_birth = ?, active_status = ? WHERE id = ?',
+            'UPDATE customers SET last_name = ?, first_name = ?, billing_comments = ?, date_of_birth = ?, active_status = ?, id_number = ?, f_id_number = ? WHERE id = ?',
             (
                 last_name_val,
                 first_name_val,
                 comments_val,
                 dob_val,
                 active_status_val,
+                id_number_val,
+                f_id_number_val,
                 customer_id,
             )
         )

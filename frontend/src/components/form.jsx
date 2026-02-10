@@ -19,6 +19,8 @@ export default function CustomerForm({ onSubmit, services: servicesProp = [], in
   const [lastName, setLastName] = useState('');
   const [dateOfBirth, setDateOfBirth] = useState('');
   const [activeStatus, setActiveStatus] = useState('active');
+  const [idNumber, setIdNumber] = useState('');
+  const [fIdNumber, setFIdNumber] = useState('');
   
   // Services array state
   const [services, setServices] = useState([]);
@@ -142,6 +144,8 @@ export default function CustomerForm({ onSubmit, services: servicesProp = [], in
       const dob = c.dateOfBirth || c.date_of_birth || c.dob || '';
       setDateOfBirth(dob ? formatMMDDYYYY(dob) : '');
       setActiveStatus(c.activeStatus || c.active_status || 'active');
+      setIdNumber(c.idNumber || c.id_number || '');
+      setFIdNumber(c.fIdNumber || c.f_id_number || '');
     }
 
     // If there are services in the initial data, populate the services array
@@ -324,6 +328,8 @@ export default function CustomerForm({ onSubmit, services: servicesProp = [], in
         lastName: lastName.trim(),
         dateOfBirth: dateOfBirth ? toISO(dateOfBirth) : null,
         activeStatus: activeStatus,
+        idNumber: idNumber.trim() || null,
+        fIdNumber: fIdNumber.trim() || null,
         startDate: services[0]?.serviceStartDate ? toISO(services[0].serviceStartDate) : null,
         endDate: services[0]?.serviceEndDate ? toISO(services[0].serviceEndDate) : null,
         comments: '',
@@ -344,38 +350,47 @@ export default function CustomerForm({ onSubmit, services: servicesProp = [], in
   };
 
   return (
-    <div className="customer-form-container">
+    <div className="max-w-[800px] mx-auto min-h-[500px] transition-all duration-300 p-0">
       {isResubmission && (
-        <div className="resubmission-banner">
+        <div className="bg-gradient-to-r from-cyan-500 to-cyan-600 text-white py-3 px-5 rounded-lg mb-5 text-center font-semibold text-[0.95rem] shadow-md">
           🔄 Resubmission Mode - Creating a new entry based on the previous submission
         </div>
       )} 
-      <form onSubmit={handleSubmit}>
+      <form onSubmit={handleSubmit} className="add-customer-form">
+        {isEditing && (
+          <>
+            <div className="form-row flex flex-wrap items-center gap-3 mb-6 box-border w-full min-w-0">
+              <label className="min-w-[100px]">ID #</label>
+              <input type="text" value={idNumber} onChange={(e) => setIdNumber(e.target.value)} placeholder="ID #" className="flex-1 min-w-[180px]" />
+            </div>
+            <div className="form-row flex flex-wrap items-center gap-3 mb-6 box-border w-full min-w-0">
+              <label className="min-w-[100px]">F ID #</label>
+              <input type="text" value={fIdNumber} onChange={(e) => setFIdNumber(e.target.value)} placeholder="F ID #" className="flex-1 min-w-[180px]" />
+            </div>
+          </>
+        )}
+
         {!isEditing && (
           <>
-            <div className="form-row">
-              <label>Last name <span style={{ color: '#c0392b' }}>*</span></label>
-              <input value={lastName} onChange={(e) => setLastName(e.target.value)} required />
+            <div className="form-row flex flex-wrap items-center gap-3 mb-6 box-border w-full min-w-0">
+              <label className="min-w-[100px]">Last name <span style={{ color: '#c0392b' }}>*</span></label>
+              <input value={lastName} onChange={(e) => setLastName(e.target.value)} placeholder="Last name" required className="flex-1 min-w-[180px]" />
             </div>
 
-            <div className="form-row">
-              <label>First name <span style={{ color: '#c0392b' }}>*</span></label>
-              <input value={firstName} onChange={(e) => setFirstName(e.target.value)} required />
+            <div className="form-row flex flex-wrap items-center gap-3 mb-6 box-border w-full min-w-0">
+              <label className="min-w-[100px]">First name <span style={{ color: '#c0392b' }}>*</span></label>
+              <input value={firstName} onChange={(e) => setFirstName(e.target.value)} placeholder="First name" required className="flex-1 min-w-[180px]" />
             </div>
 
-            <div className="form-row">
-              <label>Date of Birth</label>
-              <div style={{ position: 'relative', flex: 1 }}>
+            <div className="form-row flex flex-wrap items-center gap-3 mb-6 box-border w-full min-w-0">
+              <label className="min-w-[100px]">Date of Birth</label>
+              <div className="flex-1 min-w-[180px]" style={{ position: 'relative' }}>
                 <input 
                   type="text" 
                   placeholder="MM-DD-YYYY" 
                   value={dateOfBirth} 
                   onChange={(e) => setDateOfBirth(e.target.value)}
-                  style={{ 
-                    width: '100%',
-                    paddingRight: '40px',
-                    boxSizing: 'border-box'
-                  }}
+                  style={{ paddingRight: 40 }}
                 />
                 <input
                   type="date"
@@ -423,12 +438,22 @@ export default function CustomerForm({ onSubmit, services: servicesProp = [], in
               </div>
             </div>
 
-            <div className="form-row">
-              <label>Status</label>
-              <select value={activeStatus} onChange={(e) => setActiveStatus(e.target.value)}>
+            <div className="form-row flex flex-wrap items-center gap-3 mb-6 box-border w-full min-w-0">
+              <label className="min-w-[100px]">Status</label>
+              <select value={activeStatus} onChange={(e) => setActiveStatus(e.target.value)} className="flex-1 min-w-[180px]">
                 <option value="active">Active</option>
                 <option value="inactive">Inactive</option>
               </select>
+            </div>
+
+            <div className="form-row flex flex-wrap items-center gap-3 mb-6 box-border w-full min-w-0">
+              <label className="min-w-[100px]">ID #</label>
+              <input type="text" value={idNumber} onChange={(e) => setIdNumber(e.target.value)} placeholder="ID #" className="flex-1 min-w-[180px]" />
+            </div>
+
+            <div className="form-row flex flex-wrap items-center gap-3 mb-6 box-border w-full min-w-0">
+              <label className="min-w-[100px]">F ID #</label>
+              <input type="text" value={fIdNumber} onChange={(e) => setFIdNumber(e.target.value)} placeholder="F ID #" className="flex-1 min-w-[180px]" />
             </div>
           </>
         )}
@@ -483,7 +508,7 @@ export default function CustomerForm({ onSubmit, services: servicesProp = [], in
                 )}
               </div>
 
-              <div className="form-row">
+              <div className="flex flex-wrap items-center gap-3 mb-6 box-border w-full min-w-0">
                 <label>Type of service <span style={{ color: '#c0392b' }}>*</span></label>
                 <select 
                   value={service.serviceType} 
@@ -513,10 +538,10 @@ export default function CustomerForm({ onSubmit, services: servicesProp = [], in
               {/* Service dates/units based on service type */}
               {service.serviceType && !isUnitsServiceType(service.serviceType) ? (
                 <>
-                  <div className="service-dates">
+                  <div className="flex gap-3 items-start mb-6">
                     {/* Service start and end dates in one row */}
                     <div style={{ display: 'flex', gap: '1rem' }}>
-                      <div className="form-row" style={{ flex: 1 }}>
+                      <div className="flex flex-wrap items-center gap-3 mb-6 box-border w-full min-w-0" style={{ flex: 1 }}>
                         <label>Service start date <span style={{ color: '#c0392b' }}>*</span></label>
                         <div style={{ position: 'relative', flex: 1 }}>
                           <input 
@@ -560,7 +585,7 @@ export default function CustomerForm({ onSubmit, services: servicesProp = [], in
                           </svg>
                         </div>
                       </div>
-                      <div className="form-row" style={{ flex: 1 }}>
+                      <div className="flex flex-wrap items-center gap-3 mb-6 box-border w-full min-w-0" style={{ flex: 1 }}>
                         <label>Service end date <span style={{ color: '#c0392b' }}>*</span></label>
                         <div style={{ position: 'relative', flex: 1 }}>
                           <input 
@@ -607,7 +632,7 @@ export default function CustomerForm({ onSubmit, services: servicesProp = [], in
                     </div>
                   </div>
                   {/* Number of days in its own row below */}
-                  <div className="form-row">
+                  <div className="flex flex-wrap items-center gap-3 mb-6 box-border w-full min-w-0">
                     <label>Number of days</label>
                     <input
                       type="number"
@@ -619,7 +644,7 @@ export default function CustomerForm({ onSubmit, services: servicesProp = [], in
                   </div>
                 </>
               ) : service.serviceType && isUnitsServiceType(service.serviceType) ? (
-                <div className="form-row">
+                <div className="flex flex-wrap items-center gap-3 mb-6 box-border w-full min-w-0">
                   <label>Number of units <span style={{ color: '#c0392b' }}>*</span></label>
                   <input
                     type="number"
@@ -631,7 +656,7 @@ export default function CustomerForm({ onSubmit, services: servicesProp = [], in
                 </div>
               ) : null}
 
-              <div className="form-row">
+              <div className="flex flex-wrap items-center gap-3 mb-6 box-border w-full min-w-0">
                 <label>Amount billed ($)</label>
                 <input
                   type="number"
@@ -642,7 +667,7 @@ export default function CustomerForm({ onSubmit, services: servicesProp = [], in
                 />
               </div>
 
-              <div className="form-row">
+              <div className="flex flex-wrap items-center gap-3 mb-6 box-border w-full min-w-0">
                 <label>Amount paid ($)</label>
                 <input
                   type="number"
@@ -653,7 +678,7 @@ export default function CustomerForm({ onSubmit, services: servicesProp = [], in
                 />
               </div>
 
-              <div className="form-row">
+              <div className="flex flex-wrap items-center gap-3 mb-6 box-border w-full min-w-0">
                 <label>Date of payment</label>
                 <div style={{ position: 'relative', flex: 1 }}>
                   <input 
@@ -713,7 +738,7 @@ export default function CustomerForm({ onSubmit, services: servicesProp = [], in
                 </div>
               </div>
 
-              <div className="form-row">
+              <div className="flex flex-wrap items-center gap-3 mb-6 box-border w-full min-w-0">
                 <label>Date Submitted</label>
                 <div style={{ position: 'relative', flex: 1 }}>
                   <input 
@@ -773,7 +798,7 @@ export default function CustomerForm({ onSubmit, services: servicesProp = [], in
                 </div>
               </div>
 
-              <div className="form-row">
+              <div className="flex flex-wrap items-center gap-3 mb-6 box-border w-full min-w-0">
                 <label>Denial Code</label>
                 <div style={{ position: 'relative' }}>
                   <div
@@ -893,7 +918,7 @@ export default function CustomerForm({ onSubmit, services: servicesProp = [], in
 
         {/* Error Messages */}
         {errors.length > 0 && (
-          <div className="error-message">
+          <div className="text-red-600 font-bold min-h-5 my-2">
             <ul>
               {errors.map((err, idx) => (
                 <li key={idx}>{err}</li>
@@ -902,9 +927,9 @@ export default function CustomerForm({ onSubmit, services: servicesProp = [], in
           </div>
         )}
 
-        <div className="actions" style={{ justifyContent: onCancel ? 'space-between' : 'flex-end' }}>
+        <div className="flex gap-2 mt-4" style={{ justifyContent: onCancel ? 'space-between' : 'flex-end' }}>
           {onCancel && (
-            <button type="button" className="secondary" onClick={() => onCancel()}>Cancel</button>
+            <button type="button" className="bg-secondary text-white py-3 px-6 rounded-lg font-medium cursor-pointer hover:bg-secondary-hover border-0" onClick={() => onCancel()}>Cancel</button>
           )}
           <button type="submit">{isResubmission ? 'Create Resubmission' : 'Save Customer'}</button>
         </div>

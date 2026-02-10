@@ -1,20 +1,16 @@
 // Priority order for API base URL:
-// 1. Build-time env `REACT_APP_API_BASE` (Create React App)
-// 2. Runtime-injected `window.__API_BASE__` (optional)
+// 1. Runtime-injected `window.__API_BASE__` (e.g. from index.html script)
+// 2. Build-time env `VITE_API_BASE` (Vite)
 // 3. Fallback to localhost
-// 1) Meta tag injected at build-time (`%REACT_APP_API_BASE%` in public/index.html)
-// 2) Runtime override via `window.__API_BASE__`
-// 3) Build-time env replacement (CRA) via `process.env.REACT_APP_API_BASE`
-// 4) Fallback to localhost
 import { navigateToLogin } from './router';
 const metaTag = (typeof document !== 'undefined' && document.querySelector('meta[name="api-base"]'))
   ? document.querySelector('meta[name="api-base"]').getAttribute('content')
   : '';
 
 export const API_BASE =
-  (metaTag && metaTag !== '%REACT_APP_API_BASE%' ? metaTag : '') ||
+  (metaTag && metaTag !== '' ? metaTag : '') ||
   (typeof window !== 'undefined' && window.__API_BASE__) ||
-  (typeof process !== 'undefined' && process.env && process.env.REACT_APP_API_BASE) ||
+  (typeof import.meta !== 'undefined' && import.meta.env && import.meta.env.VITE_API_BASE) ||
   'http://localhost:8000';
 
 export function getAuthHeaders() {
