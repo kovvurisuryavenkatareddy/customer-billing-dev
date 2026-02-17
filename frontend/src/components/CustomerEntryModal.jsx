@@ -1,13 +1,22 @@
 import React, { useState, useEffect } from 'react';
-import { formatMMDDYYYY } from '../utils/dates';
+import { formatMMDDYYYY, toISO } from '../utils/dates';
+import { Button, Input, Select, Space, Spin, Alert, Divider } from 'antd';
 import { API_BASE, getAuthHeaders } from '../utils/api';
 
-export default function CustomerEntryModal({ customerId, customerCode, onClose }) {
+export default function CustomerEntryModal({ customerId, customerCode, onClose, onUpdated }) {
   const [customer, setCustomer] = useState(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
-  const [editingStatus, setEditingStatus] = useState(false);
+  const [isEditing, setIsEditing] = useState(false);
   const [saving, setSaving] = useState(false);
+
+  // Editable fields (participant details)
+  const [firstName, setFirstName] = useState('');
+  const [lastName, setLastName] = useState('');
+  const [dob, setDob] = useState('');
+  const [idNumber, setIdNumber] = useState('');
+  const [fIdNumber, setFIdNumber] = useState('');
+  const [activeStatus, setActiveStatus] = useState('active');
 
   useEffect(() => {
     if (customerId) {
@@ -24,6 +33,18 @@ export default function CustomerEntryModal({ customerId, customerCode, onClose }
       if (!res.ok) throw new Error('Failed to fetch customer');
       const data = await res.json();
       setCustomer(data);
+      // If user is not actively editing, keep edit fields in sync with server values.
+      if (!isEditing) {
+        const ln = data.last_name || data.lastName || '';
+        const fn = data.first_name || data.firstName || '';
+        const dobVal = data.date_of_birth || data.dob || data.dateOfBirth || '';
+        setLastName(ln);
+        setFirstName(fn);
+        setDob(formatMMDDYYYY(dobVal) || '');
+        setIdNumber((data.id_number != null ? String(data.id_number) : '') || '');
+        setFIdNumber((data.f_id_number != null ? String(data.f_id_number) : '') || '');
+        setActiveStatus(data.active_status || 'active');
+      }
     } catch (err) {
       setError(err.message || 'Failed to load');
     } finally {
@@ -31,23 +52,79 @@ export default function CustomerEntryModal({ customerId, customerCode, onClose }
     }
   };
 
-  const saveStatus = async (newStatus) => {
+  const beginEdit = () => {
+    if (!customer) return;
+    const ln = customer.last_name || customer.lastName || '';
+    const fn = customer.first_name || customer.firstName || '';
+    const dobVal = customer.date_of_birth || customer.dob || customer.dateOfBirth || '';
+    setLastName(ln);
+    setFirstName(fn);
+    setDob(formatMMDDYYYY(dobVal) || '');
+    setIdNumber((customer.id_number != null ? String(customer.id_number) : '') || '');
+    setFIdNumber((customer.f_id_number != null ? String(customer.f_id_number) : '') || '');
+    setActiveStatus(customer.active_status || 'active');
+    setIsEditing(true);
+  };
+
+  const saveDetails = async () => {
     if (!customer) return;
     try {
       setSaving(true);
       const headers = getAuthHeaders();
+
+      const trimmedLast = (lastName || '').trim();
+      const trimmedFirst = (firstName || '').trim();
+      if (!trimmedLast || !trimmedFirst) {
+        if (window.showToast) window.showToast({ message: 'First name and last name are required', type: 'error' });
+        return;
+      }
+
+      // DOB: allow blank; validate when provided.
+      let dobIsoOrNull = null;
+      if ((dob || '').trim() !== '') {
+        const iso = toISO(dob);
+        if (!iso) {
+          if (window.showToast) window.showToast({ message: 'DOB must be in MM-DD-YYYY (or YYYY-MM-DD)', type: 'error' });
+          return;
+        }
+        dobIsoOrNull = iso;
+      }
+
       const res = await fetch(`${API_BASE}/customers/${customerId}`, {
         method: 'PUT',
         headers: { ...headers },
-        body: JSON.stringify({ customer: { active_status: newStatus } })
+        body: JSON.stringify({
+          customer: {
+            lastName: trimmedLast,
+            firstName: trimmedFirst,
+            dateOfBirth: dobIsoOrNull,
+            idNumber: (idNumber || '').trim() === '' ? null : String(idNumber).trim(),
+            fIdNumber: (fIdNumber || '').trim() === '' ? null : String(fIdNumber).trim(),
+            activeStatus: activeStatus || 'active',
+          }
+        })
       });
-      if (!res.ok) throw new Error('Failed to save status');
-      setCustomer(prev => ({ ...prev, active_status: newStatus }));
-      setEditingStatus(false);
-      if (window.showToast) window.showToast({ message: 'Status updated', type: 'success' });
+      if (!res.ok) throw new Error('Failed to save customer details');
+
+      // Update local view immediately, then refresh list in background.
+      setCustomer(prev => ({
+        ...(prev || {}),
+        last_name: trimmedLast,
+        first_name: trimmedFirst,
+        date_of_birth: dobIsoOrNull,
+        id_number: (idNumber || '').trim() === '' ? null : String(idNumber).trim(),
+        f_id_number: (fIdNumber || '').trim() === '' ? null : String(fIdNumber).trim(),
+        active_status: activeStatus || 'active',
+      }));
+
+      setIsEditing(false);
+      if (window.showToast) window.showToast({ message: 'Participant details updated', type: 'success' });
+      if (typeof onUpdated === 'function') {
+        try { await onUpdated(); } catch (e) { /* ignore */ }
+      }
     } catch (err) {
-      console.error('Failed to save status', err);
-      if (window.showToast) window.showToast({ message: 'Failed to update status', type: 'error' });
+      console.error('Failed to save participant details', err);
+      if (window.showToast) window.showToast({ message: err.message || 'Failed to update participant', type: 'error' });
     } finally {
       setSaving(false);
     }
@@ -66,34 +143,62 @@ export default function CustomerEntryModal({ customerId, customerCode, onClose }
         </div>
 
         <div className="p-5 max-h-[65vh] overflow-y-auto overflow-x-hidden">
-          {loading && <div style={{ textAlign: 'center', padding: '20px' }}>Loading...</div>}
-
-          {error && (
-            <div style={{ color: '#dc3545', background: '#f8d7da', border: '1px solid #f5c6cb', padding: '10px', borderRadius: '4px', marginBottom: '20px' }}>
-              Error: {error}
+          {loading && (
+            <div className="flex items-center justify-center py-8">
+              <Spin />
             </div>
           )}
 
+          {error && <Alert type="error" showIcon message="Error" description={error} />}
+
           {!loading && !error && customer && (
-            <div style={{ display: 'grid', gap: '12px' }}>
-              <div>
-                <strong>Name:</strong> {(customer.last_name || customer.lastName ? (customer.last_name || customer.lastName) : '') + ((customer.first_name || customer.firstName) ? (', ' + (customer.first_name || customer.firstName)) : '')}
+            <>
+              <div className="flex items-center justify-between gap-3 mb-3">
+                <div className="text-sm text-gray-500">
+                  Participant Details
+                </div>
+                {!isEditing ? (
+                  <Button type="primary" onClick={beginEdit}>
+                    Edit
+                  </Button>
+                ) : (
+                  <Space>
+                    <Button onClick={() => setIsEditing(false)} disabled={saving}>
+                      Cancel
+                    </Button>
+                    <Button type="primary" onClick={saveDetails} loading={saving}>
+                      Save
+                    </Button>
+                  </Space>
+                )}
               </div>
-              <div>
-                <strong>DOB:</strong> {formatMMDDYYYY(customer.date_of_birth || customer.dob || customer.dateOfBirth || '') || '—'}
-              </div>
-              <div>
-                <strong>ID #:</strong> {(customer.id_number != null && customer.id_number !== '') ? customer.id_number : '—'}
-              </div>
-              <div>
-                <strong>F ID #:</strong> {(customer.f_id_number != null && customer.f_id_number !== '') ? customer.f_id_number : '—'}
-              </div>
-              <div>
-                <strong>Status:</strong>
-                {!editingStatus ? (
-                  <span style={{ marginLeft: 8 }}>
+
+              <Divider style={{ margin: '12px 0' }} />
+
+              {!isEditing ? (
+                <div style={{ display: 'grid', gap: '12px' }}>
+                  <div>
+                    <strong>Name:</strong>{' '}
+                    {(customer.last_name || customer.lastName ? (customer.last_name || customer.lastName) : '') +
+                      ((customer.first_name || customer.firstName) ? (', ' + (customer.first_name || customer.firstName)) : '')}
+                  </div>
+                  <div>
+                    <strong>DOB:</strong>{' '}
+                    {formatMMDDYYYY(customer.date_of_birth || customer.dob || customer.dateOfBirth || '') || '—'}
+                  </div>
+                  <div>
+                    <strong>ID #:</strong>{' '}
+                    {(customer.id_number != null && customer.id_number !== '') ? customer.id_number : '—'}
+                  </div>
+                  <div>
+                    <strong>F ID #:</strong>{' '}
+                    {(customer.f_id_number != null && customer.f_id_number !== '') ? customer.f_id_number : '—'}
+                  </div>
+                  <div>
+                    <strong>Status:</strong>{' '}
                     <span style={{
                       display: 'inline-block',
+                      marginLeft: 8,
                       padding: '6px 10px',
                       borderRadius: '999px',
                       background: (customer.active_status || 'active') === 'active' ? '#e6ffed' : '#fff3f3',
@@ -102,19 +207,44 @@ export default function CustomerEntryModal({ customerId, customerCode, onClose }
                       fontWeight: 600,
                       textTransform: 'capitalize'
                     }}>{(customer.active_status || 'active')}</span>
-                    <button onClick={() => setEditingStatus(true)} style={{ marginLeft: 12, padding: '6px 10px' }}>Change</button>
-                  </span>
-                ) : (
-                  <span style={{ marginLeft: 8 }}>
-                    <select disabled={saving} value={customer.active_status || 'active'} onChange={(e) => saveStatus(e.target.value)}>
-                      <option value="active">Active</option>
-                      <option value="inactive">Inactive</option>
-                    </select>
-                    <button onClick={() => setEditingStatus(false)} style={{ marginLeft: 8 }} disabled={saving}>Cancel</button>
-                  </span>
-                )}
-              </div>
-            </div>
+                  </div>
+                </div>
+              ) : (
+                <div style={{ display: 'grid', gap: '12px' }}>
+                  <div>
+                    <strong>Last name</strong>
+                    <Input value={lastName} onChange={(e) => setLastName(e.target.value)} placeholder="Last name" />
+                  </div>
+                  <div>
+                    <strong>First name</strong>
+                    <Input value={firstName} onChange={(e) => setFirstName(e.target.value)} placeholder="First name" />
+                  </div>
+                  <div>
+                    <strong>DOB</strong>
+                    <Input value={dob} onChange={(e) => setDob(e.target.value)} placeholder="MM-DD-YYYY" />
+                  </div>
+                  <div>
+                    <strong>ID #</strong>
+                    <Input value={idNumber} onChange={(e) => setIdNumber(e.target.value)} placeholder="ID #" />
+                  </div>
+                  <div>
+                    <strong>F ID #</strong>
+                    <Input value={fIdNumber} onChange={(e) => setFIdNumber(e.target.value)} placeholder="F ID #" />
+                  </div>
+                  <div>
+                    <strong>Status</strong>
+                    <Select
+                      value={activeStatus || 'active'}
+                      onChange={(val) => setActiveStatus(val)}
+                      options={[
+                        { value: 'active', label: 'Active' },
+                        { value: 'inactive', label: 'Inactive' },
+                      ]}
+                    />
+                  </div>
+                </div>
+              )}
+            </>
           )}
         </div>
       </div>

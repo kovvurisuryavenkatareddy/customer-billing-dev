@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { formatMMDDYYYY, toISO } from '../utils/dates';
 
-export default function ServiceForm({ services = [], onSubmit, initial = null, onCancel }) {
+export default function ServiceForm({ services = [], onSubmit, initial = null, onCancel, submitting = false }) {
   const [serviceType, setServiceType] = useState('');
   const [days, setDays] = useState('');
   const [units, setUnits] = useState('');
@@ -162,16 +162,15 @@ export default function ServiceForm({ services = [], onSubmit, initial = null, o
     if (typeof onSubmit === 'function') onSubmit(payload);
   };
 
+  const computedPaid = amountPaid === '' ? 0 : Number(amountPaid) || 0;
+  const computedDue = (Number(amountBilled) || 0) - computedPaid;
+
   return (
-    <div style={{ 
-      maxWidth: '600px', 
-      margin: '0 auto',
-      minHeight: '400px',
-      transition: 'all 0.3s ease'
-    }}>
-    <form onSubmit={handleSubmit}>
+    <div className="w-full max-w-[720px] mx-auto">
+    <form onSubmit={handleSubmit} className="add-customer-form">
+      <fieldset disabled={submitting} style={{ border: 'none', padding: 0, margin: 0, opacity: submitting ? 0.7 : 1 }}>
       <div className="flex flex-wrap items-center gap-3 mb-6 box-border w-full min-w-0">
-        <label>Type of service</label>
+        <label>Type of service <span style={{ color: '#c0392b' }}>*</span></label>
         <select value={serviceType} onChange={(e) => setServiceType(e.target.value)}>
           <option value="">-- select --</option>
           {Array.isArray(services) && services.map(s => {
@@ -192,9 +191,9 @@ export default function ServiceForm({ services = [], onSubmit, initial = null, o
       </div>
 
       {!isUnitsServiceType(serviceType) && (
-      <div className="flex gap-3 items-start mb-6">
-        <div className="flex flex-wrap items-center gap-3 mb-6 box-border w-full min-w-0">
-          <label>Service start date</label>
+      <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mb-6">
+        <div className="flex flex-wrap items-center gap-3 box-border w-full min-w-0">
+          <label>start date</label>
           <div style={{ position: 'relative', flex: 1 }}>
             <input 
               type="text" 
@@ -253,8 +252,8 @@ export default function ServiceForm({ services = [], onSubmit, initial = null, o
           </div>
         </div>
 
-        <div className="flex flex-wrap items-center gap-3 mb-6 box-border w-full min-w-0">
-          <label>Service end date</label>
+        <div className="flex flex-wrap items-center gap-3 box-border w-full min-w-0">
+          <label>end date</label>
           <div style={{ position: 'relative', flex: 1 }}>
             <input 
               type="text" 
@@ -365,7 +364,7 @@ export default function ServiceForm({ services = [], onSubmit, initial = null, o
       )}
 
       <div className="flex flex-wrap items-center gap-3 mb-6 box-border w-full min-w-0">
-        <label>Rate per day ($)</label>
+        <label>{isUnitsServiceType(serviceType) ? 'Rate per unit ($)' : 'Rate per day ($)'}</label>
         <input type="number" min="0" value={ratePerDay} readOnly />
       </div>
 
@@ -453,6 +452,18 @@ export default function ServiceForm({ services = [], onSubmit, initial = null, o
         <label>Amount paid ($)</label>
         <input type="number" min="0" value={amountPaid} onChange={(e) => setAmountPaid(e.target.value)} />
       </div>
+
+      {!initial && (
+        <div className="mb-6 rounded-lg border border-slate-200 bg-slate-50 px-3 py-2 text-sm">
+          <div className="flex flex-wrap items-center justify-between gap-2">
+            <span><strong>Billed:</strong> ${(Number(amountBilled) || 0).toFixed(2)}</span>
+            <span><strong>Paid:</strong> ${computedPaid.toFixed(2)}</span>
+            <span style={{ color: computedDue > 0 ? '#e74c3c' : '#64748b' }}>
+              <strong>Due:</strong> ${computedDue.toFixed(2)}
+            </span>
+          </div>
+        </div>
+      )}
 
       <div className="flex flex-wrap items-center gap-3 mb-6 box-border w-full min-w-0">
         <label>Date of payment</label>
@@ -707,12 +718,18 @@ export default function ServiceForm({ services = [], onSubmit, initial = null, o
         </div>
       </div>
 
-      <div className="flex gap-2 mt-4" style={{ justifyContent: 'space-between' }}>
+      <div className="form-actions flex gap-2 mt-4" style={{ justifyContent: 'space-between' }}>
         {onCancel && (
-          <button type="button" className="bg-secondary text-white py-3 px-6 rounded-lg font-medium cursor-pointer hover:bg-secondary-hover border-0" onClick={onCancel}>Cancel</button>
+          <button type="button" className="btn-secondary" onClick={onCancel} disabled={submitting}>
+            {submitting ? 'Please wait…' : 'Cancel'}
+          </button>
         )}
-        <button type="submit">Add Service</button>
+        <button type="submit" className="btn-primary" disabled={submitting}>
+          {submitting && <span className="btn-spinner" aria-hidden="true" />}
+          {submitting ? 'Saving…' : (initial ? 'Edit Service' : 'Add Service')}
+        </button>
       </div>
+      </fieldset>
     </form>
     </div>
   );

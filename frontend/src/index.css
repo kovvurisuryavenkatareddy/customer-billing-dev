@@ -93,3 +93,77 @@ body.sidebar-open-mobile {
 .add-customer-form .form-row {
   margin-bottom: 1.25rem;
 }
+
+/* Primary/secondary buttons for non-AntD forms (Tailwind preflight resets buttons). */
+.add-customer-form .form-actions {
+  gap: 12px;
+}
+
+.add-customer-form .form-actions .btn-primary,
+.add-customer-form .form-actions .btn-secondary {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 40px;
+  padding: 10px 18px;
+  border-radius: 10px;
+  font-weight: 600;
+  letter-spacing: 0.2px;
+  border: 1px solid transparent;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.08);
+  transition: background-color 0.15s ease, border-color 0.15s ease, box-shadow 0.15s ease, transform 0.05s ease;
+  user-select: none;
+}
+
+.add-customer-form .form-actions .btn-primary {
+  background: #007bff;
+  color: #fff;
+}
+
+.add-customer-form .form-actions .btn-primary:hover {
+  background: #0056b3;
+}
+
+.add-customer-form .form-actions .btn-secondary {
+  background: #6c757d;
+  color: #fff;
+}
+
+.add-customer-form .form-actions .btn-secondary:hover {
+  background: #5a6268;
+}
+
+.add-customer-form .form-actions .btn-primary:active,
+.add-customer-form .form-actions .btn-secondary:active {
+  transform: translateY(1px);
+  box-shadow: 0 1px 4px rgba(0, 0, 0, 0.08);
+}
+
+.add-customer-form .form-actions .btn-primary:focus-visible,
+.add-customer-form .form-actions .btn-secondary:focus-visible {
+  outline: none;
+  box-shadow: 0 0 0 3px rgba(0, 123, 255, 0.25), 0 2px 8px rgba(0, 0, 0, 0.08);
+}
+
+/* Button loading spinner */
+@keyframes btnSpin {
+  from { transform: rotate(0deg); }
+  to { transform: rotate(360deg); }
+}
+
+.add-customer-form .form-actions .btn-spinner {
+  width: 16px;
+  height: 16px;
+  border-radius: 999px;
+  border: 2px solid rgba(255, 255, 255, 0.55);
+  border-top-color: rgba(255, 255, 255, 1);
+  display: inline-block;
+  margin-right: 10px;
+  animation: btnSpin 0.8s linear infinite;
+}
+
+.add-customer-form .form-actions .btn-primary:disabled,
+.add-customer-form .form-actions .btn-secondary:disabled {
+  opacity: 0.7;
+  cursor: not-allowed;
+}

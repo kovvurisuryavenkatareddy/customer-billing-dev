@@ -13,7 +13,7 @@ export function formInit() {
 }
 
 // Customer form component
-export default function CustomerForm({ onSubmit, services: servicesProp = [], initial = null, onCancel = null, isResubmission = false } = {}) {
+export default function CustomerForm({ onSubmit, services: servicesProp = [], initial = null, onCancel = null, isResubmission = false, submitting = false, hideCustomerFields = false } = {}) {
   // Customer basic info state
   const [firstName, setFirstName] = useState('');
   const [lastName, setLastName] = useState('');
@@ -126,9 +126,10 @@ export default function CustomerForm({ onSubmit, services: servicesProp = [], in
   const totalAmountPaid = services.reduce((sum, service) => sum + parseFloat(service.amountPaid || 0), 0);
   const totalDue = totalAmountBilled - totalAmountPaid;
 
-  // Initialize with one service if none exist and not editing
+  // Initialize with one service row when creating a new submission.
   useEffect(() => {
-    if (services.length === 0 && !initial) {
+    // When adding services for an existing customer (`hideCustomerFields`), we still need at least one service row.
+    if (services.length === 0 && (!initial || hideCustomerFields)) {
       addService();
     }
   }, []);
@@ -148,13 +149,15 @@ export default function CustomerForm({ onSubmit, services: servicesProp = [], in
       setFIdNumber(c.fIdNumber || c.f_id_number || '');
     }
 
-    // If there are services in the initial data, populate the services array
-    if (initial.services && Array.isArray(initial.services)) {
+    // If there are services in the initial data, populate the services array.
+    // IMPORTANT: when `hideCustomerFields` is true (Add Services flow), `initial.services` may be an empty array.
+    // In that case, don't overwrite the default empty row created by the init effect.
+    if (initial.services && Array.isArray(initial.services) && initial.services.length > 0) {
       const populatedServices = initial.services.map((service, index) => ({
         id: Date.now() + index,
         serviceType: service.serviceName || service.service_name || '',
-        serviceStartDate: service.startDate ? service.startDate : '',
-        serviceEndDate: service.endDate ? service.endDate : '',
+        serviceStartDate: formatMMDDYYYY(service.startDate || service.start_date || '') || '',
+        serviceEndDate: formatMMDDYYYY(service.endDate || service.end_date || '') || '',
         numberOfDays: String(service.days || service.numberOfDays || ''),
         units: String(service.units || ''),
         amountBilled: service.amountBilled || service.amount_billed || 0,
@@ -171,8 +174,8 @@ export default function CustomerForm({ onSubmit, services: servicesProp = [], in
       const singleService = {
         id: Date.now(),
         serviceType: s.serviceName || s.service_name || s.service || '',
-        serviceStartDate: s.startDate ? s.startDate : '',
-        serviceEndDate: s.endDate ? s.endDate : '',
+        serviceStartDate: formatMMDDYYYY(s.startDate || s.start_date || '') || '',
+        serviceEndDate: formatMMDDYYYY(s.endDate || s.end_date || '') || '',
         numberOfDays: String(s.days || s.numberOfDays || ''),
         units: String(s.units || ''),
         amountBilled: s.amountBilled || s.amount_billed || 0,
@@ -218,14 +221,23 @@ export default function CustomerForm({ onSubmit, services: servicesProp = [], in
   const setDenialShow = (serviceId, val) => setDenialShowMap(m => ({ ...m, [serviceId]: val }));
   const setDenialDropdownStyle = (serviceId, style) => setDenialDropdownStyleMap(m => ({ ...m, [serviceId]: style }));
 
-  const isEditing = Boolean(initial && (initial.customer || initial.firstName || initial.first_name));
+  /**
+   * "Editing" means modifying an already-saved entry/service (or legacy edit flow).
+   * When `hideCustomerFields` is true, we are adding NEW services for an existing customer,
+   * so we must allow adding/removing service rows and must not validate hidden participant fields.
+   */
+  const isEditing = Boolean(
+    initial &&
+    !hideCustomerFields &&
+    (initial.service || (Array.isArray(initial.services) && initial.services.length > 0) || initial.customer || initial.firstName || initial.first_name)
+  );
 
   // Basic validation
   const validate = () => {
     const errs = [];
     
-    // When editing an existing customer, first/last name are not editable and should not be validated here
-    if (!isEditing) {
+    // When editing an existing entry, or when participant fields are hidden (add services), don't validate names here.
+    if (!isEditing && !hideCustomerFields) {
       if (!lastName.trim()) errs.push('Last name is required');
       if (!firstName.trim()) errs.push('First name is required');
     }
@@ -357,20 +369,10 @@ export default function CustomerForm({ onSubmit, services: servicesProp = [], in
         </div>
       )} 
       <form onSubmit={handleSubmit} className="add-customer-form">
-        {isEditing && (
-          <>
-            <div className="form-row flex flex-wrap items-center gap-3 mb-6 box-border w-full min-w-0">
-              <label className="min-w-[100px]">ID #</label>
-              <input type="text" value={idNumber} onChange={(e) => setIdNumber(e.target.value)} placeholder="ID #" className="flex-1 min-w-[180px]" />
-            </div>
-            <div className="form-row flex flex-wrap items-center gap-3 mb-6 box-border w-full min-w-0">
-              <label className="min-w-[100px]">F ID #</label>
-              <input type="text" value={fIdNumber} onChange={(e) => setFIdNumber(e.target.value)} placeholder="F ID #" className="flex-1 min-w-[180px]" />
-            </div>
-          </>
-        )}
+        <fieldset disabled={submitting} style={{ border: 'none', padding: 0, margin: 0, opacity: submitting ? 0.7 : 1 }}>
+        {/* When editing a service, keep participant identifiers read-only elsewhere (Participant Details modal). */}
 
-        {!isEditing && (
+        {!isEditing && !hideCustomerFields && (
           <>
             <div className="form-row flex flex-wrap items-center gap-3 mb-6 box-border w-full min-w-0">
               <label className="min-w-[100px]">Last name <span style={{ color: '#c0392b' }}>*</span></label>
@@ -461,22 +463,42 @@ export default function CustomerForm({ onSubmit, services: servicesProp = [], in
         {/* Services Section */}
         <div style={{ marginTop: '2rem', marginBottom: '2rem' }}>
           <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1rem' }}>
-            <h3>Services</h3>
-            <button 
-              type="button" 
-              onClick={addService}
-              style={{
-                background: '#28a745',
-                color: 'white',
-                border: 'none',
-                padding: '8px 16px',
-                borderRadius: '4px',
-                cursor: 'pointer',
-                fontWeight: '500'
-              }}
-            >
-              + Add Service
-            </button>
+            <h3>{isEditing ? 'Service' : 'Services'}</h3>
+            {!isEditing ? (
+              <button
+                type="button"
+                onClick={addService}
+                style={{
+                  background: '#28a745',
+                  color: 'white',
+                  border: 'none',
+                  padding: '8px 16px',
+                  borderRadius: '4px',
+                  cursor: 'pointer',
+                  fontWeight: '500'
+                }}
+              >
+                + Add Service
+              </button>
+            ) : (
+              <button
+                type="button"
+                disabled
+                style={{
+                  background: '#007bff',
+                  color: 'white',
+                  border: 'none',
+                  padding: '8px 16px',
+                  borderRadius: '4px',
+                  cursor: 'not-allowed',
+                  fontWeight: '500',
+                  opacity: 0.75
+                }}
+                title="You are editing an existing service entry"
+              >
+                Edit Service
+              </button>
+            )}
           </div>
 
           {services.map((service, index) => (
@@ -542,7 +564,7 @@ export default function CustomerForm({ onSubmit, services: servicesProp = [], in
                     {/* Service start and end dates in one row */}
                     <div style={{ display: 'flex', gap: '1rem' }}>
                       <div className="flex flex-wrap items-center gap-3 mb-6 box-border w-full min-w-0" style={{ flex: 1 }}>
-                        <label>Service start date <span style={{ color: '#c0392b' }}>*</span></label>
+                        <label>start date <span style={{ color: '#c0392b' }}>*</span></label>
                         <div style={{ position: 'relative', flex: 1 }}>
                           <input 
                             type="text" 
@@ -586,7 +608,7 @@ export default function CustomerForm({ onSubmit, services: servicesProp = [], in
                         </div>
                       </div>
                       <div className="flex flex-wrap items-center gap-3 mb-6 box-border w-full min-w-0" style={{ flex: 1 }}>
-                        <label>Service end date <span style={{ color: '#c0392b' }}>*</span></label>
+                        <label>end date <span style={{ color: '#c0392b' }}>*</span></label>
                         <div style={{ position: 'relative', flex: 1 }}>
                           <input 
                             type="text" 
@@ -927,12 +949,20 @@ export default function CustomerForm({ onSubmit, services: servicesProp = [], in
           </div>
         )}
 
-        <div className="flex gap-2 mt-4" style={{ justifyContent: onCancel ? 'space-between' : 'flex-end' }}>
+        <div className="form-actions flex gap-2 mt-4" style={{ justifyContent: onCancel ? 'space-between' : 'flex-end' }}>
           {onCancel && (
-            <button type="button" className="bg-secondary text-white py-3 px-6 rounded-lg font-medium cursor-pointer hover:bg-secondary-hover border-0" onClick={() => onCancel()}>Cancel</button>
+            <button type="button" className="btn-secondary" onClick={() => onCancel()} disabled={submitting}>
+              {submitting ? 'Please wait…' : 'Cancel'}
+            </button>
           )}
-          <button type="submit">{isResubmission ? 'Create Resubmission' : 'Save Customer'}</button>
+          <button type="submit" className="btn-primary" disabled={submitting}>
+            {submitting && <span className="btn-spinner" aria-hidden="true" />}
+            {submitting
+              ? (hideCustomerFields ? 'Adding…' : 'Saving…')
+              : (hideCustomerFields ? 'Add Services' : (isResubmission ? 'Create Resubmission' : 'Save Customer'))}
+          </button>
         </div>
+        </fieldset>
       </form>
     </div>
   );

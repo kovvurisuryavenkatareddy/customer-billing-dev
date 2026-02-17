@@ -56,6 +56,10 @@ export default function CustomersPage({ showAddForm = false, onNavigate }) {
   const [statusFilter, setStatusFilter] = useState('active');
   const [loading, setLoading] = useState(true);
   const [servicesLoaded, setServicesLoaded] = useState(false);
+  const [savingAddCustomer, setSavingAddCustomer] = useState(false);
+  const [savingEditCustomer, setSavingEditCustomer] = useState(false);
+  const [savingAddService, setSavingAddService] = useState(false);
+  const [savingEditService, setSavingEditService] = useState(false);
 
   useEffect(() => {
     // fetch services for forms (run once on mount)
@@ -123,6 +127,7 @@ export default function CustomersPage({ showAddForm = false, onNavigate }) {
   function handleSubmit(payload) {
     // Try to send to server, otherwise store locally (append id)
     (async () => {
+      setSavingAddCustomer(true);
       try {
         const res = await fetch(`${API_BASE}/customers/`, {
           method: 'POST',
@@ -181,6 +186,8 @@ export default function CustomersPage({ showAddForm = false, onNavigate }) {
         if (onNavigate) {
           onNavigate('home');
         }
+      } finally {
+        setSavingAddCustomer(false);
       }
     })();
   }
@@ -202,15 +209,44 @@ export default function CustomersPage({ showAddForm = false, onNavigate }) {
     if (!editingItem) return;
     const cust = editingItem.customer;
     
+    console.log('=== EDIT SUBMIT ===');
+    console.log('editingItem:', editingItem);
+    console.log('payload:', payload);
+    
+    setSavingEditCustomer(true);
     try {
       // Use the updated customer endpoint that handles both customer and service/entry updates
       // This endpoint now handles resubmission logic based on the isResubmission flag
+      // Backend expects single "service"; form submits "services" array — send first service when editing.
+      // Include the entry id from the selected table row so the backend updates the correct entry (not just the latest).
+      const selectedEntryId =
+        editingItem?.service?.id ??
+        editingItem?.service?.entryId ??
+        editingItem?.service?.entry_id ??
+        null;
+      
+      console.log('selectedEntryId:', selectedEntryId);
+      console.log('payload.services:', payload.services);
+      console.log('payload.service:', payload.service);
+      
+      // Get the service data from payload (either from services array or service object)
+      const serviceData = payload.services?.[0] ?? payload.service;
+      
+      // Create service payload, ensuring the entry ID is included if editing
+      const servicePayload = {
+        ...serviceData,
+        // Always include the entry ID if we're editing an existing entry
+        ...(selectedEntryId ? { id: selectedEntryId, entryId: selectedEntryId, entry_id: selectedEntryId } : {}),
+      };
+      
+      console.log('Final servicePayload being sent:', servicePayload);
+      
       const custRes = await fetch(`${API_BASE}/customers/${cust.id}`, {
         method: 'PUT',
         headers: getAuthHeaders(),
         body: JSON.stringify({
           customer: payload.customer,
-          service: payload.service,
+          service: servicePayload,
           isResubmission: payload.isResubmission || false
         }),
       });
@@ -245,6 +281,8 @@ export default function CustomersPage({ showAddForm = false, onNavigate }) {
           type: 'error' 
         });
       }
+    } finally {
+      setSavingEditCustomer(false);
     }
   }
 
@@ -310,22 +348,45 @@ export default function CustomersPage({ showAddForm = false, onNavigate }) {
 
   async function handleAddServiceSubmit(payload) {
     if (!addingServiceFor) return;
+    setSavingAddService(true);
     try {
       const custId = addingServiceFor.id;
+      console.log('=== ADDING SERVICE ===');
+      console.log('Customer ID:', custId);
+      console.log('Payload:', JSON.stringify(payload, null, 2));
+      
       const res = await fetch(`${API_BASE}/customers/${custId}/services`, {
         method: 'POST',
         headers: getAuthHeaders(),
         body: JSON.stringify(payload),
       });
+      
+      console.log('Response status:', res.status);
+      
       if (res.status === 401) {
         handle401Error();
         return;
       }
-      if (!res.ok) throw new Error('failed to add service');
+      
+      if (!res.ok) {
+        const errorText = await res.text();
+        console.error('Error response:', errorText);
+        throw new Error(`Failed to add service: ${res.status} - ${errorText}`);
+      }
+      
+      const result = await res.json();
+      console.log('Service added successfully:', result);
+      
       await refreshCustomers();
       setAddingServiceFor(null);
+      
+      // Show success message
+      alert('Service added successfully!');
     } catch (err) {
       console.error('Failed to add service', err);
+      alert(`Failed to add service: ${err.message}`);
+    } finally {
+      setSavingAddService(false);
     }
   }
 
@@ -393,6 +454,7 @@ export default function CustomersPage({ showAddForm = false, onNavigate }) {
                   onUpdate={handleUpdate}
                   onAddService={handleAddService}
                   onChangeStatus={handleChangeStatus}
+                  onCustomerUpdated={refreshCustomers}
                   searchText={tableSearchText}
                 />
               </div>
@@ -402,33 +464,147 @@ export default function CustomersPage({ showAddForm = false, onNavigate }) {
 
         <Modal
           open={!!editingItem}
-          title={editTitle}
+          title={editingItem?.service?.id ? `Edit service for ${editingItem?.customer?.first_name} ${editingItem?.customer?.last_name}` : editTitle}
           onCancel={handleCancelEdit}
           footer={null}
           width={640}
           destroyOnClose
+          maskClosable={!savingEditService && !savingEditCustomer}
+          closable={!savingEditService && !savingEditCustomer}
           styles={{ body: { maxHeight: '65vh', overflowY: 'auto' } }}
         >
-          {editingItem && <CustomerForm onSubmit={handleEditSubmit} onCancel={handleCancelEdit} services={services} initial={editingItem} />}
+          {editingItem && editingItem.service?.id ? (
+            // If editing a specific service (has service.id), show only ServiceForm
+            <Spin spinning={savingEditService} tip="Saving service...">
+            <ServiceForm 
+              submitting={savingEditService}
+              services={services} 
+              onSubmit={async (payload) => {
+                console.log('ServiceForm onSubmit - payload:', payload);
+                console.log('ServiceForm onSubmit - editingItem:', editingItem);
+                
+                // Get the entry ID from editingItem.service
+                const entryId = editingItem?.service?.id || editingItem?.service?.entryId || editingItem?.service?.entry_id;
+                console.log('ServiceForm onSubmit - entryId:', entryId);
+                
+                if (!entryId) {
+                  alert('Error: Entry ID not found. Cannot update service.');
+                  return;
+                }
+                
+                // Use the dedicated service update endpoint
+                try {
+                  setSavingEditService(true);
+                  const res = await fetch(`${API_BASE}/customers/${editingItem.customer.id}/services/${entryId}`, {
+                    method: 'PUT',
+                    headers: getAuthHeaders(),
+                    body: JSON.stringify(payload),
+                  });
+                  
+                  if (res.status === 401) {
+                    handle401Error();
+                    return;
+                  }
+                  
+                  if (!res.ok) {
+                    const errorText = await res.text();
+                    throw new Error(`Failed to update service: ${res.status} - ${errorText}`);
+                  }
+                  
+                  const result = await res.json();
+                  console.log('Service updated successfully:', result);
+                  
+                  await refreshCustomers();
+                  setEditingItem(null);
+                  alert('Service updated successfully!');
+                } catch (err) {
+                  console.error('Failed to update service', err);
+                  alert(`Failed to update service: ${err.message}`);
+                } finally {
+                  setSavingEditService(false);
+                }
+              }} 
+              onCancel={handleCancelEdit} 
+              initial={editingItem.service}
+            />
+            </Spin>
+          ) : (
+            // Otherwise show full CustomerForm
+            <CustomerForm 
+              submitting={savingEditCustomer} 
+              onSubmit={handleEditSubmit} 
+              onCancel={handleCancelEdit} 
+              services={services} 
+              initial={editingItem} 
+            />
+          )}
         </Modal>
 
         <Modal
           open={!!addingServiceFor}
-          title={addingServiceFor ? `Add service for ${addingServiceFor.first_name} ${addingServiceFor.last_name}` : ''}
+          title={addingServiceFor ? `Add services for ${addingServiceFor.first_name} ${addingServiceFor.last_name}` : ''}
           onCancel={handleCancelAddService}
           footer={null}
-          width={640}
+          width={800}
           destroyOnClose
-          styles={{ body: { maxHeight: '65vh', overflowY: 'auto' } }}
+          maskClosable={!savingAddService}
+          closable={!savingAddService}
+          styles={{ body: { maxHeight: '70vh', overflowY: 'auto' } }}
         >
           {addingServiceFor && (
-            <ServiceForm services={services} onSubmit={handleAddServiceSubmit} onCancel={handleCancelAddService} />
+            <Spin spinning={savingAddService} tip="Saving services...">
+            <CustomerForm 
+              submitting={savingAddService} 
+              services={services} 
+              onSubmit={async (payload) => {
+                // When adding services, we need to handle multiple services
+                const servicesToAdd = payload.services || [];
+                
+                // Add each service one by one
+                const addPromises = servicesToAdd.map(service => 
+                  fetch(`${API_BASE}/customers/${addingServiceFor.id}/services`, {
+                    method: 'POST',
+                    headers: getAuthHeaders(),
+                    body: JSON.stringify({ service }),
+                  })
+                );
+                try {
+                  setSavingAddService(true);
+                  const responses = await Promise.all(addPromises);
+                  const any401 = responses.some(r => r && r.status === 401);
+                  if (any401) {
+                    handle401Error();
+                    return;
+                  }
+                  const firstBad = responses.find(r => !r.ok);
+                  if (firstBad) {
+                    const errorText = await firstBad.text().catch(() => '');
+                    throw new Error(`Failed to add service: ${firstBad.status}${errorText ? ` - ${errorText}` : ''}`);
+                  }
+                  await refreshCustomers();
+                  setAddingServiceFor(null);
+                  alert(`Successfully added ${servicesToAdd.length} service(s)!`);
+                } catch (err) {
+                  console.error('Failed to add services', err);
+                  alert('Failed to add services: ' + (err.message || 'Unknown error'));
+                } finally {
+                  setSavingAddService(false);
+                }
+              }} 
+              onCancel={handleCancelAddService}
+              initial={{
+                customer: addingServiceFor,
+                services: [] // Start with empty services array
+              }}
+              hideCustomerFields={true} // Hide customer fields, only show services
+            />
+            </Spin>
           )}
         </Modal>
 
         {showAddCustomer && (
           <Card title={<span className="text-xl font-bold text-[#1a253c]">Add New Customer</span>} className="mt-4 overflow-x-auto">
-            <CustomerForm onSubmit={handleSubmit} services={services} />
+            <CustomerForm submitting={savingAddCustomer} onSubmit={handleSubmit} services={services} />
           </Card>
         )}
       </div>

@@ -24,8 +24,11 @@ except Exception:
 
 app = FastAPI(title='Services API')
 
-# Configure simple logging
-logging.basicConfig(level=logging.INFO)
+# Configure detailed logging
+logging.basicConfig(
+    level=logging.DEBUG,
+    format='%(asctime)s - %(name)s - %(levelname)s - %(message)s'
+)
 logger = logging.getLogger(__name__)
 
 # Allow CORS from the frontend dev server

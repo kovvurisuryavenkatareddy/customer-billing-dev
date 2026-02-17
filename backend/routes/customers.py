@@ -125,6 +125,7 @@ def ensure_customers_table():
             billing_comments TEXT,
             id_number TEXT,
             f_id_number TEXT,
+            total_amount_due DOUBLE PRECISION DEFAULT 0,
             created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
         )
         '''
@@ -169,6 +170,7 @@ def ensure_customers_columns():
         'billing_comments': 'TEXT',
         'id_number': 'TEXT',
         'f_id_number': 'TEXT',
+        'total_amount_due': 'DOUBLE PRECISION DEFAULT 0',
     }
     conn = get_db_connection()
     cur = conn.cursor()
@@ -547,7 +549,7 @@ def list_customers(
             'first_name': r['first_name'],
             'date_of_birth': r['date_of_birth'] if 'date_of_birth' in r.keys() else None,
             'active_status': r['active_status'] if 'active_status' in r.keys() else 'active',
-            'total_amount_due': r['total_amount_due'],
+            'total_amount_due': r.get('total_amount_due', 0) if isinstance(r, dict) else getattr(r, 'total_amount_due', 0),
             'id_number': r.get('id_number'),
             'f_id_number': r.get('f_id_number'),
         }
@@ -670,62 +672,112 @@ def update_customer(customer_id: int, payload: UpdateCustomerPayload, current_us
         if not existing:
             raise HTTPException(status_code=404, detail='customer not found')
 
-        # Update customer basic info
-        # Accept dob updates from frontend under common keys
-        has_dob_key = 'dob' in customer or 'dateOfBirth' in customer or 'date_of_birth' in customer
-        dob_val = None
-        if has_dob_key:
-            dob_val = customer.get('dob') or customer.get('dateOfBirth') or customer.get('date_of_birth')
+        # Check if we should update customer fields at all
+        # If all customer fields are None, skip customer update (only updating service)
+        should_update_customer = any([
+            customer.get('lastName') is not None,
+            customer.get('firstName') is not None,
+            customer.get('dateOfBirth') is not None,
+            customer.get('dob') is not None,
+            customer.get('comments') is not None,
+            customer.get('idNumber') is not None,
+            customer.get('fIdNumber') is not None,
+            customer.get('customerCode') is not None,
+        ])
+        
+        logger.info(f"Should update customer: {should_update_customer}")
+        
+        if should_update_customer:
+            # Update customer basic info
+            # Accept dob updates from frontend under common keys
+            has_dob_key = 'dob' in customer or 'dateOfBirth' in customer or 'date_of_birth' in customer
+            dob_val = None
+            if has_dob_key:
+                dob_val = customer.get('dob') or customer.get('dateOfBirth') or customer.get('date_of_birth')
+            else:
+                dob_val = existing.get('date_of_birth') if isinstance(existing, dict) else existing['date_of_birth']
+
+            # Accept active_status updates
+            has_active_key = 'activeStatus' in customer or 'active_status' in customer
+            if has_active_key:
+                active_status_val = customer.get('activeStatus') or customer.get('active_status')
+            else:
+                active_status_val = existing.get('active_status') if isinstance(existing, dict) else existing['active_status']
+
+            # Only overwrite first/last name/billing_comments if keys provided in payload AND not None
+            if 'lastName' in customer and customer.get('lastName') is not None:
+                last_name_val = customer.get('lastName')
+            else:
+                last_name_val = existing.get('last_name') if isinstance(existing, dict) else existing['last_name']
+
+            if 'firstName' in customer and customer.get('firstName') is not None:
+                first_name_val = customer.get('firstName')
+            else:
+                first_name_val = existing.get('first_name') if isinstance(existing, dict) else existing['first_name']
+
+            if 'comments' in customer and customer.get('comments') is not None:
+                comments_val = customer.get('comments')
+            else:
+                # Some older databases may not have billing_comments column; handle that gracefully.
+                comments_val = existing.get('billing_comments') if isinstance(existing, dict) and 'billing_comments' in existing else None
+
+            has_id_number = 'idNumber' in customer or 'id_number' in customer
+            id_number_val = customer.get('idNumber') or customer.get('id_number') if has_id_number else (existing.get('id_number') if isinstance(existing, dict) else existing.get('id_number'))
+            has_f_id_number = 'fIdNumber' in customer or 'f_id_number' in customer
+            f_id_number_val = customer.get('fIdNumber') or customer.get('f_id_number') if has_f_id_number else (existing.get('f_id_number') if isinstance(existing, dict) else existing.get('f_id_number'))
+
+            # Update customer record. Some legacy databases may not yet have billing_comments;
+            # if the first UPDATE fails due to that column, retry without touching it.
+            try:
+                cur.execute(
+                    'UPDATE customers SET last_name = ?, first_name = ?, billing_comments = ?, date_of_birth = ?, active_status = ?, id_number = ?, f_id_number = ? WHERE id = ?',
+                    (
+                        last_name_val,
+                        first_name_val,
+                        comments_val,
+                        dob_val,
+                        active_status_val,
+                        id_number_val,
+                        f_id_number_val,
+                        customer_id,
+                    )
+                )
+                logger.info("Customer fields updated")
+            except Exception as e:
+                if 'billing_comments' in str(e):
+                    logger.warning("billing_comments column missing on customers; updating without it: %s", e)
+                    cur.execute(
+                        'UPDATE customers SET last_name = ?, first_name = ?, date_of_birth = ?, active_status = ?, id_number = ?, f_id_number = ? WHERE id = ?',
+                        (
+                            last_name_val,
+                            first_name_val,
+                            dob_val,
+                            active_status_val,
+                            id_number_val,
+                            f_id_number_val,
+                            customer_id,
+                        )
+                    )
+                else:
+                    raise
         else:
-            dob_val = existing.get('date_of_birth') if isinstance(existing, dict) else existing['date_of_birth']
-
-        # Accept active_status updates
-        has_active_key = 'activeStatus' in customer or 'active_status' in customer
-        if has_active_key:
-            active_status_val = customer.get('activeStatus') or customer.get('active_status')
-        else:
-            active_status_val = existing.get('active_status') if isinstance(existing, dict) else existing['active_status']
-
-        # Only overwrite first/last name/billing_comments if keys provided in payload
-        if 'lastName' in customer:
-            last_name_val = customer.get('lastName')
-        else:
-            last_name_val = existing.get('last_name') if isinstance(existing, dict) else existing['last_name']
-
-        if 'firstName' in customer:
-            first_name_val = customer.get('firstName')
-        else:
-            first_name_val = existing.get('first_name') if isinstance(existing, dict) else existing['first_name']
-
-        if 'comments' in customer:
-            comments_val = customer.get('comments')
-        else:
-            comments_val = existing.get('billing_comments') if isinstance(existing, dict) else existing['billing_comments']
-
-        has_id_number = 'idNumber' in customer or 'id_number' in customer
-        id_number_val = customer.get('idNumber') or customer.get('id_number') if has_id_number else (existing.get('id_number') if isinstance(existing, dict) else existing.get('id_number'))
-        has_f_id_number = 'fIdNumber' in customer or 'f_id_number' in customer
-        f_id_number_val = customer.get('fIdNumber') or customer.get('f_id_number') if has_f_id_number else (existing.get('f_id_number') if isinstance(existing, dict) else existing.get('f_id_number'))
-
-        # Update customer record
-        cur.execute(
-            'UPDATE customers SET last_name = ?, first_name = ?, billing_comments = ?, date_of_birth = ?, active_status = ?, id_number = ?, f_id_number = ? WHERE id = ?',
-            (
-                last_name_val,
-                first_name_val,
-                comments_val,
-                dob_val,
-                active_status_val,
-                id_number_val,
-                f_id_number_val,
-                customer_id,
-            )
-        )
+            logger.info("Skipping customer update - only updating service")
 
         entry_id = None
         if service:
             # Get customer_code
             customer_code = existing.get('customer_code') if isinstance(existing, dict) else existing['customer_code']
+
+            # If the caller provides an entry id, update that specific entry instead of creating new.
+            # This is important for the "Edit service" action in the table, where each row represents a specific entry.
+            target_entry_id = (
+                service.get('id')
+                or service.get('entryId')
+                or service.get('entry_id')
+            )
+            
+            logger.info(f"Service payload: {service}")
+            logger.info(f"Target entry ID: {target_entry_id}")
             
             # Convert denial codes to string
             denial_codes = service.get('denialCodes')
@@ -741,8 +793,8 @@ def update_customer(customer_id: int, payload: UpdateCustomerPayload, current_us
                     '''INSERT INTO customer_entries 
                        (customer_id, customer_code, service_name, start_date, end_date, days, rate_per_day, 
                         amount_billed, amount_paid, date_of_payment, date_submitted, denial_codes, 
-                        is_resubmission, billing_comments) 
-                       VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?) RETURNING id''',
+                        is_resubmission, original_entry_id, resubmission_date, billing_comments) 
+                       VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?) RETURNING id''',
                     (
                         customer_id,
                         customer_code,
@@ -757,21 +809,60 @@ def update_customer(customer_id: int, payload: UpdateCustomerPayload, current_us
                         service.get('dateSubmitted'),
                         denial_codes,
                         True,  # is_resubmission
+                        target_entry_id,
+                        datetime.utcnow().isoformat(),
                         service.get('comments', ''),
                     )
                 )
                 entry_id = cur.fetchone()['id']
                 logger.info(f"Created new entry with ID: {entry_id}")
             else:
-                # Update existing latest entry
-                # Get the latest entry for this customer
-                cur.execute(
-                    'SELECT id FROM customer_entries WHERE customer_id = ? ORDER BY created_at DESC LIMIT 1',
-                    (customer_id,)
-                )
-                latest_entry = cur.fetchone()
-                if latest_entry:
+                # Update an explicitly targeted entry if possible, otherwise CREATE NEW entry.
+                entry_to_update = None
+                if target_entry_id:
+                    logger.info(f"Looking for entry ID: {target_entry_id}")
+                    cur.execute(
+                        'SELECT id FROM customer_entries WHERE id = ? AND customer_id = ?',
+                        (target_entry_id, customer_id)
+                    )
+                    found = cur.fetchone()
+                    if found:
+                        entry_to_update = found['id']
+                        logger.info(f"Found entry to update: {entry_to_update}")
+                    else:
+                        logger.warning(f"Entry ID {target_entry_id} not found")
+
+                # If no specific entry ID provided, this is a NEW service being added
+                if not target_entry_id:
+                    logger.info("No entry ID provided - creating NEW entry...")
+                    cur.execute(
+                        '''INSERT INTO customer_entries 
+                           (customer_id, customer_code, service_name, start_date, end_date, days, rate_per_day, 
+                            amount_billed, amount_paid, date_of_payment, date_submitted, denial_codes, 
+                            is_resubmission, billing_comments) 
+                           VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?) RETURNING id''',
+                        (
+                            customer_id,
+                            customer_code,
+                            service.get('serviceName'),
+                            service.get('startDate') or service.get('start_date'),
+                            service.get('endDate') or service.get('end_date'),
+                            service.get('days'),
+                            service.get('ratePerDay'),
+                            service.get('amountBilled'),
+                            service.get('amountPaid', 0),
+                            service.get('dateOfPayment'),
+                            service.get('dateSubmitted'),
+                            denial_codes,
+                            False,
+                            service.get('comments', ''),
+                        )
+                    )
+                    entry_id = cur.fetchone()['id']
+                    logger.info(f"Created NEW entry with ID: {entry_id}")
+                elif entry_to_update:
                     # Update existing entry
+                    logger.info(f"Updating existing entry ID: {entry_to_update}")
                     cur.execute(
                         '''UPDATE customer_entries 
                            SET service_name = ?, start_date = ?, end_date = ?, days = ?, rate_per_day = ?, 
@@ -791,13 +882,14 @@ def update_customer(customer_id: int, payload: UpdateCustomerPayload, current_us
                             denial_codes,
                             False,  # is_resubmission
                             service.get('comments', ''),
-                            latest_entry['id']
+                            entry_to_update,
                         )
                     )
-                    entry_id = latest_entry['id']
+                    entry_id = entry_to_update
+                    logger.info(f"Updated entry ID: {entry_id}")
                 else:
-                    # No existing entry, create new one
-                    logger.info("Creating new entry (first entry for customer)...")
+                    # Entry ID was provided but not found - create new one
+                    logger.warning(f"Entry ID {target_entry_id} not found - creating new entry...")
                     cur.execute(
                         '''INSERT INTO customer_entries 
                            (customer_id, customer_code, service_name, start_date, end_date, days, rate_per_day, 
@@ -851,31 +943,81 @@ def update_customer_service(customer_id: int, service_id: int, payload: ServiceW
     conn = get_db_connection()
     cur = conn.cursor()
     try:
-        cur.execute('SELECT id FROM customer_services WHERE id = ? AND customer_id = ?', (service_id, customer_id))
-        if not cur.fetchone():
-            raise HTTPException(status_code=404, detail='service line not found')
+        # Prefer updating the new `customer_entries` table when the id exists there.
+        # Fall back to legacy `customer_services` for older records / older UIs.
+        cur.execute('SELECT id FROM customer_entries WHERE id = ? AND customer_id = ?', (service_id, customer_id))
+        entry_row = cur.fetchone()
+        if entry_row:
+            # Preserve existing optional fields when not provided
+            cur.execute('SELECT denial_codes, date_submitted FROM customer_entries WHERE id = ? AND customer_id = ?', (service_id, customer_id))
+            existing_entry = cur.fetchone() or {}
 
-        cur.execute(
-            'UPDATE customer_services SET service_name = ?, days = ?, rate_per_day = ?, amount_billed = ?, amount_paid = ?, date_of_payment = ?, start_date = ?, end_date = ? WHERE id = ?',
-            (
-                service.get('serviceName'),
-                service.get('days'),
-                service.get('ratePerDay'),
-                service.get('amountBilled'),
-                service.get('amountPaid'),
-                service.get('dateOfPayment'),
-                service.get('startDate') or service.get('start_date'),
-                service.get('endDate') or service.get('end_date'),
-                service_id,
+            denial_codes_val = None
+            if isinstance(service, dict) and 'denialCodes' in service:
+                denial_codes_val = service.get('denialCodes')
+                if isinstance(denial_codes_val, list):
+                    denial_codes_val = ','.join(denial_codes_val) if denial_codes_val else None
+                elif denial_codes_val == 'null' or denial_codes_val == '':
+                    denial_codes_val = None
+            else:
+                denial_codes_val = existing_entry.get('denial_codes') if isinstance(existing_entry, dict) else None
+
+            date_submitted_val = service.get('dateSubmitted') if (isinstance(service, dict) and 'dateSubmitted' in service) else (
+                existing_entry.get('date_submitted') if isinstance(existing_entry, dict) else None
             )
-        )
-        # recompute customer's total_amount_due after update
-        cur.execute('SELECT customer_id FROM customer_services WHERE id = ?', (service_id,))
-        row = cur.fetchone()
-        cid = row['customer_id'] if row else customer_id
-        cur.execute('SELECT COALESCE(SUM(amount_billed),0) as total FROM customer_services WHERE customer_id = ?', (cid,))
-        total = cur.fetchone()['total']
-        cur.execute('UPDATE customers SET total_amount_due = ? WHERE id = ?', (total, cid))
+
+            cur.execute(
+                '''UPDATE customer_entries
+                   SET service_name = ?, start_date = ?, end_date = ?, days = ?, rate_per_day = ?,
+                       amount_billed = ?, amount_paid = ?, date_of_payment = ?, date_submitted = ?,
+                       denial_codes = ?, updated_at = CURRENT_TIMESTAMP
+                   WHERE id = ?''',
+                (
+                    service.get('serviceName'),
+                    service.get('startDate') or service.get('start_date'),
+                    service.get('endDate') or service.get('end_date'),
+                    service.get('days'),
+                    service.get('ratePerDay'),
+                    service.get('amountBilled'),
+                    service.get('amountPaid'),
+                    service.get('dateOfPayment'),
+                    date_submitted_val,
+                    denial_codes_val,
+                    service_id,
+                )
+            )
+        else:
+            cur.execute('SELECT id FROM customer_services WHERE id = ? AND customer_id = ?', (service_id, customer_id))
+            if not cur.fetchone():
+                raise HTTPException(status_code=404, detail='service line not found')
+
+            cur.execute(
+                'UPDATE customer_services SET service_name = ?, days = ?, rate_per_day = ?, amount_billed = ?, amount_paid = ?, date_of_payment = ?, start_date = ?, end_date = ? WHERE id = ?',
+                (
+                    service.get('serviceName'),
+                    service.get('days'),
+                    service.get('ratePerDay'),
+                    service.get('amountBilled'),
+                    service.get('amountPaid'),
+                    service.get('dateOfPayment'),
+                    service.get('startDate') or service.get('start_date'),
+                    service.get('endDate') or service.get('end_date'),
+                    service_id,
+                )
+            )
+            # recompute customer's total_amount_due after update (if column exists)
+            cur.execute('SELECT customer_id FROM customer_services WHERE id = ?', (service_id,))
+            row = cur.fetchone()
+            cid = row['customer_id'] if row else customer_id
+            cur.execute('SELECT COALESCE(SUM(amount_billed),0) as total FROM customer_services WHERE customer_id = ?', (cid,))
+            total = cur.fetchone()['total']
+            try:
+                cur.execute('UPDATE customers SET total_amount_due = ? WHERE id = ?', (total, cid))
+            except Exception as e:
+                if 'total_amount_due' in str(e) or 'UndefinedColumn' in type(e).__name__:
+                    logger.debug("Skipping total_amount_due update (column may not exist): %s", e)
+                else:
+                    raise
         conn.commit()
     finally:
         conn.close()
@@ -889,50 +1031,125 @@ def add_customer_service(customer_id: int, payload: ServiceWrapper, current_user
     Payload: { service: { serviceName, days, ratePerDay, amountBilled, amountPaid, dateOfPayment } }
     Returns the created service row.
     """
+    logger.info(f"=== ADD SERVICE for customer {customer_id} ===")
+    logger.debug(f"Payload received: {payload}")
+    
     # Ensure all tables exist
     ensure_all_tables()
     
     data = payload.dict() if hasattr(payload, 'dict') else (payload or {})
     service = data.get('service') if isinstance(data, dict) else None
     if not service:
+        logger.error("Missing service payload")
         raise HTTPException(status_code=400, detail='missing service payload')
+
+    logger.debug(f"Service data: {service}")
 
     conn = get_db_connection()
     cur = conn.cursor()
     created_at = datetime.utcnow().isoformat()
     try:
-        # ensure customer exists
-        cur.execute('SELECT id FROM customers WHERE id = ?', (customer_id,))
-        if not cur.fetchone():
+        # ensure customer exists + get customer_code for entry rows
+        cur.execute('SELECT id, customer_code FROM customers WHERE id = ?', (customer_id,))
+        cust_row = cur.fetchone()
+        if not cust_row:
+            logger.error(f"Customer {customer_id} not found")
             raise HTTPException(status_code=404, detail='customer not found')
+        customer_code = cust_row.get('customer_code') if isinstance(cust_row, dict) else cust_row['customer_code']
+        logger.info(f"Found customer: {customer_code}")
 
+        denial_codes_val = service.get('denialCodes')
+        if isinstance(denial_codes_val, list):
+            denial_codes_val = ','.join(denial_codes_val) if denial_codes_val else None
+        elif denial_codes_val == 'null' or denial_codes_val == '':
+            denial_codes_val = None
+
+        logger.info(f"Inserting entry into customer_entries table...")
+        # Insert into the primary `customer_entries` table so the main table view (entries/all)
+        # immediately reflects the new service line.
         cur.execute(
-            'INSERT INTO customer_services (customer_id, service_name, days, rate_per_day, amount_billed, amount_paid, date_of_payment, start_date, end_date, created_at) VALUES (?,?,?,?,?,?,?,?,?,?) RETURNING id',
+            '''INSERT INTO customer_entries
+               (customer_id, customer_code, service_name, start_date, end_date, days, rate_per_day,
+                amount_billed, amount_paid, date_of_payment, date_submitted, denial_codes, is_resubmission, billing_comments)
+               VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?) RETURNING id''',
             (
                 customer_id,
+                customer_code,
                 service.get('serviceName'),
+                service.get('startDate') or service.get('start_date') or None,
+                service.get('endDate') or service.get('end_date') or None,
                 service.get('days'),
                 service.get('ratePerDay'),
                 service.get('amountBilled'),
-                service.get('amountPaid'),
+                service.get('amountPaid', 0),
                 service.get('dateOfPayment'),
-                service.get('startDate') or service.get('start_date') or None,
-                service.get('endDate') or service.get('end_date') or None,
-                created_at,
+                service.get('dateSubmitted'),
+                denial_codes_val,
+                False,
+                service.get('comments') if isinstance(service, dict) else '',
             )
         )
-        service_id = cur.fetchone()['id']
+        entry_id = cur.fetchone()['id']
+        logger.info(f"Entry created with id: {entry_id}")
 
-        # recompute customer's total_amount_due (sum of amount_billed)
-        cur.execute('SELECT COALESCE(SUM(amount_billed),0) as total FROM customer_services WHERE customer_id = ?', (customer_id,))
-        total = cur.fetchone()['total']
-        cur.execute('UPDATE customers SET total_amount_due = ? WHERE id = ?', (total, customer_id))
+        # Also insert into legacy `customer_services` for backward compatibility with older endpoints.
+        legacy_service_id = None
+        try:
+            cur.execute(
+                'INSERT INTO customer_services (customer_id, service_name, days, rate_per_day, amount_billed, amount_paid, date_of_payment, start_date, end_date, created_at) VALUES (?,?,?,?,?,?,?,?,?,?) RETURNING id',
+                (
+                    customer_id,
+                    service.get('serviceName'),
+                    service.get('days'),
+                    service.get('ratePerDay'),
+                    service.get('amountBilled'),
+                    service.get('amountPaid'),
+                    service.get('dateOfPayment'),
+                    service.get('startDate') or service.get('start_date') or None,
+                    service.get('endDate') or service.get('end_date') or None,
+                    created_at,
+                )
+            )
+            legacy_service_id = cur.fetchone()['id']
+            logger.debug(f"Legacy service created with id: {legacy_service_id}")
+        except Exception as e:
+            logger.debug("Skipping legacy customer_services insert: %s", e)
 
+        # Legacy: recompute customer's total_amount_due if column exists
+        # Note: This column may not exist in all database schemas
+        # Skipping this update is non-critical - it's just a cached sum
+        try:
+            cur.execute('SELECT COALESCE(SUM(amount_billed),0) as total FROM customer_services WHERE customer_id = %s', (customer_id,))
+            total_result = cur.fetchone()
+            if total_result:
+                total = total_result['total']
+                cur.execute('UPDATE customers SET total_amount_due = %s WHERE id = %s', (total, customer_id))
+                logger.debug(f"Updated total_amount_due to {total}")
+        except Exception as e:
+            # Column might not exist or be in different schema - this is non-critical
+            logger.debug(f"Skipping total_amount_due update: {e}")
+
+        logger.info("Committing transaction...")
         conn.commit()
+        logger.info("Transaction committed successfully!")
+    except Exception as exc:
+        conn.rollback()
+        logger.error(f"Failed to add service: {exc}")
+        import traceback
+        traceback.print_exc()
+        raise HTTPException(status_code=500, detail=str(exc))
     finally:
         conn.close()
 
-    return { 'id': service_id, 'customer_id': customer_id, 'service_name': service.get('serviceName'), 'amount_billed': service.get('amountBilled') }
+    return {
+        # Keep `id` for backwards compatibility (now points to the entry id used by the main table)
+        'id': entry_id,
+        'entry_id': entry_id,
+        'legacy_service_id': legacy_service_id,
+        'customer_id': customer_id,
+        'service_name': service.get('serviceName'),
+        'amount_billed': service.get('amountBilled'),
+    }
 
 
 @router.delete("/", status_code=200)
@@ -1007,6 +1224,140 @@ def get_customer_entries(customer_id: int, current_user: dict = Depends(get_curr
             'entries': entries_list,
             'total_entries': len(entries_list)
         }
+    finally:
+        conn.close()
+
+
+@router.post("/{customer_id}/entries", status_code=201)
+def add_customer_entry(customer_id: int, payload: ServiceWrapper, current_user: dict = Depends(get_current_user)):
+    """Add a new entry/service for an existing customer.
+    Payload: { service: { serviceName, days, ratePerDay, amountBilled, amountPaid, dateOfPayment, startDate, endDate, dateSubmitted, denialCodes, comments } }
+    Returns the created entry.
+    """
+    logger.info(f"=== ADD ENTRY for customer {customer_id} ===")
+    logger.debug(f"Payload received: {payload}")
+    
+    ensure_all_tables()
+    
+    data = payload.dict() if hasattr(payload, 'dict') else (payload or {})
+    service = data.get('service') if isinstance(data, dict) else None
+    if not service:
+        logger.error("Missing service payload")
+        raise HTTPException(status_code=400, detail='missing service payload')
+
+    logger.debug(f"Service data: {service}")
+
+    conn = get_db_connection()
+    cur = conn.cursor()
+    
+    try:
+        # Ensure customer exists and get customer_code
+        cur.execute('SELECT id, customer_code FROM customers WHERE id = ?', (customer_id,))
+        cust_row = cur.fetchone()
+        if not cust_row:
+            logger.error(f"Customer {customer_id} not found")
+            raise HTTPException(status_code=404, detail='customer not found')
+        customer_code = cust_row.get('customer_code') if isinstance(cust_row, dict) else cust_row['customer_code']
+        logger.info(f"Found customer: {customer_code}")
+
+        # Handle denial codes
+        denial_codes_val = service.get('denialCodes')
+        if isinstance(denial_codes_val, list):
+            denial_codes_val = ','.join(denial_codes_val) if denial_codes_val else None
+        elif denial_codes_val == 'null' or denial_codes_val == '':
+            denial_codes_val = None
+
+        logger.info(f"Inserting entry into customer_entries table...")
+        # Insert into customer_entries table
+        cur.execute(
+            '''INSERT INTO customer_entries
+               (customer_id, customer_code, service_name, start_date, end_date, days, rate_per_day,
+                amount_billed, amount_paid, date_of_payment, date_submitted, denial_codes, is_resubmission, billing_comments)
+               VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?) RETURNING id''',
+            (
+                customer_id,
+                customer_code,
+                service.get('serviceName'),
+                service.get('startDate') or service.get('start_date'),
+                service.get('endDate') or service.get('end_date'),
+                service.get('days'),
+                service.get('ratePerDay'),
+                service.get('amountBilled'),
+                service.get('amountPaid', 0),
+                service.get('dateOfPayment'),
+                service.get('dateSubmitted'),
+                denial_codes_val,
+                False,
+                service.get('comments', ''),
+            )
+        )
+        entry_id = cur.fetchone()['id']
+        logger.info(f"Entry created with id: {entry_id}")
+
+        # Also insert into legacy customer_services for backward compatibility
+        try:
+            cur.execute(
+                '''INSERT INTO customer_services 
+                   (customer_id, service_name, days, rate_per_day, amount_billed, amount_paid, 
+                    date_of_payment, start_date, end_date, created_at) 
+                   VALUES (?,?,?,?,?,?,?,?,?,?) RETURNING id''',
+                (
+                    customer_id,
+                    service.get('serviceName'),
+                    service.get('days'),
+                    service.get('ratePerDay'),
+                    service.get('amountBilled'),
+                    service.get('amountPaid'),
+                    service.get('dateOfPayment'),
+                    service.get('startDate') or service.get('start_date'),
+                    service.get('endDate') or service.get('end_date'),
+                    datetime.utcnow().isoformat(),
+                )
+            )
+            logger.debug("Legacy customer_services entry created")
+        except Exception as e:
+            logger.debug("Skipping legacy customer_services insert: %s", e)
+
+        # Commit the transaction
+        logger.info("Committing transaction...")
+        conn.commit()
+        logger.info("Transaction committed successfully!")
+        
+        # Log activity
+        try:
+            append_activity_log(
+                'add_entry', 
+                {'customerCode': customer_code}, 
+                service, 
+                customer_id, 
+                entry_id, 
+                note='added via /entries endpoint'
+            )
+        except Exception:
+            logger.exception('Failed to append activity log')
+        
+        return {
+            'id': entry_id,
+            'customer_id': customer_id,
+            'customer_code': customer_code,
+            'service_name': service.get('serviceName'),
+            'start_date': service.get('startDate') or service.get('start_date'),
+            'end_date': service.get('endDate') or service.get('end_date'),
+            'days': service.get('days'),
+            'rate_per_day': service.get('ratePerDay'),
+            'amount_billed': service.get('amountBilled'),
+            'amount_paid': service.get('amountPaid', 0),
+            'date_of_payment': service.get('dateOfPayment'),
+            'date_submitted': service.get('dateSubmitted'),
+            'denial_codes': denial_codes_val.split(',') if denial_codes_val else [],
+            'billing_comments': service.get('comments', ''),
+        }
+    except Exception as exc:
+        conn.rollback()
+        logger.error(f"Failed to add entry: {exc}")
+        import traceback
+        traceback.print_exc()
+        raise HTTPException(status_code=500, detail=str(exc))
     finally:
         conn.close()
 

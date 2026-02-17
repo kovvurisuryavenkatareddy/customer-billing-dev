@@ -1,0 +1,261 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Test Add Service</title>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            max-width: 800px;
+            margin: 50px auto;
+            padding: 20px;
+        }
+        .section {
+            margin: 20px 0;
+            padding: 20px;
+            border: 1px solid #ddd;
+            border-radius: 5px;
+        }
+        button {
+            background: #007bff;
+            color: white;
+            border: none;
+            padding: 10px 20px;
+            border-radius: 5px;
+            cursor: pointer;
+            margin: 5px;
+        }
+        button:hover {
+            background: #0056b3;
+        }
+        .success {
+            color: green;
+            font-weight: bold;
+        }
+        .error {
+            color: red;
+            font-weight: bold;
+        }
+        pre {
+            background: #f5f5f5;
+            padding: 10px;
+            border-radius: 5px;
+            overflow-x: auto;
+        }
+        input, select {
+            width: 100%;
+            padding: 8px;
+            margin: 5px 0;
+            border: 1px solid #ddd;
+            border-radius: 3px;
+        }
+        label {
+            display: block;
+            margin-top: 10px;
+            font-weight: bold;
+        }
+    </style>
+</head>
+<body>
+    <h1>Test Add Service to Customer</h1>
+    
+    <div class="section">
+        <h2>1. Configuration</h2>
+        <label>API Base URL:</label>
+        <input type="text" id="apiBase" value="http://localhost:8000">
+        
+        <label>Auth Token (from localStorage or login):</label>
+        <input type="text" id="authToken" placeholder="Bearer token...">
+        <button onclick="loadTokenFromStorage()">Load from localStorage</button>
+    </div>
+
+    <div class="section">
+        <h2>2. Login (if needed)</h2>
+        <label>Email:</label>
+        <input type="email" id="loginEmail" value="test@example.com">
+        
+        <label>Password:</label>
+        <input type="password" id="loginPassword" value="testpassword123">
+        
+        <button onclick="login()">Login</button>
+        <div id="loginResult"></div>
+    </div>
+
+    <div class="section">
+        <h2>3. Add Service</h2>
+        <label>Customer ID:</label>
+        <input type="number" id="customerId" value="95">
+        
+        <label>Service Name:</label>
+        <input type="text" id="serviceName" value="Physical Therapy">
+        
+        <label>Start Date:</label>
+        <input type="date" id="startDate" value="2025-10-10">
+        
+        <label>End Date:</label>
+        <input type="date" id="endDate" value="2025-10-15">
+        
+        <label>Days:</label>
+        <input type="number" id="days" value="6">
+        
+        <label>Rate Per Day:</label>
+        <input type="number" id="ratePerDay" value="150">
+        
+        <label>Amount Billed:</label>
+        <input type="number" id="amountBilled" value="900">
+        
+        <label>Date Submitted:</label>
+        <input type="date" id="dateSubmitted" value="2025-10-16">
+        
+        <button onclick="addService()">Add Service</button>
+        <div id="addServiceResult"></div>
+    </div>
+
+    <div class="section">
+        <h2>4. Get Customer Entries</h2>
+        <button onclick="getEntries()">Get Entries for Customer</button>
+        <div id="entriesResult"></div>
+    </div>
+
+    <script>
+        function loadTokenFromStorage() {
+            const token = localStorage.getItem('token');
+            if (token) {
+                document.getElementById('authToken').value = token;
+                showResult('loginResult', 'Token loaded from localStorage', 'success');
+            } else {
+                showResult('loginResult', 'No token found in localStorage', 'error');
+            }
+        }
+
+        async function login() {
+            const apiBase = document.getElementById('apiBase').value;
+            const email = document.getElementById('loginEmail').value;
+            const password = document.getElementById('loginPassword').value;
+
+            showResult('loginResult', 'Logging in...', '');
+
+            try {
+                const response = await fetch(`${apiBase}/auth/login`, {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json'
+                    },
+                    body: JSON.stringify({ email, password })
+                });
+
+                const data = await response.json();
+
+                if (response.ok) {
+                    document.getElementById('authToken').value = data.access_token;
+                    localStorage.setItem('token', data.access_token);
+                    showResult('loginResult', `✓ Logged in as ${data.user.email}`, 'success');
+                } else {
+                    showResult('loginResult', `✗ Login failed: ${data.detail}`, 'error');
+                }
+            } catch (error) {
+                showResult('loginResult', `✗ Error: ${error.message}`, 'error');
+            }
+        }
+
+        async function addService() {
+            const apiBase = document.getElementById('apiBase').value;
+            const token = document.getElementById('authToken').value;
+            const customerId = document.getElementById('customerId').value;
+
+            const payload = {
+                service: {
+                    serviceName: document.getElementById('serviceName').value,
+                    startDate: document.getElementById('startDate').value,
+                    endDate: document.getElementById('endDate').value,
+                    days: parseInt(document.getElementById('days').value),
+                    ratePerDay: parseFloat(document.getElementById('ratePerDay').value),
+                    amountBilled: parseFloat(document.getElementById('amountBilled').value),
+                    amountPaid: 0,
+                    dateSubmitted: document.getElementById('dateSubmitted').value,
+                    denialCodes: []
+                }
+            };
+
+            showResult('addServiceResult', 'Adding service...', '');
+            console.log('=== ADDING SERVICE ===');
+            console.log('Payload:', JSON.stringify(payload, null, 2));
+
+            try {
+                const response = await fetch(`${apiBase}/customers/${customerId}/services`, {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                        'Authorization': `Bearer ${token}`
+                    },
+                    body: JSON.stringify(payload)
+                });
+
+                console.log('Response status:', response.status);
+
+                if (response.ok) {
+                    const data = await response.json();
+                    console.log('Response data:', data);
+                    showResult('addServiceResult', 
+                        `✓ Service added successfully!\nEntry ID: ${data.id}\n\n${JSON.stringify(data, null, 2)}`, 
+                        'success');
+                } else {
+                    const errorText = await response.text();
+                    console.error('Error response:', errorText);
+                    showResult('addServiceResult', 
+                        `✗ Failed: ${response.status}\n${errorText}`, 
+                        'error');
+                }
+            } catch (error) {
+                console.error('Error:', error);
+                showResult('addServiceResult', `✗ Error: ${error.message}`, 'error');
+            }
+        }
+
+        async function getEntries() {
+            const apiBase = document.getElementById('apiBase').value;
+            const token = document.getElementById('authToken').value;
+            const customerId = document.getElementById('customerId').value;
+
+            showResult('entriesResult', 'Loading entries...', '');
+
+            try {
+                const response = await fetch(`${apiBase}/customers/${customerId}/entries`, {
+                    headers: {
+                        'Authorization': `Bearer ${token}`
+                    }
+                });
+
+                if (response.ok) {
+                    const data = await response.json();
+                    console.log('Entries:', data);
+                    
+                    let html = `<div class="success">✓ Found ${data.total_entries} entries:</div><pre>`;
+                    data.entries.forEach(entry => {
+                        html += `\nID: ${entry.id} | ${entry.service_name} | $${entry.amount_billed} | ${entry.start_date}`;
+                    });
+                    html += '</pre>';
+                    
+                    document.getElementById('entriesResult').innerHTML = html;
+                } else {
+                    const errorText = await response.text();
+                    showResult('entriesResult', `✗ Failed: ${response.status}\n${errorText}`, 'error');
+                }
+            } catch (error) {
+                showResult('entriesResult', `✗ Error: ${error.message}`, 'error');
+            }
+        }
+
+        function showResult(elementId, message, type) {
+            const element = document.getElementById(elementId);
+            element.innerHTML = `<pre class="${type}">${message}</pre>`;
+        }
+
+        // Auto-load token on page load
+        window.onload = () => {
+            loadTokenFromStorage();
+        };
+    </script>
+</body>
+</html>

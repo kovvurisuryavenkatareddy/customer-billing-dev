@@ -11,6 +11,7 @@ export default function CustomerList({
   onEdit,
   onAddService,
   onChangeStatus,
+  onCustomerUpdated,
   searchText = ''
 }) {
   const [pagination, setPagination] = useState({ current: 1, pageSize: 10 });
@@ -300,20 +301,27 @@ export default function CustomerList({
             type="primary"
             size="small"
             icon={<EditOutlined />}
-            onClick={() => onEdit({
-              customer: record.customer,
-              service: {
-                id: record.entryId,
-                serviceName: record.serviceName,
-                days: record.days,
-                ratePerDay: record.ratePerDay,
-                amountBilled: record.amountBilled,
-                amountPaid: record.amountPaid,
-                dateOfPayment: record.paymentDate,
-                startDate: record.startDate,
-                endDate: record.endDate,
-              }
-            })}
+            onClick={() => {
+              console.log('Edit button clicked - record:', record);
+              console.log('Edit button clicked - record.entryId:', record.entryId);
+              onEdit({
+                customer: record.customer,
+                service: {
+                  id: record.entryId,
+                  entryId: record.entryId,
+                  entry_id: record.entryId,
+                  serviceName: record.serviceName,
+                  days: record.days,
+                  ratePerDay: record.ratePerDay,
+                  amountBilled: record.amountBilled,
+                  amountPaid: record.amountPaid,
+                  dateOfPayment: record.paymentDate,
+                  startDate: record.startDate,
+                  endDate: record.endDate,
+                  denialCodes: record.denialCodes,
+                }
+              });
+            }}
           >
             Edit
           </Button>
@@ -428,6 +436,7 @@ export default function CustomerList({
       {showEntryModal && (
         <CustomerEntryModal
           customerId={selectedCustomerId}
+          onUpdated={onCustomerUpdated}
           onClose={() => {
             setShowEntryModal(false);
             setSelectedCustomerId(null);
