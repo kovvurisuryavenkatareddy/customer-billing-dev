@@ -362,182 +362,154 @@ export default function CustomerForm({ onSubmit, services: servicesProp = [], in
   };
 
   return (
-    <div className="max-w-[800px] mx-auto min-h-[500px] transition-all duration-300 p-0">
+    <div className="w-full">
       {isResubmission && (
-        <div className="bg-gradient-to-r from-cyan-500 to-cyan-600 text-white py-3 px-5 rounded-lg mb-5 text-center font-semibold text-[0.95rem] shadow-md">
-          🔄 Resubmission Mode - Creating a new entry based on the previous submission
+        <div className="rounded-lg border border-cyan-200 bg-cyan-50 px-4 py-3 mb-5 text-center font-semibold text-cyan-900 shadow-sm">
+          Resubmission Mode — Creating a new entry based on the previous submission
         </div>
       )} 
-      <form onSubmit={handleSubmit} className="add-customer-form">
+      <form onSubmit={handleSubmit} className="add-customer-form rounded-xl border border-slate-200 bg-white shadow-sm p-4">
         <fieldset disabled={submitting} style={{ border: 'none', padding: 0, margin: 0, opacity: submitting ? 0.7 : 1 }}>
         {/* When editing a service, keep participant identifiers read-only elsewhere (Participant Details modal). */}
 
         {!isEditing && !hideCustomerFields && (
           <>
-            <div className="form-row flex flex-wrap items-center gap-3 mb-6 box-border w-full min-w-0">
-              <label className="min-w-[100px]">Last name <span style={{ color: '#c0392b' }}>*</span></label>
-              <input value={lastName} onChange={(e) => setLastName(e.target.value)} placeholder="Last name" required className="flex-1 min-w-[180px]" />
-            </div>
-
-            <div className="form-row flex flex-wrap items-center gap-3 mb-6 box-border w-full min-w-0">
-              <label className="min-w-[100px]">First name <span style={{ color: '#c0392b' }}>*</span></label>
-              <input value={firstName} onChange={(e) => setFirstName(e.target.value)} placeholder="First name" required className="flex-1 min-w-[180px]" />
-            </div>
-
-            <div className="form-row flex flex-wrap items-center gap-3 mb-6 box-border w-full min-w-0">
-              <label className="min-w-[100px]">Date of Birth</label>
-              <div className="flex-1 min-w-[180px]" style={{ position: 'relative' }}>
-                <input 
-                  type="text" 
-                  placeholder="MM-DD-YYYY" 
-                  value={dateOfBirth} 
-                  onChange={(e) => setDateOfBirth(e.target.value)}
-                  style={{ paddingRight: 40 }}
-                />
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+              <div className="min-w-0">
+                <label>First name <span style={{ color: '#c0392b' }}>*</span></label>
                 <input
-                  type="date"
-                  style={{
-                    position: 'absolute',
-                    right: '0',
-                    top: '0',
-                    bottom: '0',
-                    width: '40px',
-                    opacity: 0,
-                    cursor: 'pointer',
-                    zIndex: 2
-                  }}
-                  onChange={(e) => {
-                    if (e.target.value) {
-                      setDateOfBirth(formatMMDDYYYY(e.target.value));
-                    }
-                  }}
-                  onFocus={(e) => e.target.showPicker && e.target.showPicker()}
+                  value={firstName}
+                  onChange={(e) => setFirstName(e.target.value)}
+                  placeholder="First name"
+                  required
                 />
-                <svg 
-                  width="20" 
-                  height="20" 
-                  viewBox="0 0 24 24" 
-                  fill="none" 
-                  xmlns="http://www.w3.org/2000/svg"
-                  style={{
-                    position: 'absolute',
-                    right: '10px',
-                    top: '50%',
-                    transform: 'translateY(-50%)',
-                    pointerEvents: 'none',
-                    color: '#007bff',
-                    zIndex: 1
-                  }}
-                >
-                  <rect x="3" y="4" width="18" height="18" rx="2" stroke="currentColor" strokeWidth="2" fill="none"/>
-                  <line x1="16" y1="2" x2="16" y2="6" stroke="currentColor" strokeWidth="2" strokeLinecap="round"/>
-                  <line x1="8" y1="2" x2="8" y2="6" stroke="currentColor" strokeWidth="2" strokeLinecap="round"/>
-                  <line x1="3" y1="10" x2="21" y2="10" stroke="currentColor" strokeWidth="2"/>
-                  <rect x="7" y="14" width="2" height="2" fill="currentColor"/>
-                  <rect x="11" y="14" width="2" height="2" fill="currentColor"/>
-                  <rect x="15" y="14" width="2" height="2" fill="currentColor"/>
-                </svg>
               </div>
-            </div>
 
-            <div className="form-row flex flex-wrap items-center gap-3 mb-6 box-border w-full min-w-0">
-              <label className="min-w-[100px]">Status</label>
-              <select value={activeStatus} onChange={(e) => setActiveStatus(e.target.value)} className="flex-1 min-w-[180px]">
-                <option value="active">Active</option>
-                <option value="inactive">Inactive</option>
-              </select>
-            </div>
+              <div className="min-w-0">
+                <label>Last name <span style={{ color: '#c0392b' }}>*</span></label>
+                <input
+                  value={lastName}
+                  onChange={(e) => setLastName(e.target.value)}
+                  placeholder="Last name"
+                  required
+                />
+              </div>
 
-            <div className="form-row flex flex-wrap items-center gap-3 mb-6 box-border w-full min-w-0">
-              <label className="min-w-[100px]">ID #</label>
-              <input type="text" value={idNumber} onChange={(e) => setIdNumber(e.target.value)} placeholder="ID #" className="flex-1 min-w-[180px]" />
-            </div>
+              <div className="min-w-0">
+                <label>Date of Birth</label>
+                <div className="relative">
+                  <input
+                    type="text"
+                    placeholder="MM-DD-YYYY"
+                    value={dateOfBirth}
+                    onChange={(e) => setDateOfBirth(e.target.value)}
+                    className="pr-10"
+                  />
+                  <input
+                    type="date"
+                    className="absolute right-0 top-0 bottom-0 w-10 opacity-0 cursor-pointer z-[2]"
+                    onChange={(e) => {
+                      if (e.target.value) {
+                        setDateOfBirth(formatMMDDYYYY(e.target.value));
+                      }
+                    }}
+                    onFocus={(e) => e.target.showPicker && e.target.showPicker()}
+                  />
+                  <svg width="18" height="18" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg" className="absolute right-3 top-1/2 -translate-y-1/2 pointer-events-none text-blue-600">
+                    <rect x="3" y="4" width="18" height="18" rx="2" stroke="currentColor" strokeWidth="2" fill="none" />
+                    <line x1="16" y1="2" x2="16" y2="6" stroke="currentColor" strokeWidth="2" strokeLinecap="round" />
+                    <line x1="8" y1="2" x2="8" y2="6" stroke="currentColor" strokeWidth="2" strokeLinecap="round" />
+                    <line x1="3" y1="10" x2="21" y2="10" stroke="currentColor" strokeWidth="2" />
+                    <rect x="7" y="14" width="2" height="2" fill="currentColor" />
+                    <rect x="11" y="14" width="2" height="2" fill="currentColor" />
+                    <rect x="15" y="14" width="2" height="2" fill="currentColor" />
+                  </svg>
+                </div>
+              </div>
 
-            <div className="form-row flex flex-wrap items-center gap-3 mb-6 box-border w-full min-w-0">
-              <label className="min-w-[100px]">F ID #</label>
-              <input type="text" value={fIdNumber} onChange={(e) => setFIdNumber(e.target.value)} placeholder="F ID #" className="flex-1 min-w-[180px]" />
+              <div className="min-w-0">
+                <label>Status</label>
+                <select value={activeStatus} onChange={(e) => setActiveStatus(e.target.value)}>
+                  <option value="active">Active</option>
+                  <option value="inactive">Inactive</option>
+                </select>
+              </div>
+
+              <div className="min-w-0">
+                <label>ID #</label>
+                <input
+                  type="text"
+                  value={idNumber}
+                  onChange={(e) => setIdNumber(e.target.value)}
+                  placeholder="ID #"
+                />
+              </div>
+
+              <div className="min-w-0">
+                <label>F ID #</label>
+                <input
+                  type="text"
+                  value={fIdNumber}
+                  onChange={(e) => setFIdNumber(e.target.value)}
+                  placeholder="F ID #"
+                />
+              </div>
             </div>
           </>
         )}
 
         {/* Services Section */}
-        <div style={{ marginTop: '2rem', marginBottom: '2rem' }}>
-          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1rem' }}>
-            <h3>{isEditing ? 'Service' : 'Services'}</h3>
+        <div className="mt-6 mb-6">
+          <div className="flex flex-wrap items-start justify-between gap-3 mb-4">
+            <div>
+              <div className="text-sm font-semibold text-slate-900">{isEditing ? 'Service' : 'Services'}</div>
+              <div className="text-xs text-slate-500">Billing line items for this participant.</div>
+            </div>
+
             {!isEditing ? (
               <button
                 type="button"
                 onClick={addService}
-                style={{
-                  background: '#28a745',
-                  color: 'white',
-                  border: 'none',
-                  padding: '8px 16px',
-                  borderRadius: '4px',
-                  cursor: 'pointer',
-                  fontWeight: '500'
-                }}
+                className="inline-flex items-center justify-center rounded-md bg-emerald-600 px-3 py-2 text-sm font-semibold text-white shadow-sm hover:bg-emerald-700 active:translate-y-px"
               >
                 + Add Service
               </button>
             ) : (
-              <button
-                type="button"
-                disabled
-                style={{
-                  background: '#007bff',
-                  color: 'white',
-                  border: 'none',
-                  padding: '8px 16px',
-                  borderRadius: '4px',
-                  cursor: 'not-allowed',
-                  fontWeight: '500',
-                  opacity: 0.75
-                }}
+              <span
+                className="inline-flex items-center rounded-md border border-blue-200 bg-blue-50 px-3 py-2 text-xs font-semibold text-blue-800"
                 title="You are editing an existing service entry"
               >
-                Edit Service
-              </button>
+                Editing existing service
+              </span>
             )}
           </div>
 
           {services.map((service, index) => (
-            <div key={service.id} style={{ 
-              border: '1px solid #ddd', 
-              borderRadius: '8px', 
-              padding: '1.5rem', 
-              marginBottom: '1rem',
-              backgroundColor: '#f9f9f9'
-            }}>
-              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1rem' }}>
-                <h4>Service {index + 1}</h4>
+            <div
+              key={service.id}
+              className="rounded-xl border border-slate-200 bg-white p-4 shadow-sm mb-4"
+            >
+              <div className="flex items-center justify-between gap-3 mb-3">
+                <div className="text-sm font-semibold text-slate-900">Service {index + 1}</div>
                 {services.length > 1 && (
-                  <button 
-                    type="button" 
+                  <button
+                    type="button"
                     onClick={() => removeService(service.id)}
-                    style={{
-                      background: '#dc3545',
-                      color: 'white',
-                      border: 'none',
-                      padding: '4px 8px',
-                      borderRadius: '4px',
-                      cursor: 'pointer',
-                      fontSize: '12px'
-                    }}
+                    className="inline-flex items-center rounded-md border border-rose-200 bg-rose-50 px-2 py-1 text-xs font-semibold text-rose-700 hover:bg-rose-100"
                   >
                     Remove
                   </button>
                 )}
               </div>
 
-              <div className="flex flex-wrap items-center gap-3 mb-6 box-border w-full min-w-0">
-                <label>Type of service <span style={{ color: '#c0392b' }}>*</span></label>
+              <div className="grid grid-cols-1 gap-2 mb-5">
+                <label>Type of Service <span style={{ color: '#c0392b' }}>*</span></label>
                 <select 
                   value={service.serviceType} 
                   onChange={(e) => updateService(service.id, 'serviceType', e.target.value)} 
                   required 
                 >
-                  <option value="">-- select --</option>
+                  <option value="">Select service</option>
                   {Array.isArray(servicesProp) && servicesProp.map(s => {
                     const svcName = s.name || s.serviceName || s.service_name || '';
                     const key = s.id || svcName;
@@ -560,101 +532,75 @@ export default function CustomerForm({ onSubmit, services: servicesProp = [], in
               {/* Service dates/units based on service type */}
               {service.serviceType && !isUnitsServiceType(service.serviceType) ? (
                 <>
-                  <div className="flex gap-3 items-start mb-6">
-                    {/* Service start and end dates in one row */}
-                    <div style={{ display: 'flex', gap: '1rem' }}>
-                      <div className="flex flex-wrap items-center gap-3 mb-6 box-border w-full min-w-0" style={{ flex: 1 }}>
-                        <label>start date <span style={{ color: '#c0392b' }}>*</span></label>
-                        <div style={{ position: 'relative', flex: 1 }}>
-                          <input 
-                            type="text" 
-                            placeholder="MM-DD-YYYY" 
-                            value={service.serviceStartDate} 
-                            onChange={(e) => updateService(service.id, 'serviceStartDate', e.target.value)} 
-                            required 
-                            style={{ width: '100%', paddingRight: '40px', boxSizing: 'border-box' }}
-                          />
-                          <input
-                            type="date"
-                            style={{
-                              position: 'absolute',
-                              right: '0',
-                              top: '0',
-                              bottom: '0',
-                              width: '40px',
-                              opacity: 0,
-                              cursor: 'pointer',
-                              zIndex: 2
-                            }}
-                            onChange={(e) => {
-                              if (e.target.value) {
-                                updateService(service.id, 'serviceStartDate', formatMMDDYYYY(e.target.value));
-                              }
-                            }}
-                            onFocus={(e) => e.target.showPicker && e.target.showPicker()}
-                          />
-                          <svg 
-                            width="20" height="20" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg"
-                            style={{ position: 'absolute', right: '10px', top: '50%', transform: 'translateY(-50%)', pointerEvents: 'none', color: '#007bff', zIndex: 1 }}
-                          >
-                            <rect x="3" y="4" width="18" height="18" rx="2" stroke="currentColor" strokeWidth="2" fill="none"/>
-                            <line x1="16" y1="2" x2="16" y2="6" stroke="currentColor" strokeWidth="2" strokeLinecap="round"/>
-                            <line x1="8" y1="2" x2="8" y2="6" stroke="currentColor" strokeWidth="2" strokeLinecap="round"/>
-                            <line x1="3" y1="10" x2="21" y2="10" stroke="currentColor" strokeWidth="2"/>
-                            <rect x="7" y="14" width="2" height="2" fill="currentColor"/>
-                            <rect x="11" y="14" width="2" height="2" fill="currentColor"/>
-                            <rect x="15" y="14" width="2" height="2" fill="currentColor"/>
-                          </svg>
-                        </div>
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mb-5">
+                    <div className="min-w-0">
+                      <label>Start date <span style={{ color: '#c0392b' }}>*</span></label>
+                      <div className="relative">
+                        <input
+                          type="text"
+                          placeholder="MM-DD-YYYY"
+                          value={service.serviceStartDate}
+                          onChange={(e) => updateService(service.id, 'serviceStartDate', e.target.value)}
+                          required
+                          className="pr-10"
+                        />
+                        <input
+                          type="date"
+                          className="absolute right-0 top-0 bottom-0 w-10 opacity-0 cursor-pointer z-[2]"
+                          onChange={(e) => {
+                            if (e.target.value) {
+                              updateService(service.id, 'serviceStartDate', formatMMDDYYYY(e.target.value));
+                            }
+                          }}
+                          onFocus={(e) => e.target.showPicker && e.target.showPicker()}
+                        />
+                        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg" className="absolute right-3 top-1/2 -translate-y-1/2 pointer-events-none text-blue-600">
+                          <rect x="3" y="4" width="18" height="18" rx="2" stroke="currentColor" strokeWidth="2" fill="none" />
+                          <line x1="16" y1="2" x2="16" y2="6" stroke="currentColor" strokeWidth="2" strokeLinecap="round" />
+                          <line x1="8" y1="2" x2="8" y2="6" stroke="currentColor" strokeWidth="2" strokeLinecap="round" />
+                          <line x1="3" y1="10" x2="21" y2="10" stroke="currentColor" strokeWidth="2" />
+                          <rect x="7" y="14" width="2" height="2" fill="currentColor" />
+                          <rect x="11" y="14" width="2" height="2" fill="currentColor" />
+                          <rect x="15" y="14" width="2" height="2" fill="currentColor" />
+                        </svg>
                       </div>
-                      <div className="flex flex-wrap items-center gap-3 mb-6 box-border w-full min-w-0" style={{ flex: 1 }}>
-                        <label>end date <span style={{ color: '#c0392b' }}>*</span></label>
-                        <div style={{ position: 'relative', flex: 1 }}>
-                          <input 
-                            type="text" 
-                            placeholder="MM-DD-YYYY" 
-                            value={service.serviceEndDate} 
-                            onChange={(e) => updateService(service.id, 'serviceEndDate', e.target.value)} 
-                            required 
-                            style={{ width: '100%', paddingRight: '40px', boxSizing: 'border-box' }}
-                          />
-                          <input
-                            type="date"
-                            style={{
-                              position: 'absolute',
-                              right: '0',
-                              top: '0',
-                              bottom: '0',
-                              width: '40px',
-                              opacity: 0,
-                              cursor: 'pointer',
-                              zIndex: 2
-                            }}
-                            onChange={(e) => {
-                              if (e.target.value) {
-                                updateService(service.id, 'serviceEndDate', formatMMDDYYYY(e.target.value));
-                              }
-                            }}
-                            onFocus={(e) => e.target.showPicker && e.target.showPicker()}
-                          />
-                          <svg 
-                            width="20" height="20" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg"
-                            style={{ position: 'absolute', right: '10px', top: '50%', transform: 'translateY(-50%)', pointerEvents: 'none', color: '#007bff', zIndex: 1 }}
-                          >
-                            <rect x="3" y="4" width="18" height="18" rx="2" stroke="currentColor" strokeWidth="2" fill="none"/>
-                            <line x1="16" y1="2" x2="16" y2="6" stroke="currentColor" strokeWidth="2" strokeLinecap="round"/>
-                            <line x1="8" y1="2" x2="8" y2="6" stroke="currentColor" strokeWidth="2" strokeLinecap="round"/>
-                            <line x1="3" y1="10" x2="21" y2="10" stroke="currentColor" strokeWidth="2"/>
-                            <rect x="7" y="14" width="2" height="2" fill="currentColor"/>
-                            <rect x="11" y="14" width="2" height="2" fill="currentColor"/>
-                            <rect x="15" y="14" width="2" height="2" fill="currentColor"/>
-                          </svg>
-                        </div>
+                    </div>
+
+                    <div className="min-w-0">
+                      <label>End date <span style={{ color: '#c0392b' }}>*</span></label>
+                      <div className="relative">
+                        <input
+                          type="text"
+                          placeholder="MM-DD-YYYY"
+                          value={service.serviceEndDate}
+                          onChange={(e) => updateService(service.id, 'serviceEndDate', e.target.value)}
+                          required
+                          className="pr-10"
+                        />
+                        <input
+                          type="date"
+                          className="absolute right-0 top-0 bottom-0 w-10 opacity-0 cursor-pointer z-[2]"
+                          onChange={(e) => {
+                            if (e.target.value) {
+                              updateService(service.id, 'serviceEndDate', formatMMDDYYYY(e.target.value));
+                            }
+                          }}
+                          onFocus={(e) => e.target.showPicker && e.target.showPicker()}
+                        />
+                        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg" className="absolute right-3 top-1/2 -translate-y-1/2 pointer-events-none text-blue-600">
+                          <rect x="3" y="4" width="18" height="18" rx="2" stroke="currentColor" strokeWidth="2" fill="none" />
+                          <line x1="16" y1="2" x2="16" y2="6" stroke="currentColor" strokeWidth="2" strokeLinecap="round" />
+                          <line x1="8" y1="2" x2="8" y2="6" stroke="currentColor" strokeWidth="2" strokeLinecap="round" />
+                          <line x1="3" y1="10" x2="21" y2="10" stroke="currentColor" strokeWidth="2" />
+                          <rect x="7" y="14" width="2" height="2" fill="currentColor" />
+                          <rect x="11" y1="14" width="2" height="2" fill="currentColor" />
+                          <rect x="15" y1="14" width="2" height="2" fill="currentColor" />
+                        </svg>
                       </div>
                     </div>
                   </div>
                   {/* Number of days in its own row below */}
-                  <div className="flex flex-wrap items-center gap-3 mb-6 box-border w-full min-w-0">
+                  <div className="grid grid-cols-1 gap-2 mb-5">
                     <label>Number of days</label>
                     <input
                       type="number"
@@ -666,7 +612,7 @@ export default function CustomerForm({ onSubmit, services: servicesProp = [], in
                   </div>
                 </>
               ) : service.serviceType && isUnitsServiceType(service.serviceType) ? (
-                <div className="flex flex-wrap items-center gap-3 mb-6 box-border w-full min-w-0">
+                <div className="grid grid-cols-1 gap-2 mb-5">
                   <label>Number of units <span style={{ color: '#c0392b' }}>*</span></label>
                   <input
                     type="number"
@@ -678,164 +624,100 @@ export default function CustomerForm({ onSubmit, services: servicesProp = [], in
                 </div>
               ) : null}
 
-              <div className="flex flex-wrap items-center gap-3 mb-6 box-border w-full min-w-0">
-                <label>Amount billed ($)</label>
-                <input
-                  type="number"
-                  min="0"
-                  step="0.01"
-                  value={service.amountBilled}
-                  onChange={(e) => updateService(service.id, 'amountBilled', parseFloat(e.target.value) || 0)}
-                />
-              </div>
-
-              <div className="flex flex-wrap items-center gap-3 mb-6 box-border w-full min-w-0">
-                <label>Amount paid ($)</label>
-                <input
-                  type="number"
-                  min="0"
-                  step="0.01"
-                  value={service.amountPaid}
-                  onChange={(e) => updateService(service.id, 'amountPaid', e.target.value)}
-                />
-              </div>
-
-              <div className="flex flex-wrap items-center gap-3 mb-6 box-border w-full min-w-0">
-                <label>Date of payment</label>
-                <div style={{ position: 'relative', flex: 1 }}>
-                  <input 
-                    type="text" 
-                    placeholder="MM-DD-YYYY" 
-                    value={service.dateOfPayment} 
-                    onChange={(e) => updateService(service.id, 'dateOfPayment', e.target.value)}
-                    style={{ 
-                      width: '100%',
-                      paddingRight: '40px',
-                      boxSizing: 'border-box'
-                    }}
-                  />
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mb-5">
+                <div className="min-w-0">
+                  <label>Amount billed ($)</label>
                   <input
-                    type="date"
-                    style={{
-                      position: 'absolute',
-                      right: '0',
-                      top: '0',
-                      bottom: '0',
-                      width: '40px',
-                      opacity: 0,
-                      cursor: 'pointer',
-                      zIndex: 2
-                    }}
-                    onChange={(e) => {
-                      if (e.target.value) {
-                        updateService(service.id, 'dateOfPayment', formatMMDDYYYY(e.target.value));
-                      }
-                    }}
-                    onFocus={(e) => e.target.showPicker && e.target.showPicker()}
+                    type="number"
+                    min="0"
+                    step="0.01"
+                    value={service.amountBilled}
+                    onChange={(e) => updateService(service.id, 'amountBilled', parseFloat(e.target.value) || 0)}
                   />
-                  <svg 
-                    width="20" 
-                    height="20" 
-                    viewBox="0 0 24 24" 
-                    fill="none" 
-                    xmlns="http://www.w3.org/2000/svg"
-                    style={{
-                      position: 'absolute',
-                      right: '10px',
-                      top: '50%',
-                      transform: 'translateY(-50%)',
-                      pointerEvents: 'none',
-                      color: '#007bff',
-                      zIndex: 1
-                    }}
-                  >
-                    <rect x="3" y="4" width="18" height="18" rx="2" stroke="currentColor" strokeWidth="2" fill="none"/>
-                    <line x1="16" y1="2" x2="16" y2="6" stroke="currentColor" strokeWidth="2" strokeLinecap="round"/>
-                    <line x1="8" y1="2" x2="8" y2="6" stroke="currentColor" strokeWidth="2" strokeLinecap="round"/>
-                    <line x1="3" y1="10" x2="21" y2="10" stroke="currentColor" strokeWidth="2"/>
-                    <rect x="7" y="14" width="2" height="2" fill="currentColor"/>
-                    <rect x="11" y="14" width="2" height="2" fill="currentColor"/>
-                    <rect x="15" y="14" width="2" height="2" fill="currentColor"/>
-                  </svg>
+                </div>
+                <div className="min-w-0">
+                  <label>Amount paid ($)</label>
+                  <input
+                    type="number"
+                    min="0"
+                    step="0.01"
+                    value={service.amountPaid}
+                    onChange={(e) => updateService(service.id, 'amountPaid', e.target.value)}
+                  />
                 </div>
               </div>
 
-              <div className="flex flex-wrap items-center gap-3 mb-6 box-border w-full min-w-0">
-                <label>Date Submitted</label>
-                <div style={{ position: 'relative', flex: 1 }}>
-                  <input 
-                    type="text" 
-                    placeholder="MM-DD-YYYY" 
-                    value={service.dateSubmitted} 
-                    onChange={(e) => updateService(service.id, 'dateSubmitted', e.target.value)}
-                    style={{ 
-                      width: '100%',
-                      paddingRight: '40px',
-                      boxSizing: 'border-box'
-                    }}
-                  />
-                  <input
-                    type="date"
-                    style={{
-                      position: 'absolute',
-                      right: '0',
-                      top: '0',
-                      bottom: '0',
-                      width: '40px',
-                      opacity: 0,
-                      cursor: 'pointer',
-                      zIndex: 2
-                    }}
-                    onChange={(e) => {
-                      if (e.target.value) {
-                        updateService(service.id, 'dateSubmitted', formatMMDDYYYY(e.target.value));
-                      }
-                    }}
-                    onFocus={(e) => e.target.showPicker && e.target.showPicker()}
-                  />
-                  <svg 
-                    width="20" 
-                    height="20" 
-                    viewBox="0 0 24 24" 
-                    fill="none" 
-                    xmlns="http://www.w3.org/2000/svg"
-                    style={{
-                      position: 'absolute',
-                      right: '10px',
-                      top: '50%',
-                      transform: 'translateY(-50%)',
-                      pointerEvents: 'none',
-                      color: '#007bff',
-                      zIndex: 1
-                    }}
-                  >
-                    <rect x="3" y="4" width="18" height="18" rx="2" stroke="currentColor" strokeWidth="2" fill="none"/>
-                    <line x1="16" y1="2" x2="16" y2="6" stroke="currentColor" strokeWidth="2" strokeLinecap="round"/>
-                    <line x1="8" y1="2" x2="8" y2="6" stroke="currentColor" strokeWidth="2" strokeLinecap="round"/>
-                    <line x1="3" y1="10" x2="21" y2="10" stroke="currentColor" strokeWidth="2"/>
-                    <rect x="7" y="14" width="2" height="2" fill="currentColor"/>
-                    <rect x="11" y="14" width="2" height="2" fill="currentColor"/>
-                    <rect x="15" y="14" width="2" height="2" fill="currentColor"/>
-                  </svg>
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mb-5">
+                <div className="min-w-0">
+                  <label>Date of payment</label>
+                  <div className="relative">
+                    <input
+                      type="text"
+                      placeholder="MM-DD-YYYY"
+                      value={service.dateOfPayment}
+                      onChange={(e) => updateService(service.id, 'dateOfPayment', e.target.value)}
+                      className="pr-10"
+                    />
+                    <input
+                      type="date"
+                      className="absolute right-0 top-0 bottom-0 w-10 opacity-0 cursor-pointer z-[2]"
+                      onChange={(e) => {
+                        if (e.target.value) {
+                          updateService(service.id, 'dateOfPayment', formatMMDDYYYY(e.target.value));
+                        }
+                      }}
+                      onFocus={(e) => e.target.showPicker && e.target.showPicker()}
+                    />
+                    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg" className="absolute right-3 top-1/2 -translate-y-1/2 pointer-events-none text-blue-600">
+                      <rect x="3" y="4" width="18" height="18" rx="2" stroke="currentColor" strokeWidth="2" fill="none" />
+                      <line x1="16" y1="2" x2="16" y2="6" stroke="currentColor" strokeWidth="2" strokeLinecap="round" />
+                      <line x1="8" y1="2" x2="8" y2="6" stroke="currentColor" strokeWidth="2" strokeLinecap="round" />
+                      <line x1="3" y1="10" x2="21" y2="10" stroke="currentColor" strokeWidth="2" />
+                      <rect x="7" y="14" width="2" height="2" fill="currentColor" />
+                      <rect x="11" y="14" width="2" height="2" fill="currentColor" />
+                      <rect x="15" y="14" width="2" height="2" fill="currentColor" />
+                    </svg>
+                  </div>
+                </div>
+
+                <div className="min-w-0">
+                  <label>Date submitted</label>
+                  <div className="relative">
+                    <input
+                      type="text"
+                      placeholder="MM-DD-YYYY"
+                      value={service.dateSubmitted}
+                      onChange={(e) => updateService(service.id, 'dateSubmitted', e.target.value)}
+                      className="pr-10"
+                    />
+                    <input
+                      type="date"
+                      className="absolute right-0 top-0 bottom-0 w-10 opacity-0 cursor-pointer z-[2]"
+                      onChange={(e) => {
+                        if (e.target.value) {
+                          updateService(service.id, 'dateSubmitted', formatMMDDYYYY(e.target.value));
+                        }
+                      }}
+                      onFocus={(e) => e.target.showPicker && e.target.showPicker()}
+                    />
+                    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg" className="absolute right-3 top-1/2 -translate-y-1/2 pointer-events-none text-blue-600">
+                      <rect x="3" y="4" width="18" height="18" rx="2" stroke="currentColor" strokeWidth="2" fill="none" />
+                      <line x1="16" y1="2" x2="16" y2="6" stroke="currentColor" strokeWidth="2" strokeLinecap="round" />
+                      <line x1="8" y1="2" x2="8" y2="6" stroke="currentColor" strokeWidth="2" strokeLinecap="round" />
+                      <line x1="3" y1="10" x2="21" y2="10" stroke="currentColor" strokeWidth="2" />
+                      <rect x="7" y="14" width="2" height="2" fill="currentColor" />
+                      <rect x="11" y="14" width="2" height="2" fill="currentColor" />
+                      <rect x="15" y="14" width="2" height="2" fill="currentColor" />
+                    </svg>
+                  </div>
                 </div>
               </div>
 
-              <div className="flex flex-wrap items-center gap-3 mb-6 box-border w-full min-w-0">
-                <label>Denial Code</label>
-                <div style={{ position: 'relative' }}>
+              <div className="grid grid-cols-1 gap-2 mb-5">
+                <label>Denial codes</label>
+                <div className="relative">
                   <div
-                    style={{
-                      minHeight: '40px',
-                      padding: '8px 40px 8px 12px',
-                      border: '1px solid #ddd',
-                      borderRadius: '4px',
-                      cursor: 'text',
-                      backgroundColor: 'white',
-                      display: 'flex',
-                      flexWrap: 'wrap',
-                      alignItems: 'center',
-                      gap: '4px'
-                    }}
+                    className="min-h-11 w-full rounded-lg border-2 border-slate-300 bg-white px-3 py-2 pr-10 flex flex-wrap items-center gap-2 cursor-text transition focus-within:border-blue-500 focus-within:ring-4 focus-within:ring-blue-100"
                     onClick={(e) => {
                       // compute trigger rect and position dropdown fixed to avoid clipping inside modal scroll containers
                       const rect = e.currentTarget.getBoundingClientRect();
@@ -844,7 +726,7 @@ export default function CustomerForm({ onSubmit, services: servicesProp = [], in
                         top: rect.bottom + window.scrollY,
                         left: rect.left + window.scrollX,
                         width: rect.width,
-                        zIndex: 20000
+                        zIndex: 20000,
                       });
                       setDenialShow(service.id, true);
                       const input = document.getElementById(`denial-input-${service.id}`);
@@ -852,14 +734,25 @@ export default function CustomerForm({ onSubmit, services: servicesProp = [], in
                     }}
                   >
                     {(service.denialCodes || []).map(code => (
-                      <span key={code} style={{ background: '#e6f3ff', color: '#007bff', padding: '2px 6px', borderRadius: '12px', fontSize: '12px', fontWeight: '500', display: 'flex', alignItems: 'center', gap: '6px' }}>
+                      <span key={code} className="inline-flex items-center gap-1 rounded-full bg-blue-50 px-2 py-1 text-xs font-semibold text-blue-700">
                         {code}
-                        <button type="button" onClick={(e) => { e.stopPropagation(); updateService(service.id, 'denialCodes', (service.denialCodes || []).filter(c => c !== code)); }} style={{ background: 'none', border: 'none', color: '#007bff', cursor: 'pointer', padding: '0', width: '16px', height: '16px', borderRadius: '50%', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '12px' }}>×</button>
+                        <button
+                          type="button"
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            updateService(service.id, 'denialCodes', (service.denialCodes || []).filter(c => c !== code));
+                          }}
+                          className="ml-1 inline-flex h-4 w-4 items-center justify-center rounded-full text-blue-700 hover:bg-blue-100"
+                          aria-label={`Remove ${code}`}
+                        >
+                          ×
+                        </button>
                       </span>
                     ))}
 
                     <input
                       id={`denial-input-${service.id}`}
+                      className="customer-denial-input flex-1 min-w-[160px] border-0 outline-none bg-transparent text-sm py-1"
                       value={denialSearchMap[service.id] || ''}
                       onChange={(e) => { setDenialSearch(service.id, e.target.value); setDenialShow(service.id, true); }}
                       onKeyDown={(e) => {
@@ -881,60 +774,90 @@ export default function CustomerForm({ onSubmit, services: servicesProp = [], in
                           first && first.focus();
                         }
                       }}
-                      placeholder={(service.denialCodes || []).length === 0 ? 'Type to search or add denial codes...' : ''}
-                      style={{ border: 'none', outline: 'none', flex: 1, minWidth: '120px', fontSize: '14px', padding: '4px 0' }}
+                      placeholder={(service.denialCodes || []).length === 0 ? 'Type to search or add denial codes…' : ''}
                     />
 
-                    <svg style={{ position: 'absolute', right: '12px', top: '50%', transform: 'translateY(-50%)', width: '16px', height: '16px', pointerEvents: 'none' }} fill="currentColor" viewBox="0 0 20 20">
+                    <svg className="absolute right-3 top-1/2 -translate-y-1/2 h-4 w-4 pointer-events-none text-slate-500" fill="currentColor" viewBox="0 0 20 20">
                       <path fillRule="evenodd" d="M5.293 7.293a1 1 0 011.414 0L10 10.586l3.293-3.293a1 1 0 111.414 1.414l-4 4a1 1 0 01-1.414 0l-4-4a1 1 0 010-1.414z" clipRule="evenodd" />
                     </svg>
                   </div>
 
-                  <div id={`denial-codes-dropdown-${service.id}`} style={{ display: denialShowMap[service.id] ? 'block' : 'none', position: denialDropdownStyleMap[service.id]?.position || 'absolute', top: denialDropdownStyleMap[service.id]?.top ? denialDropdownStyleMap[service.id].top + 'px' : '100%', left: denialDropdownStyleMap[service.id]?.left ? denialDropdownStyleMap[service.id].left + 'px' : '0', width: denialDropdownStyleMap[service.id]?.width ? denialDropdownStyleMap[service.id].width + 'px' : 'auto', right: denialDropdownStyleMap[service.id] ? 'auto' : '0', backgroundColor: 'white', border: '1px solid #ddd', borderTop: 'none', borderRadius: '0 0 4px 4px', boxShadow: '0 2px 8px rgba(0,0,0,0.1)', zIndex: denialDropdownStyleMap[service.id]?.zIndex || 1000, maxHeight: '200px', overflowY: 'auto' }}>
-                    {denialCodeOptions.filter(code => code.toLowerCase().includes((denialSearchMap[service.id] || '').toLowerCase())).map(code => (
-                      <div key={code} tabIndex={0} className="option-item" onClick={() => {
-                        const current = service.denialCodes || [];
-                        if (current.includes(code)) updateService(service.id, 'denialCodes', current.filter(c => c !== code)); else updateService(service.id, 'denialCodes', [...current, code]);
-                        setDenialSearch(service.id, ''); setDenialShow(service.id, false);
-                      }} onKeyDown={(e) => { if (e.key === 'Enter') { e.preventDefault(); e.target.click(); } }} style={{ padding: '8px 12px', cursor: 'pointer', backgroundColor: (service.denialCodes || []).includes(code) ? '#e6f3ff' : 'transparent', color: (service.denialCodes || []).includes(code) ? '#007bff' : '#333', display: 'flex', alignItems: 'center', justifyContent: 'space-between', borderBottom: '1px solid #f0f0f0' }}>
-                        <span>{code}</span>
-                        {(service.denialCodes || []).includes(code) && (<svg width="16" height="16" fill="currentColor" viewBox="0 0 20 20"><path fillRule="evenodd" d="M16.707 5.293a1 1 0 010 1.414l-8 8a1 1 0 01-1.414 0l-4-4a1 1 0 011.414-1.414L8 12.586l7.293-7.293a1 1 0 011.414 0z" clipRule="evenodd" /></svg>)}
-                      </div>
-                    ))}
+                  <div
+                    id={`denial-codes-dropdown-${service.id}`}
+                    className="overflow-auto rounded-lg border border-slate-200 bg-white shadow-lg"
+                    style={{
+                      display: denialShowMap[service.id] ? 'block' : 'none',
+                      position: denialDropdownStyleMap[service.id]?.position || 'absolute',
+                      top: denialDropdownStyleMap[service.id]?.top ? denialDropdownStyleMap[service.id].top + 'px' : '100%',
+                      left: denialDropdownStyleMap[service.id]?.left ? denialDropdownStyleMap[service.id].left + 'px' : '0',
+                      width: denialDropdownStyleMap[service.id]?.width ? denialDropdownStyleMap[service.id].width + 'px' : 'auto',
+                      right: denialDropdownStyleMap[service.id] ? 'auto' : '0',
+                      zIndex: denialDropdownStyleMap[service.id]?.zIndex || 1000,
+                      maxHeight: '200px',
+                    }}
+                  >
+                    {denialCodeOptions
+                      .filter(code => code.toLowerCase().includes((denialSearchMap[service.id] || '').toLowerCase()))
+                      .map(code => (
+                        <div
+                          key={code}
+                          tabIndex={0}
+                          className="option-item flex items-center justify-between px-3 py-2 text-sm cursor-pointer hover:bg-slate-50"
+                          onClick={() => {
+                            const current = service.denialCodes || [];
+                            if (current.includes(code)) updateService(service.id, 'denialCodes', current.filter(c => c !== code));
+                            else updateService(service.id, 'denialCodes', [...current, code]);
+                            setDenialSearch(service.id, ''); setDenialShow(service.id, false);
+                          }}
+                          onKeyDown={(e) => { if (e.key === 'Enter') { e.preventDefault(); e.target.click(); } }}
+                        >
+                          <span>{code}</span>
+                          {(service.denialCodes || []).includes(code) && (
+                            <svg width="16" height="16" fill="currentColor" viewBox="0 0 20 20" className="text-blue-600">
+                              <path fillRule="evenodd" d="M16.707 5.293a1 1 0 010 1.414l-8 8a1 1 0 01-1.414 0l-4-4a1 1 0 011.414-1.414L8 12.586l7.293-7.293a1 1 0 011.414 0z" clipRule="evenodd" />
+                            </svg>
+                          )}
+                        </div>
+                      ))}
                     {(denialSearchMap[service.id] || '').trim() !== '' && !denialCodeOptions.some(c => c.toLowerCase() === (denialSearchMap[service.id] || '').trim().toLowerCase()) && (
-                      <div onClick={() => { const val = (denialSearchMap[service.id] || '').trim(); if (val) { const current = service.denialCodes || []; updateService(service.id, 'denialCodes', [...current, val]); setDenialSearch(service.id, ''); setDenialShow(service.id, false); } }} style={{ padding: '8px 12px', cursor: 'pointer', backgroundColor: '#fff8e6' }}>Add "{denialSearchMap[service.id]}"</div>
+                      <div
+                        onClick={() => {
+                          const val = (denialSearchMap[service.id] || '').trim();
+                          if (val) {
+                            const current = service.denialCodes || [];
+                            updateService(service.id, 'denialCodes', [...current, val]);
+                            setDenialSearch(service.id, '');
+                            setDenialShow(service.id, false);
+                          }
+                        }}
+                        className="px-3 py-2 text-sm cursor-pointer bg-amber-50 hover:bg-amber-100"
+                      >
+                        Add “{denialSearchMap[service.id]}”
+                      </div>
                     )}
                   </div>
                 </div>
               </div>
 
-              <div style={{ 
-                marginTop: '1rem', 
-                padding: '8px', 
-                background: '#e9ecef', 
-                borderRadius: '4px',
-                fontWeight: '600'
-              }}>
-                Service Total: ${(service.amountBilled || 0).toFixed(2)} | 
-                Paid: ${(parseFloat(service.amountPaid) || 0).toFixed(2)} | 
-                Due: ${((service.amountBilled || 0) - (parseFloat(service.amountPaid) || 0)).toFixed(2)}
+              <div className="mt-3 rounded-lg border border-slate-200 bg-slate-50 px-3 py-2 text-sm">
+                <div className="flex flex-wrap items-center justify-between gap-2">
+                  <span><strong>Billed:</strong> ${(service.amountBilled || 0).toFixed(2)}</span>
+                  <span><strong>Paid:</strong> ${(parseFloat(service.amountPaid) || 0).toFixed(2)}</span>
+                  <span style={{ color: ((service.amountBilled || 0) - (parseFloat(service.amountPaid) || 0)) > 0 ? '#e74c3c' : '#64748b' }}>
+                    <strong>Due:</strong> ${((service.amountBilled || 0) - (parseFloat(service.amountPaid) || 0)).toFixed(2)}
+                  </span>
+                </div>
               </div>
             </div>
           ))}
 
           {/* Grand Total */}
-          <div style={{ 
-            backgroundColor: '#007bff', 
-            color: 'white', 
-            padding: '1rem', 
-            borderRadius: '8px', 
-            fontWeight: '600', 
-            fontSize: '1.1rem',
-            textAlign: 'center'
-          }}>
-            Grand Total: ${totalAmountBilled.toFixed(2)} | 
-            Total Paid: ${totalAmountPaid.toFixed(2)} | 
-            Total Due: ${totalDue.toFixed(2)}
+          <div className="rounded-xl border border-slate-200 bg-blue-50 px-4 py-3 font-semibold text-blue-900">
+            <div className="flex flex-wrap items-center justify-between gap-2 text-sm">
+              <span>Grand Total: ${totalAmountBilled.toFixed(2)}</span>
+              <span>Total Paid: ${totalAmountPaid.toFixed(2)}</span>
+              <span style={{ color: totalDue > 0 ? '#b91c1c' : '#1e3a8a' }}>Total Due: ${totalDue.toFixed(2)}</span>
+            </div>
           </div>
         </div>
 

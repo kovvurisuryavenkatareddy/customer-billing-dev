@@ -349,11 +349,14 @@ export default function CustomersPage({ showAddForm = false, onNavigate }) {
   async function handleAddServiceSubmit(payload) {
     if (!addingServiceFor) return;
     setSavingAddService(true);
+    const toastKey = `add-service-${addingServiceFor.id}`;
     try {
       const custId = addingServiceFor.id;
       console.log('=== ADDING SERVICE ===');
       console.log('Customer ID:', custId);
       console.log('Payload:', JSON.stringify(payload, null, 2));
+
+      window.showToast?.({ key: toastKey, type: 'loading', message: 'Adding service…', duration: 0 });
       
       const res = await fetch(`${API_BASE}/customers/${custId}/services`, {
         method: 'POST',
@@ -379,12 +382,16 @@ export default function CustomersPage({ showAddForm = false, onNavigate }) {
       
       await refreshCustomers();
       setAddingServiceFor(null);
-      
-      // Show success message
-      alert('Service added successfully!');
+
+      window.showToast?.({ key: toastKey, type: 'success', message: 'Service added successfully.', duration: 3000 });
     } catch (err) {
       console.error('Failed to add service', err);
-      alert(`Failed to add service: ${err.message}`);
+      window.showToast?.({
+        key: toastKey,
+        type: 'error',
+        message: `Failed to add service: ${err.message || 'Unknown error'}`,
+        duration: 4500,
+      });
     } finally {
       setSavingAddService(false);
     }
@@ -414,13 +421,13 @@ export default function CustomersPage({ showAddForm = false, onNavigate }) {
   })() : '';
 
   return (
-    <div className="w-full max-w-full mx-auto p-4 md:p-8 box-border overflow-x-auto">
+    <div className="w-full max-w-full mx-auto p-4 md:p-8 box-border overflow-x-hidden">
       {!showAddCustomer && <CustomerSearch onSearch={handleSearch} status={statusFilter} onStatusChange={handleStatusChange} />}
 
       <div>
         {!showAddCustomer && (
           <Card
-            className="mb-6 overflow-x-auto"
+            className="mb-6 overflow-x-hidden"
             title={<span className="text-lg font-semibold">{statusFilter === 'active' ? 'Active' : statusFilter === 'inactive' ? 'Inactive' : 'All'} Participant Records</span>}
             extra={
               <Input.Search
@@ -468,10 +475,11 @@ export default function CustomersPage({ showAddForm = false, onNavigate }) {
           onCancel={handleCancelEdit}
           footer={null}
           width={640}
+          centered
           destroyOnClose
           maskClosable={!savingEditService && !savingEditCustomer}
           closable={!savingEditService && !savingEditCustomer}
-          styles={{ body: { maxHeight: '65vh', overflowY: 'auto' } }}
+          styles={{ body: { maxHeight: '65vh', overflowY: 'auto', padding: 0, background: '#f8fafc' } }}
         >
           {editingItem && editingItem.service?.id ? (
             // If editing a specific service (has service.id), show only ServiceForm
@@ -488,13 +496,15 @@ export default function CustomersPage({ showAddForm = false, onNavigate }) {
                 console.log('ServiceForm onSubmit - entryId:', entryId);
                 
                 if (!entryId) {
-                  alert('Error: Entry ID not found. Cannot update service.');
+                  window.showToast?.({ type: 'error', message: 'Entry ID not found. Cannot update service.', duration: 4500 });
                   return;
                 }
                 
                 // Use the dedicated service update endpoint
                 try {
                   setSavingEditService(true);
+                  const toastKey = `edit-service-${entryId}`;
+                  window.showToast?.({ key: toastKey, type: 'loading', message: 'Updating service…', duration: 0 });
                   const res = await fetch(`${API_BASE}/customers/${editingItem.customer.id}/services/${entryId}`, {
                     method: 'PUT',
                     headers: getAuthHeaders(),
@@ -516,10 +526,15 @@ export default function CustomersPage({ showAddForm = false, onNavigate }) {
                   
                   await refreshCustomers();
                   setEditingItem(null);
-                  alert('Service updated successfully!');
+                  window.showToast?.({ key: toastKey, type: 'success', message: 'Service updated successfully.', duration: 3000 });
                 } catch (err) {
                   console.error('Failed to update service', err);
-                  alert(`Failed to update service: ${err.message}`);
+                  window.showToast?.({
+                    key: `edit-service-${entryId}`,
+                    type: 'error',
+                    message: `Failed to update service: ${err.message || 'Unknown error'}`,
+                    duration: 4500,
+                  });
                 } finally {
                   setSavingEditService(false);
                 }
@@ -546,10 +561,11 @@ export default function CustomersPage({ showAddForm = false, onNavigate }) {
           onCancel={handleCancelAddService}
           footer={null}
           width={800}
+          centered
           destroyOnClose
           maskClosable={!savingAddService}
           closable={!savingAddService}
-          styles={{ body: { maxHeight: '70vh', overflowY: 'auto' } }}
+          styles={{ body: { maxHeight: '70vh', overflowY: 'auto', padding: 0, background: '#f8fafc' } }}
         >
           {addingServiceFor && (
             <Spin spinning={savingAddService} tip="Saving services...">
@@ -570,6 +586,8 @@ export default function CustomersPage({ showAddForm = false, onNavigate }) {
                 );
                 try {
                   setSavingAddService(true);
+                  const toastKey = `add-services-${addingServiceFor.id}`;
+                  window.showToast?.({ key: toastKey, type: 'loading', message: 'Adding services…', duration: 0 });
                   const responses = await Promise.all(addPromises);
                   const any401 = responses.some(r => r && r.status === 401);
                   if (any401) {
@@ -583,10 +601,20 @@ export default function CustomersPage({ showAddForm = false, onNavigate }) {
                   }
                   await refreshCustomers();
                   setAddingServiceFor(null);
-                  alert(`Successfully added ${servicesToAdd.length} service(s)!`);
+                  window.showToast?.({
+                    key: toastKey,
+                    type: 'success',
+                    message: `Successfully added ${servicesToAdd.length} service(s).`,
+                    duration: 3500,
+                  });
                 } catch (err) {
                   console.error('Failed to add services', err);
-                  alert('Failed to add services: ' + (err.message || 'Unknown error'));
+                  window.showToast?.({
+                    key: `add-services-${addingServiceFor.id}`,
+                    type: 'error',
+                    message: `Failed to add services: ${err.message || 'Unknown error'}`,
+                    duration: 4500,
+                  });
                 } finally {
                   setSavingAddService(false);
                 }

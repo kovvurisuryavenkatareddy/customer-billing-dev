@@ -1,6 +1,6 @@
 import React, { useMemo, useCallback, useState, useEffect } from 'react';
-import { Table, Button, Space, Typography } from 'antd';
-import { EditOutlined, PlusOutlined } from '@ant-design/icons';
+import { Table, Button, Dropdown, Typography } from 'antd';
+import { EditOutlined, PlusOutlined, EllipsisOutlined } from '@ant-design/icons';
 import { formatMMDDYYYY } from '../utils/dates';
 import CustomerEntryModal from './CustomerEntryModal';
 
@@ -180,7 +180,7 @@ export default function CustomerList({
       title: 'Start Date',
       dataIndex: 'startDate',
       key: 'startDate',
-      width: 130,
+      width: 110,
       sorter: (a, b) => {
         if (!a.startDate) return 1;
         if (!b.startDate) return -1;
@@ -192,7 +192,7 @@ export default function CustomerList({
       title: 'End Date',
       dataIndex: 'endDate',
       key: 'endDate',
-      width: 130,
+      width: 110,
       sorter: (a, b) => {
         if (!a.endDate) return 1;
         if (!b.endDate) return -1;
@@ -293,56 +293,69 @@ export default function CustomerList({
     {
       title: 'Actions',
       key: 'actions',
-      width: 200,
+      width: 72,
       fixed: 'right',
-      render: (_, record) => (
-        <Space size="small" wrap>
-          <Button
-            type="primary"
-            size="small"
-            icon={<EditOutlined />}
-            onClick={() => {
-              console.log('Edit button clicked - record:', record);
-              console.log('Edit button clicked - record.entryId:', record.entryId);
-              onEdit({
-                customer: record.customer,
-                service: {
-                  id: record.entryId,
-                  entryId: record.entryId,
-                  entry_id: record.entryId,
-                  serviceName: record.serviceName,
-                  days: record.days,
-                  ratePerDay: record.ratePerDay,
-                  amountBilled: record.amountBilled,
-                  amountPaid: record.amountPaid,
-                  dateOfPayment: record.paymentDate,
-                  startDate: record.startDate,
-                  endDate: record.endDate,
-                  denialCodes: record.denialCodes,
-                }
-              });
+      render: (_, record) => {
+        const handleEdit = () => {
+          onEdit({
+            customer: record.customer,
+            service: {
+              id: record.entryId,
+              entryId: record.entryId,
+              entry_id: record.entryId,
+              serviceName: record.serviceName,
+              days: record.days,
+              ratePerDay: record.ratePerDay,
+              amountBilled: record.amountBilled,
+              amountPaid: record.amountPaid,
+              dateOfPayment: record.paymentDate,
+              startDate: record.startDate,
+              endDate: record.endDate,
+              denialCodes: record.denialCodes,
+            },
+          });
+        };
+
+        const handleAdd = () => onAddService?.(record.customer);
+
+        const items = [
+          { key: 'edit', label: 'Edit', icon: <EditOutlined /> },
+          { key: 'add', label: 'Add', icon: <PlusOutlined /> },
+        ];
+
+        return (
+          <Dropdown
+            trigger={['click']}
+            menu={{
+              items,
+              onClick: ({ key }) => {
+                if (key === 'edit') handleEdit();
+                if (key === 'add') handleAdd();
+              },
             }}
+            placement="bottomRight"
           >
-            Edit
-          </Button>
-          <Button
-            type="default"
-            size="small"
-            icon={<PlusOutlined />}
-            onClick={() => onAddService?.(record.customer)}
-          >
-            Add
-          </Button>
-        </Space>
-      ),
+            <Button
+              size="small"
+              type="text"
+              aria-label="Actions"
+              icon={<EllipsisOutlined />}
+            />
+          </Dropdown>
+        );
+      },
     },
   ];
 
   return (
     <div>
       <Table
+        className="customer-ledger-table"
         dataSource={filteredData}
         columns={columns}
+        size="small"
+        bordered
+        sticky
         pagination={{
           ...pagination,
           showSizeChanger: window.innerWidth >= 576,
@@ -358,8 +371,8 @@ export default function CustomerList({
             setPagination({ current: 1, pageSize: size });
           },
         }}
-        scroll={{ x: true }}
-        tableLayout="auto"
+        scroll={{ x: 1750 }}
+        tableLayout="fixed"
         summary={(pageData) => {
           // Calculate current page totals from pageData
           const pageTotals = pageData.reduce((acc, row) => {

@@ -1,5 +1,10 @@
 /* Ant Design + ledger overrides only - rest replaced by Tailwind */
 :root { --primary: #007bff; --primary-hover: #0056b3; --text-primary: #1a253c; --text-body: #333; --filter-bg: #f8f9fa; }
+
+/* Ensure toasts are visible above fixed header/sidebar/modals */
+.ant-message {
+  z-index: 5000 !important;
+}
 /* Ant Design Table Customization */
 .ant-table-wrapper {
   width: 100% !important;
@@ -288,6 +293,80 @@ button.customer-name:focus-visible {
 
 .ant-table-tbody > tr:nth-child(even) {
   background-color: #f8fbff;
+}
+
+/* Professional skin for the customers ledger table only */
+.customer-ledger-table.ant-table-wrapper {
+  box-shadow: none !important;
+  border: 1px solid #e5e7eb !important; /* slate-200 */
+  border-radius: 10px !important;
+}
+
+.customer-ledger-table .ant-table {
+  font-size: 13px !important;
+  color: #0f172a !important; /* slate-900 */
+}
+
+.customer-ledger-table .ant-table-container {
+  border-radius: 10px !important;
+}
+
+.customer-ledger-table .ant-table-thead > tr > th {
+  background: #007bff !important; /* blue-50 */
+  color: #1e3a8a !important; /* blue-900 */
+  text-transform: none !important;
+  letter-spacing: 0 !important;
+  font-size: 12px !important;
+  font-weight: 700 !important;
+  padding: 8px 10px !important;
+  border-bottom: 1px solid #e5e7eb !important;
+}
+
+.customer-ledger-table .ant-table-thead > tr > th .ant-table-column-sorters,
+.customer-ledger-table .ant-table-thead > tr > th .anticon {
+  color: #141415 !important; /* slate-500 */
+}
+
+.customer-ledger-table .ant-table-thead > tr > th:hover {
+  background: #f1f5f9 !important; /* slate-100 */
+}
+
+.customer-ledger-table .ant-table-tbody > tr > td {
+  padding: 8px 10px !important;
+  border-bottom: 1px solid #eef2f7 !important;
+  white-space: nowrap;
+}
+
+.customer-ledger-table .ant-table-tbody > tr:hover > td {
+  background-color: #f1f5f9 !important;
+}
+
+.customer-ledger-table .ant-table-tbody > tr:nth-child(even) {
+  background-color: #fcfcfd !important;
+}
+
+.customer-ledger-table .ant-table-cell-fix-right,
+.customer-ledger-table .ant-table-cell-fix-left {
+  background: #ffffff !important;
+}
+
+.customer-ledger-table .ant-table-thead > tr > th.ant-table-cell-fix-right,
+.customer-ledger-table .ant-table-thead > tr > th.ant-table-cell-fix-left {
+  background: #eff6ff !important;
+}
+
+.customer-ledger-table .ant-table-tbody > tr:nth-child(even) > td.ant-table-cell-fix-right,
+.customer-ledger-table .ant-table-tbody > tr:nth-child(even) > td.ant-table-cell-fix-left {
+  background-color: #fcfcfd !important;
+}
+
+.customer-ledger-table .ant-table-tbody > tr:hover > td.ant-table-cell-fix-right,
+.customer-ledger-table .ant-table-tbody > tr:hover > td.ant-table-cell-fix-left {
+  background-color: #f1f5f9 !important;
+}
+
+.customer-ledger-table .ant-btn.ant-btn-text {
+  border-radius: 8px !important;
 }
 
 /* Summary table - remove conflicting styles */

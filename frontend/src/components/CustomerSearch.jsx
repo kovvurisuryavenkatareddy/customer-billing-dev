@@ -53,17 +53,19 @@ export default function CustomerSearch({ onSearch, status = 'active', onStatusCh
     });
   };
 
+  const labelStyle = { fontSize: 12, fontWeight: 600, color: '#475569' };
+
   return (
     <Card
-      className="mb-6 shadow-sm border border-blue-100"
-      styles={{ body: { padding: '20px 24px' } }}
+      className="mb-4 shadow-sm border border-slate-200"
+      styles={{ body: { padding: '14px 16px' } }}
     >
-      <div className="flex flex-wrap items-center justify-between gap-4 mb-4">
+      <div className="flex flex-wrap items-center justify-between gap-3 mb-3">
         <Space align="center">
-          <FilterOutlined className="text-[#007bff] text-lg" />
-          <span className="text-base font-semibold text-[#1a253c]">Filter Participants</span>
+          <FilterOutlined className="text-slate-500" />
+          <span className="text-sm font-semibold text-slate-800">Filter Participants</span>
         </Space>
-        <Button icon={<ClearOutlined />} onClick={clearFilters}>
+        <Button size="small" icon={<ClearOutlined />} onClick={clearFilters}>
           Clear filters
         </Button>
       </div>
@@ -71,6 +73,7 @@ export default function CustomerSearch({ onSearch, status = 'active', onStatusCh
       <Form
         form={form}
         layout="vertical"
+        size="small"
         initialValues={{
           status: status,
           firstName: '',
@@ -81,10 +84,11 @@ export default function CustomerSearch({ onSearch, status = 'active', onStatusCh
         }}
         onValuesChange={(_, all) => triggerSearch(all)}
       >
-        <Row gutter={[16, 12]}>
-          <Col xs={24} sm={12} md={6}>
-            <Form.Item name="status" label="Status">
+        <Row gutter={[12, 8]}>
+          <Col xs={24} sm={12} md={8} lg={4}>
+            <Form.Item name="status" label={<span style={labelStyle}>Status</span>}>
               <Select
+                size="small"
                 options={[
                   { value: 'active', label: 'Active' },
                   { value: 'inactive', label: 'Inactive' },
@@ -98,43 +102,46 @@ export default function CustomerSearch({ onSearch, status = 'active', onStatusCh
               />
             </Form.Item>
           </Col>
-          <Col xs={24} sm={12} md={6}>
-            <Form.Item name="firstName" label="First Name">
-              <Input placeholder="First name" allowClear />
+          <Col xs={24} sm={12} md={8} lg={4}>
+            <Form.Item name="firstName" label={<span style={labelStyle}>First Name</span>}>
+              <Input size="small" placeholder="First name" allowClear />
             </Form.Item>
           </Col>
-          <Col xs={24} sm={12} md={6}>
-            <Form.Item name="lastName" label="Last Name">
-              <Input placeholder="Last name" allowClear />
+          <Col xs={24} sm={12} md={8} lg={4}>
+            <Form.Item name="lastName" label={<span style={labelStyle}>Last Name</span>}>
+              <Input size="small" placeholder="Last name" allowClear />
             </Form.Item>
           </Col>
-          <Col xs={24} sm={12} md={6}>
-            <Form.Item name="dateOfBirth" label="Date of Birth">
+          <Col xs={24} sm={12} md={8} lg={4}>
+            <Form.Item name="dateOfBirth" label={<span style={labelStyle}>Date of Birth</span>}>
               <DatePicker
                 format="MM-DD-YYYY"
                 className="w-full"
                 placeholder="MM-DD-YYYY"
                 allowClear
+                size="small"
               />
             </Form.Item>
           </Col>
-          <Col xs={24} sm={12} md={6}>
-            <Form.Item name="startDate" label="From Date">
+          <Col xs={24} sm={12} md={8} lg={4}>
+            <Form.Item name="startDate" label={<span style={labelStyle}>From Date</span>}>
               <DatePicker
                 format="MM-DD-YYYY"
                 className="w-full"
                 placeholder="MM-DD-YYYY"
                 allowClear
+                size="small"
               />
             </Form.Item>
           </Col>
-          <Col xs={24} sm={12} md={6}>
-            <Form.Item name="endDate" label="To Date">
+          <Col xs={24} sm={12} md={8} lg={4}>
+            <Form.Item name="endDate" label={<span style={labelStyle}>To Date</span>}>
               <DatePicker
                 format="MM-DD-YYYY"
                 className="w-full"
                 placeholder="MM-DD-YYYY"
                 allowClear
+                size="small"
               />
             </Form.Item>
           </Col>

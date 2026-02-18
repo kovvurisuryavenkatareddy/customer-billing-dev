@@ -37,6 +37,7 @@ export default function ServicesPage() {
 
   const handleAddService = async (values) => {
     try {
+      window.showToast?.({ key: 'services-save', type: 'loading', message: 'Adding service…', duration: 0 });
       const response = await fetch(`${API_BASE}/services/`, {
         method: 'POST',
         headers: getAuthHeaders(),
@@ -50,15 +51,17 @@ export default function ServicesPage() {
       await fetchServices();
       form.resetFields();
       setShowAddForm(false);
-      if (window.showToast) window.showToast({ message: 'Service added', type: 'success' });
+      window.showToast?.({ key: 'services-save', message: 'Service added', type: 'success' });
     } catch (err) {
       setError(err.message);
+      window.showToast?.({ key: 'services-save', message: err.message || 'Failed to add service', type: 'error' });
     }
   };
 
   const handleEditService = async (values) => {
     if (!editingService) return;
     try {
+      window.showToast?.({ key: 'services-save', type: 'loading', message: 'Updating service…', duration: 0 });
       const response = await fetch(`${API_BASE}/services/${editingService.id}`, {
         method: 'PUT',
         headers: getAuthHeaders(),
@@ -72,9 +75,10 @@ export default function ServicesPage() {
       await fetchServices();
       form.resetFields();
       setEditingService(null);
-      if (window.showToast) window.showToast({ message: 'Service updated', type: 'success' });
+      window.showToast?.({ key: 'services-save', message: 'Service updated', type: 'success' });
     } catch (err) {
       setError(err.message);
+      window.showToast?.({ key: 'services-save', message: err.message || 'Failed to update service', type: 'error' });
     }
   };
 
@@ -82,12 +86,13 @@ export default function ServicesPage() {
     if (!deletePendingId) return;
     setDeleting(true);
     try {
+      window.showToast?.({ key: `services-delete-${deletePendingId}`, type: 'loading', message: 'Deleting service…', duration: 0 });
       const response = await fetch(`${API_BASE}/services/${deletePendingId}`, {
         method: 'DELETE',
         headers: getAuthHeaders(),
       });
       if (response?.status === 204 || response?.ok) {
-        if (window.showToast) window.showToast({ message: 'Service deleted', type: 'info' });
+        window.showToast?.({ key: `services-delete-${deletePendingId}`, message: 'Service deleted', type: 'success' });
         await fetchServices();
       } else {
         let msg = 'Failed to delete service';
@@ -96,11 +101,11 @@ export default function ServicesPage() {
           msg = body.detail || body.message || msg;
         } catch (e) {}
         setError(msg);
-        if (window.showToast) window.showToast({ message: msg, type: 'error' });
+        window.showToast?.({ key: `services-delete-${deletePendingId}`, message: msg, type: 'error' });
       }
     } catch (err) {
       setError(err.message || 'Failed to delete service');
-      if (window.showToast) window.showToast({ message: err.message || 'Failed to delete service', type: 'error' });
+      window.showToast?.({ key: `services-delete-${deletePendingId}`, message: err.message || 'Failed to delete service', type: 'error' });
     } finally {
       setDeletePendingId(null);
       setDeleting(false);

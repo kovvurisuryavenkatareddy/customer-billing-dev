@@ -139,7 +139,8 @@ export default function ServiceForm({ services = [], onSubmit, initial = null, o
       const s = new Date(startDate);
       const eDate = new Date(endDate);
       if (!isNaN(s) && !isNaN(eDate) && eDate < s) {
-        window.alert('Service end date cannot be before service start date');
+        if (window.showToast) window.showToast({ message: 'Service end date cannot be before start date.', type: 'error' });
+        else window.alert('Service end date cannot be before service start date');
         return;
       }
     }
@@ -165,296 +166,170 @@ export default function ServiceForm({ services = [], onSubmit, initial = null, o
   const computedPaid = amountPaid === '' ? 0 : Number(amountPaid) || 0;
   const computedDue = (Number(amountBilled) || 0) - computedPaid;
 
+  const DateField = ({ label, value, onChange }) => (
+    <div className="min-w-0">
+      <label>{label}</label>
+      <div className="relative">
+        <input
+          type="text"
+          placeholder="MM-DD-YYYY"
+          value={value}
+          onChange={onChange}
+          className="pr-10"
+          inputMode="numeric"
+        />
+        <input
+          type="date"
+          className="absolute right-0 top-0 bottom-0 w-10 opacity-0 cursor-pointer z-[2]"
+          onChange={(e) => {
+            if (e.target.value) {
+              onChange({ target: { value: formatMMDDYYYY(e.target.value) } });
+            }
+          }}
+          onFocus={(e) => e.target.showPicker && e.target.showPicker()}
+        />
+        <svg
+          width="18"
+          height="18"
+          viewBox="0 0 24 24"
+          fill="none"
+          xmlns="http://www.w3.org/2000/svg"
+          className="absolute right-3 top-1/2 -translate-y-1/2 pointer-events-none text-blue-600"
+        >
+          <rect x="3" y="4" width="18" height="18" rx="2" stroke="currentColor" strokeWidth="2" fill="none" />
+          <line x1="16" y1="2" x2="16" y2="6" stroke="currentColor" strokeWidth="2" strokeLinecap="round" />
+          <line x1="8" y1="2" x2="8" y2="6" stroke="currentColor" strokeWidth="2" strokeLinecap="round" />
+          <line x1="3" y1="10" x2="21" y2="10" stroke="currentColor" strokeWidth="2" />
+          <rect x="7" y="14" width="2" height="2" fill="currentColor" />
+          <rect x="11" y="14" width="2" height="2" fill="currentColor" />
+          <rect x="15" y="14" width="2" height="2" fill="currentColor" />
+        </svg>
+      </div>
+    </div>
+  );
+
   return (
-    <div className="w-full max-w-[720px] mx-auto">
-    <form onSubmit={handleSubmit} className="add-customer-form">
+    <div className="w-full">
+    <form onSubmit={handleSubmit} className="add-customer-form rounded-xl border border-slate-200 bg-white shadow-sm p-4">
       <fieldset disabled={submitting} style={{ border: 'none', padding: 0, margin: 0, opacity: submitting ? 0.7 : 1 }}>
-      <div className="flex flex-wrap items-center gap-3 mb-6 box-border w-full min-w-0">
-        <label>Type of service <span style={{ color: '#c0392b' }}>*</span></label>
-        <select value={serviceType} onChange={(e) => setServiceType(e.target.value)}>
-          <option value="">-- select --</option>
-          {Array.isArray(services) && services.map(s => {
-            const svcName = s.name || s.serviceName || s.service_name || '';
-            const code = (s.code || s.serviceCode || s.service_code || '').toString();
-            const name = svcName.toString();
-            const normalizedCode = code.toUpperCase().trim();
-            const normalizedName = name.toUpperCase();
-            const isUnit = normalizedCode.includes('H0038') || normalizedName.includes('H0038');
-            const rate = s.rate_per_day ?? s.ratePerDay ?? 0;
-            const key = s.id || svcName;
-            const perLabel = isUnit ? '/unit' : '/day';
-            return (
-              <option key={key} value={svcName}>{svcName} — ${rate}{perLabel}</option>
-            );
-          })}
-        </select>
+      <div className="mb-4">
+        <div className="text-sm font-semibold text-slate-900">Service details</div>
       </div>
 
-      {!isUnitsServiceType(serviceType) && (
-      <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mb-6">
-        <div className="flex flex-wrap items-center gap-3 box-border w-full min-w-0">
-          <label>start date</label>
-          <div style={{ position: 'relative', flex: 1 }}>
-            <input 
-              type="text" 
-              placeholder="MM-DD-YYYY" 
-              value={startDate} 
-              onChange={(e) => setStartDate(e.target.value)}
-              style={{ 
-                width: '100%',
-                paddingRight: '40px',
-                boxSizing: 'border-box'
-              }}
-            />
-            <input
-              type="date"
-              style={{
-                position: 'absolute',
-                right: '0',
-                top: '0',
-                bottom: '0',
-                width: '40px',
-                opacity: 0,
-                cursor: 'pointer',
-                zIndex: 2
-              }}
-              onChange={(e) => {
-                if (e.target.value) {
-                  setStartDate(formatMMDDYYYY(e.target.value));
-                }
-              }}
-              onFocus={(e) => e.target.showPicker && e.target.showPicker()}
-            />
-            <svg 
-              width="20" 
-              height="20" 
-              viewBox="0 0 24 24" 
-              fill="none" 
-              xmlns="http://www.w3.org/2000/svg"
-              style={{
-                position: 'absolute',
-                right: '10px',
-                top: '50%',
-                transform: 'translateY(-50%)',
-                pointerEvents: 'none',
-                color: '#007bff',
-                zIndex: 1
-              }}
-            >
-              <rect x="3" y="4" width="18" height="18" rx="2" stroke="currentColor" strokeWidth="2" fill="none"/>
-              <line x1="16" y1="2" x2="16" y2="6" stroke="currentColor" strokeWidth="2" strokeLinecap="round"/>
-              <line x1="8" y1="2" x2="8" y2="6" stroke="currentColor" strokeWidth="2" strokeLinecap="round"/>
-              <line x1="3" y1="10" x2="21" y2="10" stroke="currentColor" strokeWidth="2"/>
-              <rect x="7" y="14" width="2" height="2" fill="currentColor"/>
-              <rect x="11" y="14" width="2" height="2" fill="currentColor"/>
-              <rect x="15" y="14" width="2" height="2" fill="currentColor"/>
-            </svg>
+      <div className="grid grid-cols-1 gap-4">
+        <div className="min-w-0">
+          <label>
+            Type of Service <span style={{ color: '#c0392b' }}>*</span>
+          </label>
+          <select value={serviceType} onChange={(e) => setServiceType(e.target.value)}>
+            <option value="">Select service</option>
+            {Array.isArray(services) && services.map(s => {
+              const svcName = s.name || s.serviceName || s.service_name || '';
+              const code = (s.code || s.serviceCode || s.service_code || '').toString();
+              const name = svcName.toString();
+              const normalizedCode = code.toUpperCase().trim();
+              const normalizedName = name.toUpperCase();
+              const isUnit = normalizedCode.includes('H0038') || normalizedName.includes('H0038');
+              const rate = s.rate_per_day ?? s.ratePerDay ?? 0;
+              const key = s.id || svcName;
+              const perLabel = isUnit ? '/unit' : '/day';
+              return (
+                <option key={key} value={svcName}>{svcName} — ${rate}{perLabel}</option>
+              );
+            })}
+          </select>
+        </div>
+
+        {!isUnitsServiceType(serviceType) && (
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+            <DateField label="Start date" value={startDate} onChange={(e) => setStartDate(e.target.value)} />
+            <DateField label="End date" value={endDate} onChange={(e) => setEndDate(e.target.value)} />
+          </div>
+        )}
+
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+          {!isUnitsServiceType(serviceType) ? (
+            <div className="min-w-0">
+              <label>Number of days</label>
+              <input
+                type="number"
+                min="0"
+                step="1"
+                value={days}
+                onChange={(e) => {
+                  setDays(e.target.value);
+                  // Recalculate amount billed when days change (unless amount was manually edited)
+                  if (!isAmountBilledManuallyEdited) {
+                    const d = parseFloat(e.target.value);
+                    const r = Number(ratePerDay);
+                    if (!isNaN(d) && d >= 0 && !isNaN(r)) {
+                      setAmountBilled(Math.round(d * r * 100) / 100);
+                    } else {
+                      setAmountBilled(0);
+                    }
+                  }
+                }}
+              />
+            </div>
+          ) : (
+            <div className="min-w-0">
+              <label>Number of units</label>
+              <input
+                type="number"
+                min="0"
+                step="1"
+                value={units}
+                onChange={(e) => {
+                  setUnits(e.target.value);
+                  if (!isAmountBilledManuallyEdited) {
+                    const u = parseFloat(e.target.value);
+                    const r = Number(ratePerDay);
+                    if (!isNaN(u) && u >= 0 && !isNaN(r)) {
+                      setAmountBilled(Math.round(u * r * 100) / 100);
+                    } else {
+                      setAmountBilled(0);
+                    }
+                  }
+                }}
+              />
+            </div>
+          )}
+
+          <div className="min-w-0">
+            <label>{isUnitsServiceType(serviceType) ? 'Rate per unit ($)' : 'Rate per day ($)'}</label>
+            <input type="number" min="0" value={ratePerDay} readOnly />
           </div>
         </div>
 
-        <div className="flex flex-wrap items-center gap-3 box-border w-full min-w-0">
-          <label>end date</label>
-          <div style={{ position: 'relative', flex: 1 }}>
-            <input 
-              type="text" 
-              placeholder="MM-DD-YYYY" 
-              value={endDate} 
-              onChange={(e) => setEndDate(e.target.value)}
-              style={{ 
-                width: '100%',
-                paddingRight: '40px',
-                boxSizing: 'border-box'
-              }}
-            />
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+          <div className="min-w-0">
+            <label>Amount billed ($)</label>
             <input
-              type="date"
-              style={{
-                position: 'absolute',
-                right: '0',
-                top: '0',
-                bottom: '0',
-                width: '40px',
-                opacity: 0,
-                cursor: 'pointer',
-                zIndex: 2
-              }}
+              type="number"
+              min="0"
+              step="0.01"
+              value={amountBilled}
               onChange={(e) => {
-                if (e.target.value) {
-                  setEndDate(formatMMDDYYYY(e.target.value));
+                const value = parseFloat(e.target.value);
+                if (!isNaN(value) && value >= 0) {
+                  setAmountBilled(value);
+                  setIsAmountBilledManuallyEdited(true);
+                } else if (e.target.value === '' || e.target.value === '-') {
+                  setAmountBilled(0);
+                  setIsAmountBilledManuallyEdited(true);
                 }
               }}
-              onFocus={(e) => e.target.showPicker && e.target.showPicker()}
             />
-            <svg 
-              width="20" 
-              height="20" 
-              viewBox="0 0 24 24" 
-              fill="none" 
-              xmlns="http://www.w3.org/2000/svg"
-              style={{
-                position: 'absolute',
-                right: '10px',
-                top: '50%',
-                transform: 'translateY(-50%)',
-                pointerEvents: 'none',
-                color: '#007bff',
-                zIndex: 1
-              }}
-            >
-              <rect x="3" y="4" width="18" height="18" rx="2" stroke="currentColor" strokeWidth="2" fill="none"/>
-              <line x1="16" y1="2" x2="16" y2="6" stroke="currentColor" strokeWidth="2" strokeLinecap="round"/>
-              <line x1="8" y1="2" x2="8" y2="6" stroke="currentColor" strokeWidth="2" strokeLinecap="round"/>
-              <line x1="3" y1="10" x2="21" y2="10" stroke="currentColor" strokeWidth="2"/>
-              <rect x="7" y="14" width="2" height="2" fill="currentColor"/>
-              <rect x="11" y="14" width="2" height="2" fill="currentColor"/>
-              <rect x="15" y="14" width="2" height="2" fill="currentColor"/>
-            </svg>
+          </div>
+
+          <div className="min-w-0">
+            <label>Amount paid ($)</label>
+            <input type="number" min="0" value={amountPaid} onChange={(e) => setAmountPaid(e.target.value)} />
           </div>
         </div>
-      </div>
-      )}
-
-      {!isUnitsServiceType(serviceType) && (
-      <div className="flex flex-wrap items-center gap-3 mb-6 box-border w-full min-w-0">
-        <label>Number of days</label>
-        <input 
-          type="number" 
-          min="0" 
-          step="1"
-          value={days} 
-          onChange={(e) => {
-            setDays(e.target.value);
-            // Recalculate amount billed when days change (unless amount was manually edited)
-            if (!isAmountBilledManuallyEdited) {
-              const d = parseFloat(e.target.value);
-              const r = Number(ratePerDay);
-              if (!isNaN(d) && d >= 0 && !isNaN(r)) {
-                setAmountBilled(Math.round(d * r * 100) / 100);
-              } else {
-                setAmountBilled(0);
-              }
-            }
-          }}
-        />
-      </div>
-      )}
-
-      {isUnitsServiceType(serviceType) && (
-      <div className="flex flex-wrap items-center gap-3 mb-6 box-border w-full min-w-0">
-        <label>Number of units</label>
-        <input 
-          type="number" 
-          min="0" 
-          step="1"
-          value={units} 
-          onChange={(e) => {
-            setUnits(e.target.value);
-            if (!isAmountBilledManuallyEdited) {
-              const u = parseFloat(e.target.value);
-              const r = Number(ratePerDay);
-              if (!isNaN(u) && u >= 0 && !isNaN(r)) {
-                setAmountBilled(Math.round(u * r * 100) / 100);
-              } else {
-                setAmountBilled(0);
-              }
-            }
-          }}
-        />
-      </div>
-      )}
-
-      <div className="flex flex-wrap items-center gap-3 mb-6 box-border w-full min-w-0">
-        <label>{isUnitsServiceType(serviceType) ? 'Rate per unit ($)' : 'Rate per day ($)'}</label>
-        <input type="number" min="0" value={ratePerDay} readOnly />
-      </div>
-
-      <div className="flex flex-wrap items-center gap-3 mb-6 box-border w-full min-w-0">
-        <label>Amount billed ($)</label>
-        <input 
-          type="number" 
-          min="0"
-          step="0.01"
-          value={amountBilled} 
-          onChange={(e) => {
-            const value = parseFloat(e.target.value);
-            if (!isNaN(value) && value >= 0) {
-              setAmountBilled(value);
-              setIsAmountBilledManuallyEdited(true);
-            } else if (e.target.value === '' || e.target.value === '-') {
-              setAmountBilled(0);
-              setIsAmountBilledManuallyEdited(true);
-            }
-          }}
-        />
-      </div>
-
-      <div className="flex flex-wrap items-center gap-3 mb-6 box-border w-full min-w-0">
-        <label>Date Submitted</label>
-        <div style={{ position: 'relative', flex: 1 }}>
-          <input 
-            type="text" 
-            placeholder="MM-DD-YYYY" 
-            value={dateSubmitted} 
-            onChange={(e) => setDateSubmitted(e.target.value)}
-            style={{ 
-              width: '100%',
-              paddingRight: '40px',
-              boxSizing: 'border-box'
-            }}
-          />
-          <input
-            type="date"
-            style={{
-              position: 'absolute',
-              right: '0',
-              top: '0',
-              bottom: '0',
-              width: '40px',
-              opacity: 0,
-              cursor: 'pointer',
-              zIndex: 2
-            }}
-            onChange={(e) => {
-              if (e.target.value) {
-                setDateSubmitted(formatMMDDYYYY(e.target.value));
-              }
-            }}
-            onFocus={(e) => e.target.showPicker && e.target.showPicker()}
-          />
-          <svg 
-            width="20" 
-            height="20" 
-            viewBox="0 0 24 24" 
-            fill="none" 
-            xmlns="http://www.w3.org/2000/svg"
-            style={{
-              position: 'absolute',
-              right: '10px',
-              top: '50%',
-              transform: 'translateY(-50%)',
-              pointerEvents: 'none',
-              color: '#007bff',
-              zIndex: 1
-            }}
-          >
-            <rect x="3" y="4" width="18" height="18" rx="2" stroke="currentColor" strokeWidth="2" fill="none"/>
-            <line x1="16" y1="2" x2="16" y2="6" stroke="currentColor" strokeWidth="2" strokeLinecap="round"/>
-            <line x1="8" y1="2" x2="8" y2="6" stroke="currentColor" strokeWidth="2" strokeLinecap="round"/>
-            <line x1="3" y1="10" x2="21" y2="10" stroke="currentColor" strokeWidth="2"/>
-            <rect x="7" y="14" width="2" height="2" fill="currentColor"/>
-            <rect x="11" y="14" width="2" height="2" fill="currentColor"/>
-            <rect x="15" y="14" width="2" height="2" fill="currentColor"/>
-          </svg>
-        </div>
-      </div>
-
-      <div className="flex flex-wrap items-center gap-3 mb-6 box-border w-full min-w-0">
-        <label>Amount paid ($)</label>
-        <input type="number" min="0" value={amountPaid} onChange={(e) => setAmountPaid(e.target.value)} />
-      </div>
 
       {!initial && (
-        <div className="mb-6 rounded-lg border border-slate-200 bg-slate-50 px-3 py-2 text-sm">
+        <div className="rounded-lg border border-slate-200 bg-slate-50 px-3 py-2 text-sm">
           <div className="flex flex-wrap items-center justify-between gap-2">
             <span><strong>Billed:</strong> ${(Number(amountBilled) || 0).toFixed(2)}</span>
             <span><strong>Paid:</strong> ${computedPaid.toFixed(2)}</span>
@@ -465,260 +340,139 @@ export default function ServiceForm({ services = [], onSubmit, initial = null, o
         </div>
       )}
 
-      <div className="flex flex-wrap items-center gap-3 mb-6 box-border w-full min-w-0">
-        <label>Date of payment</label>
-        <div style={{ position: 'relative', flex: 1 }}>
-          <input 
-            type="text" 
-            placeholder="MM-DD-YYYY" 
-            value={dateOfPayment} 
-            onChange={(e) => setDateOfPayment(e.target.value)}
-            style={{ 
-              width: '100%',
-              paddingRight: '40px',
-              boxSizing: 'border-box'
-            }}
-          />
-          <input
-            type="date"
-            style={{
-              position: 'absolute',
-              right: '0',
-              top: '0',
-              bottom: '0',
-              width: '40px',
-              opacity: 0,
-              cursor: 'pointer',
-              zIndex: 2
-            }}
-            onChange={(e) => {
-              if (e.target.value) {
-                setDateOfPayment(formatMMDDYYYY(e.target.value));
-              }
-            }}
-            onFocus={(e) => e.target.showPicker && e.target.showPicker()}
-          />
-          <svg 
-            width="20" 
-            height="20" 
-            viewBox="0 0 24 24" 
-            fill="none" 
-            xmlns="http://www.w3.org/2000/svg"
-            style={{
-              position: 'absolute',
-              right: '10px',
-              top: '50%',
-              transform: 'translateY(-50%)',
-              pointerEvents: 'none',
-              color: '#667eea',
-              zIndex: 1
-            }}
-          >
-            <rect x="3" y="4" width="18" height="18" rx="2" stroke="currentColor" strokeWidth="2" fill="none"/>
-            <line x1="16" y1="2" x2="16" y2="6" stroke="currentColor" strokeWidth="2" strokeLinecap="round"/>
-            <line x1="8" y1="2" x2="8" y2="6" stroke="currentColor" strokeWidth="2" strokeLinecap="round"/>
-            <line x1="3" y1="10" x2="21" y2="10" stroke="currentColor" strokeWidth="2"/>
-            <rect x="7" y="14" width="2" height="2" fill="currentColor"/>
-            <rect x="11" y="14" width="2" height="2" fill="currentColor"/>
-            <rect x="15" y="14" width="2" height="2" fill="currentColor"/>
-          </svg>
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+          <DateField label="Date submitted" value={dateSubmitted} onChange={(e) => setDateSubmitted(e.target.value)} />
+          <DateField label="Date of payment" value={dateOfPayment} onChange={(e) => setDateOfPayment(e.target.value)} />
         </div>
-      </div>
 
-      <div className="flex flex-wrap items-center gap-3 mb-6 box-border w-full min-w-0">
-        <label>Denial Code</label>
-        <div style={{ position: 'relative' }}>
-          <div
-            style={{
-              minHeight: '40px',
-              padding: '8px 40px 8px 12px',
-              border: '1px solid #ddd',
-              borderRadius: '4px',
-              cursor: 'text',
-              backgroundColor: 'white',
-              display: 'flex',
-              flexWrap: 'wrap',
-              alignItems: 'center',
-              gap: '4px'
-            }}
-            onClick={() => {
-              setShowDropdown(true);
-              const input = document.getElementById('service-denial-input');
-              input && input.focus();
-            }}
-          >
-            {denialCodes.length > 0 && denialCodes.map(code => (
-              <span
-                key={code}
-                style={{
-                  background: '#e6f3ff',
-                  color: '#007bff',
-                  padding: '2px 6px',
-                  borderRadius: '12px',
-                  fontSize: '12px',
-                  fontWeight: '500',
-                  display: 'flex',
-                  alignItems: 'center',
-                  gap: '6px'
-                }}
-              >
-                {code}
-                <button
-                  type="button"
-                  onClick={(e) => {
-                    e.stopPropagation();
-                    setDenialCodes(denialCodes.filter(c => c !== code));
-                  }}
-                  style={{
-                    background: 'none',
-                    border: 'none',
-                    color: '#007bff',
-                    cursor: 'pointer',
-                    padding: '0',
-                    width: '16px',
-                    height: '16px',
-                    borderRadius: '50%',
-                    display: 'flex',
-                    alignItems: 'center',
-                    justifyContent: 'center',
-                    fontSize: '12px'
-                  }}
-                >
-                  ×
-                </button>
-              </span>
-            ))}
-
-            <input
-              id="service-denial-input"
-              value={searchTerm}
-              onChange={(e) => { setSearchTerm(e.target.value); setShowDropdown(true); }}
-              onKeyDown={(e) => {
-                if (e.key === 'Enter') {
-                  e.preventDefault();
-                  const val = searchTerm.trim();
-                  if (val) {
-                    if (!denialCodes.includes(val)) setDenialCodes([...denialCodes, val]);
-                    setSearchTerm('');
-                    setShowDropdown(false);
-                  }
-                } else if (e.key === 'Backspace' && searchTerm === '') {
-                  // remove last tag
-                  setDenialCodes(denialCodes.slice(0, -1));
-                } else if (e.key === 'ArrowDown') {
-                  const first = document.querySelector('#service-denial-codes-dropdown .option-item');
-                  first && first.focus();
-                }
+        <div className="min-w-0">
+          <label>Denial codes</label>
+          <div className="relative">
+            <div
+              className="min-h-11 w-full rounded-lg border-2 border-slate-300 bg-white px-3 py-2 pr-10 flex flex-wrap items-center gap-2 cursor-text transition focus-within:border-blue-500 focus-within:ring-4 focus-within:ring-blue-100"
+              onClick={() => {
+                setShowDropdown(true);
+                const input = document.getElementById('service-denial-input');
+                input && input.focus();
               }}
-              placeholder={denialCodes.length === 0 ? 'Type to search or add denial codes...' : ''}
-              style={{
-                border: 'none',
-                outline: 'none',
-                flex: 1,
-                minWidth: '120px',
-                fontSize: '14px',
-                padding: '4px 0'
-              }}
-            />
-
-            <svg
-              style={{
-                position: 'absolute',
-                right: '12px',
-                top: '50%',
-                transform: 'translateY(-50%)',
-                width: '16px',
-                height: '16px',
-                pointerEvents: 'none'
-              }}
-              fill="currentColor"
-              viewBox="0 0 20 20"
             >
-              <path fillRule="evenodd" d="M5.293 7.293a1 1 0 011.414 0L10 10.586l3.293-3.293a1 1 0 111.414 1.414l-4 4a1 1 0 01-1.414 0l-4-4a1 1 0 010-1.414z" clipRule="evenodd" />
-            </svg>
-          </div>
-
-          <div
-            id="service-denial-codes-dropdown"
-            style={{
-              display: showDropdown ? 'block' : 'none',
-              position: 'absolute',
-              top: '100%',
-              left: '0',
-              right: '0',
-              backgroundColor: 'white',
-              border: '1px solid #ddd',
-              borderTop: 'none',
-              borderRadius: '0 0 4px 4px',
-              boxShadow: '0 2px 8px rgba(0,0,0,0.1)',
-              zIndex: 1000,
-              maxHeight: '200px',
-              overflowY: 'auto'
-            }}
-          >
-            {denialCodeOptions
-              .filter(code => code.toLowerCase().includes(searchTerm.toLowerCase()))
-              .map(code => (
-                <div
+              {denialCodes.length > 0 && denialCodes.map(code => (
+                <span
                   key={code}
-                  tabIndex={0}
-                  className="option-item"
-                  onClick={() => {
-                    if (denialCodes.includes(code)) {
-                      setDenialCodes(denialCodes.filter(c => c !== code));
-                    } else {
-                      setDenialCodes([...denialCodes, code]);
-                    }
-                    setSearchTerm('');
-                    setShowDropdown(false);
-                  }}
-                  onKeyDown={(e) => {
-                    if (e.key === 'Enter') {
-                      e.preventDefault();
-                      e.target.click();
-                    }
-                  }}
-                  style={{
-                    padding: '8px 12px',
-                    cursor: 'pointer',
-                    backgroundColor: denialCodes.includes(code) ? '#e6f3ff' : 'transparent',
-                    color: denialCodes.includes(code) ? '#007bff' : '#333',
-                    display: 'flex',
-                    alignItems: 'center',
-                    justifyContent: 'space-between',
-                    borderBottom: '1px solid #f0f0f0'
-                  }}
+                  className="inline-flex items-center gap-1 rounded-full bg-blue-50 px-2 py-1 text-xs font-semibold text-blue-700"
                 >
-                  <span>{code}</span>
-                  {denialCodes.includes(code) && (
-                    <svg width="16" height="16" fill="currentColor" viewBox="0 0 20 20">
-                      <path fillRule="evenodd" d="M16.707 5.293a1 1 0 010 1.414l-8 8a1 1 0 01-1.414 0l-4-4a1 1 0 011.414-1.414L8 12.586l7.293-7.293a1 1 0 011.414 0z" clipRule="evenodd" />
-                    </svg>
-                  )}
-                </div>
+                  {code}
+                  <button
+                    type="button"
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      setDenialCodes(denialCodes.filter(c => c !== code));
+                    }}
+                    className="ml-1 inline-flex h-4 w-4 items-center justify-center rounded-full text-blue-700 hover:bg-blue-100"
+                    aria-label={`Remove ${code}`}
+                  >
+                    ×
+                  </button>
+                </span>
               ))}
 
-            {/* allow adding the typed custom value as an option */}
-            {searchTerm.trim() !== '' && !denialCodeOptions.some(c => c.toLowerCase() === searchTerm.trim().toLowerCase()) && (
-              <div
-                onClick={() => {
-                  const val = searchTerm.trim();
-                  if (val) {
-                    setDenialCodes([...denialCodes, val]);
-                    setSearchTerm('');
-                    setShowDropdown(false);
+              <input
+                id="service-denial-input"
+                value={searchTerm}
+                onChange={(e) => { setSearchTerm(e.target.value); setShowDropdown(true); }}
+                onKeyDown={(e) => {
+                  if (e.key === 'Enter') {
+                    e.preventDefault();
+                    const val = searchTerm.trim();
+                    if (val) {
+                      if (!denialCodes.includes(val)) setDenialCodes([...denialCodes, val]);
+                      setSearchTerm('');
+                      setShowDropdown(false);
+                    }
+                  } else if (e.key === 'Backspace' && searchTerm === '') {
+                    // remove last tag
+                    setDenialCodes(denialCodes.slice(0, -1));
+                  } else if (e.key === 'ArrowDown') {
+                    const first = document.querySelector('#service-denial-codes-dropdown .option-item');
+                    first && first.focus();
                   }
                 }}
-                style={{ padding: '8px 12px', cursor: 'pointer', backgroundColor: '#fff8e6' }}
+                placeholder={denialCodes.length === 0 ? 'Type to search or add denial codes…' : ''}
+                className="service-denial-input flex-1 min-w-[160px] border-0 outline-none bg-transparent text-sm"
+              />
+
+              <svg
+                className="absolute right-3 top-1/2 -translate-y-1/2 h-4 w-4 pointer-events-none text-slate-500"
+                fill="currentColor"
+                viewBox="0 0 20 20"
               >
-                Add "{searchTerm}"
-              </div>
-            )}
+                <path
+                  fillRule="evenodd"
+                  d="M5.293 7.293a1 1 0 011.414 0L10 10.586l3.293-3.293a1 1 0 111.414 1.414l-4 4a1 1 0 01-1.414 0l-4-4a1 1 0 010-1.414z"
+                  clipRule="evenodd"
+                />
+              </svg>
+            </div>
+
+            <div
+              id="service-denial-codes-dropdown"
+              className={`absolute left-0 right-0 mt-1 overflow-auto rounded-lg border border-slate-200 bg-white shadow-lg ${showDropdown ? 'block' : 'hidden'}`}
+              style={{ zIndex: 1000, maxHeight: '200px' }}
+            >
+              {denialCodeOptions
+                .filter(code => code.toLowerCase().includes(searchTerm.toLowerCase()))
+                .map(code => (
+                  <div
+                    key={code}
+                    tabIndex={0}
+                    className="option-item flex items-center justify-between px-3 py-2 text-sm cursor-pointer hover:bg-slate-50"
+                    onClick={() => {
+                      if (denialCodes.includes(code)) {
+                        setDenialCodes(denialCodes.filter(c => c !== code));
+                      } else {
+                        setDenialCodes([...denialCodes, code]);
+                      }
+                      setSearchTerm('');
+                      setShowDropdown(false);
+                    }}
+                    onKeyDown={(e) => {
+                      if (e.key === 'Enter') {
+                        e.preventDefault();
+                        e.target.click();
+                      }
+                    }}
+                  >
+                    <span>{code}</span>
+                    {denialCodes.includes(code) && (
+                      <svg width="16" height="16" fill="currentColor" viewBox="0 0 20 20" className="text-blue-600">
+                        <path fillRule="evenodd" d="M16.707 5.293a1 1 0 010 1.414l-8 8a1 1 0 01-1.414 0l-4-4a1 1 0 011.414-1.414L8 12.586l7.293-7.293a1 1 0 011.414 0z" clipRule="evenodd" />
+                      </svg>
+                    )}
+                  </div>
+                ))}
+
+              {/* allow adding the typed custom value as an option */}
+              {searchTerm.trim() !== '' && !denialCodeOptions.some(c => c.toLowerCase() === searchTerm.trim().toLowerCase()) && (
+                <div
+                  onClick={() => {
+                    const val = searchTerm.trim();
+                    if (val) {
+                      setDenialCodes([...denialCodes, val]);
+                      setSearchTerm('');
+                      setShowDropdown(false);
+                    }
+                  }}
+                  className="px-3 py-2 text-sm cursor-pointer bg-amber-50 hover:bg-amber-100"
+                >
+                  Add “{searchTerm.trim()}”
+                </div>
+              )}
+            </div>
           </div>
         </div>
       </div>
 
-      <div className="form-actions flex gap-2 mt-4" style={{ justifyContent: 'space-between' }}>
+      <div className="form-actions flex gap-2 mt-4 pt-3 border-t border-slate-200" style={{ justifyContent: 'space-between' }}>
         {onCancel && (
           <button type="button" className="btn-secondary" onClick={onCancel} disabled={submitting}>
             {submitting ? 'Please wait…' : 'Cancel'}
