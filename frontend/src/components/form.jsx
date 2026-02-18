@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useCallback } from 'react';
-import { formatMMDDYYYY, toISO } from '../utils/dates';
+import { formatMMDDYYYY, toISO, parseToDate } from '../utils/dates';
 
 // Exported helper to create an initial form state (useful for parent components or tests)
 export function formInit() {
@@ -60,7 +60,8 @@ export default function CustomerForm({ onSubmit, services: servicesProp = [], in
       dateOfPayment: '',
       dateSubmitted: '',
       denialCodes: [],
-      isAmountBilledManuallyEdited: false
+      isAmountBilledManuallyEdited: false,
+      isDaysManuallyEdited: false,
     };
     setServices([...services, newService]);
   };
@@ -76,6 +77,14 @@ export default function CustomerForm({ onSubmit, services: servicesProp = [], in
       if (service.id !== serviceId) return service;
       
       const updatedService = { ...service, [field]: value };
+
+      // Track whether Days is user-controlled vs derived from dates.
+      if (field === 'numberOfDays') {
+        updatedService.isDaysManuallyEdited = true;
+      }
+      if (field === 'serviceStartDate' || field === 'serviceEndDate') {
+        updatedService.isDaysManuallyEdited = false;
+      }
       
       // Auto-calculate amount billed when relevant fields change (unless manually edited)
       if (!service.isAmountBilledManuallyEdited) {
@@ -93,13 +102,19 @@ export default function CustomerForm({ onSubmit, services: servicesProp = [], in
               // Auto-calculate days from dates if both dates are present
               if (updatedService.serviceStartDate && updatedService.serviceEndDate && 
                   (field === 'serviceStartDate' || field === 'serviceEndDate')) {
-                const startDate = new Date(updatedService.serviceStartDate);
-                const endDate = new Date(updatedService.serviceEndDate);
-                if (!isNaN(startDate) && !isNaN(endDate) && endDate >= startDate) {
+                const startDate = parseToDate(updatedService.serviceStartDate);
+                const endDate = parseToDate(updatedService.serviceEndDate);
+                if (startDate && endDate && endDate >= startDate) {
                   const msInDay = 24 * 60 * 60 * 1000;
                   const diffDays = Math.floor((endDate - startDate) / msInDay) + 1; // inclusive
-                  updatedService.numberOfDays = String(diffDays);
-                  updatedService.amountBilled = Math.round(diffDays * rate * 100) / 100;
+
+                  if (!updatedService.isDaysManuallyEdited) {
+                    updatedService.numberOfDays = String(diffDays);
+                  }
+                  const effectiveDays = updatedService.isDaysManuallyEdited
+                    ? (parseFloat(updatedService.numberOfDays) || 0)
+                    : diffDays;
+                  updatedService.amountBilled = Math.round(effectiveDays * rate * 100) / 100;
                 }
               } else {
                 const days = parseFloat(updatedService.numberOfDays) || 0;
@@ -165,7 +180,9 @@ export default function CustomerForm({ onSubmit, services: servicesProp = [], in
         dateOfPayment: service.dateOfPayment ? formatMMDDYYYY(service.dateOfPayment) : '',
         dateSubmitted: service.dateSubmitted ? formatMMDDYYYY(service.dateSubmitted) : '',
         denialCodes: service.denialCodes || service.denial_codes || [],
-        isAmountBilledManuallyEdited: true // When editing, preserve the existing amounts
+        // Allow recalculation when user changes dates/days; only lock once they edit Amount Billed in this session.
+        isAmountBilledManuallyEdited: false,
+        isDaysManuallyEdited: String(service.days || service.numberOfDays || '') !== '',
       }));
       setServices(populatedServices);
     } else if (initial.service) {
@@ -183,7 +200,8 @@ export default function CustomerForm({ onSubmit, services: servicesProp = [], in
         dateOfPayment: s.dateOfPayment ? formatMMDDYYYY(s.dateOfPayment) : '',
         dateSubmitted: s.dateSubmitted ? formatMMDDYYYY(s.dateSubmitted) : '',
         denialCodes: s.denialCodes || s.denial_codes || [],
-        isAmountBilledManuallyEdited: true
+        isAmountBilledManuallyEdited: false,
+        isDaysManuallyEdited: String(s.days || s.numberOfDays || '') !== '',
       };
       setServices([singleService]);
     }

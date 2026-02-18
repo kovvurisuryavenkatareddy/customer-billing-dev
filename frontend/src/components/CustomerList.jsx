@@ -1,5 +1,5 @@
 import React, { useMemo, useCallback, useState, useEffect } from 'react';
-import { Table, Button, Dropdown, Typography } from 'antd';
+import { Table, Button, Dropdown, Typography, Space } from 'antd';
 import { EditOutlined, PlusOutlined, EllipsisOutlined } from '@ant-design/icons';
 import { formatMMDDYYYY } from '../utils/dates';
 import CustomerEntryModal from './CustomerEntryModal';
@@ -293,7 +293,7 @@ export default function CustomerList({
     {
       title: 'Actions',
       key: 'actions',
-      width: 72,
+      width: 150,
       fixed: 'right',
       render: (_, record) => {
         const handleEdit = () => {
@@ -324,24 +324,34 @@ export default function CustomerList({
         ];
 
         return (
-          <Dropdown
-            trigger={['click']}
-            menu={{
-              items,
-              onClick: ({ key }) => {
-                if (key === 'edit') handleEdit();
-                if (key === 'add') handleAdd();
-              },
-            }}
-            placement="bottomRight"
-          >
-            <Button
-              size="small"
-              type="text"
-              aria-label="Actions"
-              icon={<EllipsisOutlined />}
-            />
-          </Dropdown>
+          <div className="flex items-center justify-end">
+            {/* Desktop/tablet: show explicit buttons */}
+            <Space size="small" className="hidden md:inline-flex">
+              <Button type="primary" size="small" icon={<EditOutlined />} onClick={handleEdit}>
+                Edit
+              </Button>
+              <Button type="default" size="small" icon={<PlusOutlined />} onClick={handleAdd}>
+                Add
+              </Button>
+            </Space>
+
+            {/* Mobile: compact dropdown */}
+            <div className="md:hidden">
+              <Dropdown
+                trigger={['click']}
+                menu={{
+                  items,
+                  onClick: ({ key }) => {
+                    if (key === 'edit') handleEdit();
+                    if (key === 'add') handleAdd();
+                  },
+                }}
+                placement="bottomRight"
+              >
+                <Button size="small" type="text" aria-label="Actions" icon={<EllipsisOutlined />} />
+              </Dropdown>
+            </div>
+          </div>
         );
       },
     },

@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { formatMMDDYYYY, toISO } from '../utils/dates';
 
 export default function ServiceForm({ services = [], onSubmit, initial = null, onCancel, submitting = false }) {
@@ -16,6 +16,10 @@ export default function ServiceForm({ services = [], onSubmit, initial = null, o
   const [searchTerm, setSearchTerm] = useState('');
   const [showDropdown, setShowDropdown] = useState(false);
   const [isAmountBilledManuallyEdited, setIsAmountBilledManuallyEdited] = useState(false);
+  const [isDaysManuallyEdited, setIsDaysManuallyEdited] = useState(false);
+
+  // Prevent derived-calculation effect from overwriting initial values on first load of `initial`.
+  const skipDerivedOnceRef = useRef(false);
 
   // Denial code options
   const denialCodeOptions = ['D1', 'D2', 'D3', 'D4', 'D5', 'D6', 'D7', 'D8', 'D9', 'D10'];
@@ -35,6 +39,7 @@ export default function ServiceForm({ services = [], onSubmit, initial = null, o
 
   useEffect(() => {
     if (initial) {
+      skipDerivedOnceRef.current = true;
       // Normalize initial service against provided services list
       const rawName = (initial.serviceName || initial.service_name || '').toString();
       const match = Array.isArray(services) ? services.find(x => {
@@ -43,14 +48,29 @@ export default function ServiceForm({ services = [], onSubmit, initial = null, o
       }) : null;
       const svcName = match ? (match.name || match.serviceName || match.service_name) : (initial.serviceName || initial.service_name || '');
       setServiceType(svcName);
-      setDays(initial.days ?? initial.days ?? '');
+
+      const initialDaysRaw = initial.days ?? initial.days ?? '';
+      const initialDaysStr = (initialDaysRaw === null || typeof initialDaysRaw === 'undefined') ? '' : String(initialDaysRaw);
+      setDays(initialDaysStr);
       setRatePerDay(initial.ratePerDay ?? initial.rate_per_day ?? 0);
-      setAmountBilled(initial.amountBilled ?? initial.amount_billed ?? 0);
+
+      const initialAmountBilledRaw = initial.amountBilled ?? initial.amount_billed ?? 0;
+      const initialAmountBilledNum = Number(initialAmountBilledRaw) || 0;
+      setAmountBilled(initialAmountBilledNum);
       setAmountPaid(initial.amountPaid || initial.amount_paid || '');
       if (typeof initial.units !== 'undefined') {
         setUnits(String(initial.units));
       }
-      setIsAmountBilledManuallyEdited(true); // When editing, preserve the existing amount
+      // Editing behavior:
+      // - If days already exists, treat it as an explicit value and do not re-derive it from dates
+      //   unless the user changes the dates (we flip this flag off in the date fields' handlers).
+      // - If amount billed already exists (> 0), preserve it and don't auto-recalc unless user edits days/dates AND hasn't manually edited billed in this session.
+      const hasInitialDays = initialDaysStr !== '' && !Number.isNaN(Number(initialDaysStr));
+      setIsDaysManuallyEdited(hasInitialDays);
+
+      // Allow recalculation when user changes days/dates, but never on initial load (skipDerivedOnceRef).
+      // We only lock recalculation after the user manually edits Amount Billed in this session.
+      setIsAmountBilledManuallyEdited(false);
       const paymentDate = initial.dateOfPayment || initial.date_of_payment || '';
       const svcStartDate = initial.startDate || initial.start_date || '';
       const svcEndDate = initial.endDate || initial.end_date || '';
@@ -64,6 +84,7 @@ export default function ServiceForm({ services = [], onSubmit, initial = null, o
       setDenialCodes(Array.isArray(codes) ? codes : (codes ? [codes] : []));
     } else {
       setIsAmountBilledManuallyEdited(false); // Reset flag for new entries
+      setIsDaysManuallyEdited(false);
     }
   }, [initial]);
 
@@ -73,10 +94,10 @@ export default function ServiceForm({ services = [], onSubmit, initial = null, o
     if (s) {
       const dd = s.default_days ?? s.defaultDays ?? 1;
       // only set days if dates not provided
-      if (!startDate || !endDate) setDays(String(dd));
+      if ((!startDate || !endDate) && !isDaysManuallyEdited) setDays(String(dd));
       setRatePerDay(Number(s.rate_per_day ?? s.ratePerDay ?? 0));
     }
-  }, [serviceType, services, startDate, endDate]);
+  }, [serviceType, services, startDate, endDate, isDaysManuallyEdited]);
 
   // Helper: determine if current service should be treated as units-based (e.g., H0038)
   const isUnitsServiceType = (type) => {
@@ -90,6 +111,11 @@ export default function ServiceForm({ services = [], onSubmit, initial = null, o
 
   // compute derived amount billed from dates/days or units, depending on service type
   useEffect(() => {
+    if (skipDerivedOnceRef.current) {
+      skipDerivedOnceRef.current = false;
+      return;
+    }
+
     if (isUnitsServiceType(serviceType)) {
       if (!isAmountBilledManuallyEdited) {
         const u = parseFloat(units);
@@ -109,14 +135,23 @@ export default function ServiceForm({ services = [], onSubmit, initial = null, o
       if (!isNaN(s) && !isNaN(e) && e >= s) {
         const msInDay = 24 * 60 * 60 * 1000;
         const diffDays = Math.floor((e - s) / msInDay) + 1; // inclusive
-        setDays(String(diffDays));
-        // Recalculate amount billed if it wasn't manually edited
+
+        // If user hasn't overridden Days, keep Days in sync with date range.
+        // If they did override Days, keep their number (e.g., 4 days even if dates span 3).
+        if (!isDaysManuallyEdited) {
+          setDays(String(diffDays));
+        }
+
+        // Amount billed should follow the effective days unless user manually edited Amount Billed.
+        const effectiveDays = isDaysManuallyEdited ? Number(days) : diffDays;
         if (!isAmountBilledManuallyEdited) {
           const r = Number(ratePerDay);
-          if (!isNaN(r)) setAmountBilled(Math.round(diffDays * r * 100) / 100);
+          if (!isNaN(r) && !isNaN(effectiveDays)) {
+            setAmountBilled(Math.round(effectiveDays * r * 100) / 100);
+          }
         }
       } else {
-        setDays('');
+        if (!isDaysManuallyEdited) setDays('');
         if (!isAmountBilledManuallyEdited) {
           setAmountBilled(0);
         }
@@ -129,7 +164,7 @@ export default function ServiceForm({ services = [], onSubmit, initial = null, o
         if (!isNaN(d) && !isNaN(r)) setAmountBilled(Math.round(d * r * 100) / 100);
       }
     }
-  }, [serviceType, units, startDate, endDate, days, ratePerDay, isAmountBilledManuallyEdited]);
+  }, [serviceType, units, startDate, endDate, days, ratePerDay, isAmountBilledManuallyEdited, isDaysManuallyEdited]);
 
   const handleSubmit = (e) => {
     e.preventDefault();
@@ -242,8 +277,23 @@ export default function ServiceForm({ services = [], onSubmit, initial = null, o
 
         {!isUnitsServiceType(serviceType) && (
           <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-            <DateField label="Start date" value={startDate} onChange={(e) => setStartDate(e.target.value)} />
-            <DateField label="End date" value={endDate} onChange={(e) => setEndDate(e.target.value)} />
+            <DateField
+              label="Start date"
+              value={startDate}
+              onChange={(e) => {
+                // Changing dates should re-enable date-driven days calculation unless user overrides again.
+                setIsDaysManuallyEdited(false);
+                setStartDate(e.target.value);
+              }}
+            />
+            <DateField
+              label="End date"
+              value={endDate}
+              onChange={(e) => {
+                setIsDaysManuallyEdited(false);
+                setEndDate(e.target.value);
+              }}
+            />
           </div>
         )}
 
@@ -257,6 +307,7 @@ export default function ServiceForm({ services = [], onSubmit, initial = null, o
                 step="1"
                 value={days}
                 onChange={(e) => {
+                  setIsDaysManuallyEdited(true);
                   setDays(e.target.value);
                   // Recalculate amount billed when days change (unless amount was manually edited)
                   if (!isAmountBilledManuallyEdited) {
