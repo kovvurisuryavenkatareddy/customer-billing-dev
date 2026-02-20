@@ -55,6 +55,7 @@ export default function CustomerForm({ onSubmit, services: servicesProp = [], in
       serviceEndDate: '',
       numberOfDays: '',
       units: '',
+      ratePerDay: 0,
       amountBilled: 0,
       amountPaid: '',
       dateOfPayment: '',
@@ -78,6 +79,10 @@ export default function CustomerForm({ onSubmit, services: servicesProp = [], in
       
       const updatedService = { ...service, [field]: value };
 
+      // When service type changes, set rate per day from catalog
+      if (field === 'serviceType') {
+        updatedService.ratePerDay = getRateForService(value);
+      }
       // Track whether Days is user-controlled vs derived from dates.
       if (field === 'numberOfDays') {
         updatedService.isDaysManuallyEdited = true;
@@ -91,7 +96,7 @@ export default function CustomerForm({ onSubmit, services: servicesProp = [], in
         if (field === 'serviceType' || field === 'numberOfDays' || field === 'units' ||
             field === 'serviceStartDate' || field === 'serviceEndDate') {
           
-          const rate = getRateForService(updatedService.serviceType);
+          const rate = Number(updatedService.ratePerDay) || getRateForService(updatedService.serviceType);
           if (rate && rate > 0) {
             if (isUnitsServiceType(updatedService.serviceType)) {
               const units = parseFloat(updatedService.units) || 0;
@@ -141,10 +146,10 @@ export default function CustomerForm({ onSubmit, services: servicesProp = [], in
   const totalAmountPaid = services.reduce((sum, service) => sum + parseFloat(service.amountPaid || 0), 0);
   const totalDue = totalAmountBilled - totalAmountPaid;
 
-  // Initialize with one service row when creating a new submission.
+  // Initialize with one service row only when adding services for an existing customer.
+  // When adding a new customer (!initial && !hideCustomerFields), services are optional — start with none.
   useEffect(() => {
-    // When adding services for an existing customer (`hideCustomerFields`), we still need at least one service row.
-    if (services.length === 0 && (!initial || hideCustomerFields)) {
+    if (services.length === 0 && hideCustomerFields) {
       addService();
     }
   }, []);
@@ -168,38 +173,43 @@ export default function CustomerForm({ onSubmit, services: servicesProp = [], in
     // IMPORTANT: when `hideCustomerFields` is true (Add Services flow), `initial.services` may be an empty array.
     // In that case, don't overwrite the default empty row created by the init effect.
     if (initial.services && Array.isArray(initial.services) && initial.services.length > 0) {
-      const populatedServices = initial.services.map((service, index) => ({
-        id: Date.now() + index,
-        serviceType: service.serviceName || service.service_name || '',
-        serviceStartDate: formatMMDDYYYY(service.startDate || service.start_date || '') || '',
-        serviceEndDate: formatMMDDYYYY(service.endDate || service.end_date || '') || '',
-        numberOfDays: String(service.days || service.numberOfDays || ''),
-        units: String(service.units || ''),
-        amountBilled: service.amountBilled || service.amount_billed || 0,
-        amountPaid: String(service.amountPaid || service.amount_paid || ''),
-        dateOfPayment: service.dateOfPayment ? formatMMDDYYYY(service.dateOfPayment) : '',
-        dateSubmitted: service.dateSubmitted ? formatMMDDYYYY(service.dateSubmitted) : '',
-        denialCodes: service.denialCodes || service.denial_codes || [],
-        // Allow recalculation when user changes dates/days; only lock once they edit Amount Billed in this session.
-        isAmountBilledManuallyEdited: false,
-        isDaysManuallyEdited: String(service.days || service.numberOfDays || '') !== '',
-      }));
+      const populatedServices = initial.services.map((service, index) => {
+        const svcType = service.serviceName || service.service_name || '';
+        return {
+          id: service.id != null ? service.id : Date.now() + index,
+          serviceType: svcType,
+          serviceStartDate: formatMMDDYYYY(service.startDate || service.start_date || '') || '',
+          serviceEndDate: formatMMDDYYYY(service.endDate || service.end_date || '') || '',
+          numberOfDays: String(service.days ?? service.numberOfDays ?? ''),
+          units: String(service.units ?? ''),
+          ratePerDay: Number(service.ratePerDay ?? service.rate_per_day ?? 0) || getRateForService(svcType),
+          amountBilled: service.amountBilled || service.amount_billed || 0,
+          amountPaid: String(service.amountPaid ?? service.amount_paid ?? ''),
+          dateOfPayment: service.dateOfPayment ? formatMMDDYYYY(service.dateOfPayment) : (service.dateOfPaymentRaw ? formatMMDDYYYY(service.dateOfPaymentRaw) : ''),
+          dateSubmitted: service.dateSubmitted ? formatMMDDYYYY(service.dateSubmitted) : (service.dateSubmittedRaw ? formatMMDDYYYY(service.dateSubmittedRaw) : ''),
+          denialCodes: Array.isArray(service.denialCodes) ? service.denialCodes : (Array.isArray(service.denial_codes) ? service.denial_codes : (service.denial_codes ? [service.denial_codes] : [])),
+          isAmountBilledManuallyEdited: false,
+          isDaysManuallyEdited: String(service.days ?? service.numberOfDays ?? '') !== '',
+        };
+      });
       setServices(populatedServices);
     } else if (initial.service) {
       // Handle single service from old format
       const s = initial.service;
+      const svcType = s.serviceName || s.service_name || s.service || '';
       const singleService = {
-        id: Date.now(),
-        serviceType: s.serviceName || s.service_name || s.service || '',
+        id: s.id != null ? s.id : Date.now(),
+        serviceType: svcType,
         serviceStartDate: formatMMDDYYYY(s.startDate || s.start_date || '') || '',
         serviceEndDate: formatMMDDYYYY(s.endDate || s.end_date || '') || '',
-        numberOfDays: String(s.days || s.numberOfDays || ''),
-        units: String(s.units || ''),
+        numberOfDays: String(s.days ?? s.numberOfDays ?? ''),
+        units: String(s.units ?? ''),
+        ratePerDay: Number(s.ratePerDay ?? s.rate_per_day ?? 0) || getRateForService(svcType),
         amountBilled: s.amountBilled || s.amount_billed || 0,
-        amountPaid: String(s.amountPaid || s.amount_paid || ''),
+        amountPaid: String(s.amountPaid ?? s.amount_paid ?? ''),
         dateOfPayment: s.dateOfPayment ? formatMMDDYYYY(s.dateOfPayment) : '',
         dateSubmitted: s.dateSubmitted ? formatMMDDYYYY(s.dateSubmitted) : '',
-        denialCodes: s.denialCodes || s.denial_codes || [],
+        denialCodes: Array.isArray(s.denialCodes) ? s.denialCodes : (Array.isArray(s.denial_codes) ? s.denial_codes : []),
         isAmountBilledManuallyEdited: false,
         isDaysManuallyEdited: String(s.days || s.numberOfDays || '') !== '',
       };
@@ -250,6 +260,9 @@ export default function CustomerForm({ onSubmit, services: servicesProp = [], in
     (initial.service || (Array.isArray(initial.services) && initial.services.length > 0) || initial.customer || initial.firstName || initial.first_name)
   );
 
+  /** Edit batch: editing existing batch (has services), do not show "+ Add Service" */
+  const isEditBatch = Boolean(hideCustomerFields && initial?.services && Array.isArray(initial.services) && initial.services.length > 0);
+
   // Basic validation
   const validate = () => {
     const errs = [];
@@ -260,11 +273,12 @@ export default function CustomerForm({ onSubmit, services: servicesProp = [], in
       if (!firstName.trim()) errs.push('First name is required');
     }
     
-    // Validate services
-    if (services.length === 0) {
+    // Require at least one service only when adding services for an existing customer (hideCustomerFields).
+    // When adding a new customer, services are optional.
+    if (services.length === 0 && hideCustomerFields) {
       errs.push('At least one service is required');
     }
-    
+
     services.forEach((service, index) => {
       const servicePrefix = services.length > 1 ? `Service ${index + 1}: ` : '';
       
@@ -341,7 +355,7 @@ export default function CustomerForm({ onSubmit, services: servicesProp = [], in
       serviceName: service.serviceType,
       days: Number(service.numberOfDays) || 0,
       units: isUnitsServiceType(service.serviceType) ? Number(service.units) || 0 : undefined,
-      ratePerDay: getRateForService(service.serviceType),
+      ratePerDay: (service.ratePerDay != null && service.ratePerDay !== '') ? Number(service.ratePerDay) : getRateForService(service.serviceType),
       amountBilled: service.amountBilled || 0,
       amountPaid: service.amountPaid === '' ? 0 : Number(service.amountPaid),
       dateOfPayment: service.dateOfPayment ? toISO(service.dateOfPayment) : null,
@@ -484,7 +498,7 @@ export default function CustomerForm({ onSubmit, services: servicesProp = [], in
               <div className="text-xs text-slate-500">Billing line items for this participant.</div>
             </div>
 
-            {!isEditing ? (
+            {!isEditing && !isEditBatch ? (
               <button
                 type="button"
                 onClick={addService}
@@ -492,14 +506,14 @@ export default function CustomerForm({ onSubmit, services: servicesProp = [], in
               >
                 + Add Service
               </button>
-            ) : (
+            ) : isEditing ? (
               <span
                 className="inline-flex items-center rounded-md border border-blue-200 bg-blue-50 px-3 py-2 text-xs font-semibold text-blue-800"
                 title="You are editing an existing service entry"
               >
                 Editing existing service
               </span>
-            )}
+            ) : null}
           </div>
 
           {services.map((service, index) => (
@@ -509,7 +523,8 @@ export default function CustomerForm({ onSubmit, services: servicesProp = [], in
             >
               <div className="flex items-center justify-between gap-3 mb-3">
                 <div className="text-sm font-semibold text-slate-900">Service {index + 1}</div>
-                {services.length > 1 && (
+                {/* In add-customer flow services are optional: allow removing the only row. When adding services for existing customer, require at least one. */}
+                {(services.length > 1 || (!hideCustomerFields && !isEditing && !isEditBatch)) && (
                   <button
                     type="button"
                     onClick={() => removeService(service.id)}
@@ -547,89 +562,104 @@ export default function CustomerForm({ onSubmit, services: servicesProp = [], in
                 </select>
               </div>
 
-              {/* Service dates/units based on service type */}
-              {service.serviceType && !isUnitsServiceType(service.serviceType) ? (
-                <>
-                  <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mb-5">
-                    <div className="min-w-0">
-                      <label>Start date <span style={{ color: '#c0392b' }}>*</span></label>
-                      <div className="relative">
-                        <input
-                          type="text"
-                          placeholder="MM-DD-YYYY"
-                          value={service.serviceStartDate}
-                          onChange={(e) => updateService(service.id, 'serviceStartDate', e.target.value)}
-                          required
-                          className="pr-10"
-                        />
-                        <input
-                          type="date"
-                          className="absolute right-0 top-0 bottom-0 w-10 opacity-0 cursor-pointer z-[2]"
-                          onChange={(e) => {
-                            if (e.target.value) {
-                              updateService(service.id, 'serviceStartDate', formatMMDDYYYY(e.target.value));
-                            }
-                          }}
-                          onFocus={(e) => e.target.showPicker && e.target.showPicker()}
-                        />
-                        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg" className="absolute right-3 top-1/2 -translate-y-1/2 pointer-events-none text-blue-600">
-                          <rect x="3" y="4" width="18" height="18" rx="2" stroke="currentColor" strokeWidth="2" fill="none" />
-                          <line x1="16" y1="2" x2="16" y2="6" stroke="currentColor" strokeWidth="2" strokeLinecap="round" />
-                          <line x1="8" y1="2" x2="8" y2="6" stroke="currentColor" strokeWidth="2" strokeLinecap="round" />
-                          <line x1="3" y1="10" x2="21" y2="10" stroke="currentColor" strokeWidth="2" />
-                          <rect x="7" y="14" width="2" height="2" fill="currentColor" />
-                          <rect x="11" y="14" width="2" height="2" fill="currentColor" />
-                          <rect x="15" y="14" width="2" height="2" fill="currentColor" />
-                        </svg>
-                      </div>
+              {/* Start date, End date: show for day-based or when no type selected (Add flow) */}
+              {(!service.serviceType || !isUnitsServiceType(service.serviceType)) ? (
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mb-5">
+                  <div className="min-w-0">
+                    <label>Start date <span style={{ color: '#c0392b' }}>*</span></label>
+                    <div className="relative">
+                      <input
+                        type="text"
+                        placeholder="MM-DD-YYYY"
+                        value={service.serviceStartDate}
+                        onChange={(e) => updateService(service.id, 'serviceStartDate', e.target.value)}
+                        required={!isUnitsServiceType(service.serviceType)}
+                        className="pr-10"
+                      />
+                      <input
+                        type="date"
+                        className="absolute right-0 top-0 bottom-0 w-10 opacity-0 cursor-pointer z-[2]"
+                        onChange={(e) => {
+                          if (e.target.value) {
+                            updateService(service.id, 'serviceStartDate', formatMMDDYYYY(e.target.value));
+                          }
+                        }}
+                        onFocus={(e) => e.target.showPicker && e.target.showPicker()}
+                      />
+                      <svg width="18" height="18" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg" className="absolute right-3 top-1/2 -translate-y-1/2 pointer-events-none text-blue-600">
+                        <rect x="3" y="4" width="18" height="18" rx="2" stroke="currentColor" strokeWidth="2" fill="none" />
+                        <line x1="16" y1="2" x2="16" y2="6" stroke="currentColor" strokeWidth="2" strokeLinecap="round" />
+                        <line x1="8" y1="2" x2="8" y2="6" stroke="currentColor" strokeWidth="2" strokeLinecap="round" />
+                        <line x1="3" y1="10" x2="21" y2="10" stroke="currentColor" strokeWidth="2" />
+                        <rect x="7" y="14" width="2" height="2" fill="currentColor" />
+                        <rect x="11" y="14" width="2" height="2" fill="currentColor" />
+                        <rect x="15" y="14" width="2" height="2" fill="currentColor" />
+                      </svg>
                     </div>
+                  </div>
+                  <div className="min-w-0">
+                    <label>End date <span style={{ color: '#c0392b' }}>*</span></label>
+                    <div className="relative">
+                      <input
+                        type="text"
+                        placeholder="MM-DD-YYYY"
+                        value={service.serviceEndDate}
+                        onChange={(e) => updateService(service.id, 'serviceEndDate', e.target.value)}
+                        required={!isUnitsServiceType(service.serviceType)}
+                        className="pr-10"
+                      />
+                      <input
+                        type="date"
+                        className="absolute right-0 top-0 bottom-0 w-10 opacity-0 cursor-pointer z-[2]"
+                        onChange={(e) => {
+                          if (e.target.value) {
+                            updateService(service.id, 'serviceEndDate', formatMMDDYYYY(e.target.value));
+                          }
+                        }}
+                        onFocus={(e) => e.target.showPicker && e.target.showPicker()}
+                      />
+                      <svg width="18" height="18" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg" className="absolute right-3 top-1/2 -translate-y-1/2 pointer-events-none text-blue-600">
+                        <rect x="3" y="4" width="18" height="18" rx="2" stroke="currentColor" strokeWidth="2" fill="none" />
+                        <line x1="16" y1="2" x2="16" y2="6" stroke="currentColor" strokeWidth="2" strokeLinecap="round" />
+                        <line x1="8" y1="2" x2="8" y2="6" stroke="currentColor" strokeWidth="2" strokeLinecap="round" />
+                        <line x1="3" y1="10" x2="21" y2="10" stroke="currentColor" strokeWidth="2" />
+                        <rect x="7" y="14" width="2" height="2" fill="currentColor" />
+                        <rect x="11" y="14" width="2" height="2" fill="currentColor" />
+                        <rect x="15" y="14" width="2" height="2" fill="currentColor" />
+                      </svg>
+                    </div>
+                  </div>
+                </div>
+              ) : null}
 
-                    <div className="min-w-0">
-                      <label>End date <span style={{ color: '#c0392b' }}>*</span></label>
-                      <div className="relative">
-                        <input
-                          type="text"
-                          placeholder="MM-DD-YYYY"
-                          value={service.serviceEndDate}
-                          onChange={(e) => updateService(service.id, 'serviceEndDate', e.target.value)}
-                          required
-                          className="pr-10"
-                        />
-                        <input
-                          type="date"
-                          className="absolute right-0 top-0 bottom-0 w-10 opacity-0 cursor-pointer z-[2]"
-                          onChange={(e) => {
-                            if (e.target.value) {
-                              updateService(service.id, 'serviceEndDate', formatMMDDYYYY(e.target.value));
-                            }
-                          }}
-                          onFocus={(e) => e.target.showPicker && e.target.showPicker()}
-                        />
-                        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg" className="absolute right-3 top-1/2 -translate-y-1/2 pointer-events-none text-blue-600">
-                          <rect x="3" y="4" width="18" height="18" rx="2" stroke="currentColor" strokeWidth="2" fill="none" />
-                          <line x1="16" y1="2" x2="16" y2="6" stroke="currentColor" strokeWidth="2" strokeLinecap="round" />
-                          <line x1="8" y1="2" x2="8" y2="6" stroke="currentColor" strokeWidth="2" strokeLinecap="round" />
-                          <line x1="3" y1="10" x2="21" y2="10" stroke="currentColor" strokeWidth="2" />
-                          <rect x="7" y="14" width="2" height="2" fill="currentColor" />
-                          <rect x="11" y1="14" width="2" height="2" fill="currentColor" />
-                          <rect x="15" y1="14" width="2" height="2" fill="currentColor" />
-                        </svg>
-                      </div>
-                    </div>
-                  </div>
-                  {/* Number of days in its own row below */}
-                  <div className="grid grid-cols-1 gap-2 mb-5">
-                    <label>Number of days</label>
-                    <input
-                      type="number"
-                      min="0"
-                      step="1"
-                      value={service.numberOfDays}
-                      onChange={(e) => updateService(service.id, 'numberOfDays', e.target.value)}
-                    />
-                  </div>
-                </>
-              ) : service.serviceType && isUnitsServiceType(service.serviceType) ? (
+              {/* Number of days, Rate per day: after dates */}
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mb-5">
+                <div className="min-w-0">
+                  <label>Number of days</label>
+                  <input
+                    type="number"
+                    min="0"
+                    step="1"
+                    value={service.numberOfDays ?? ''}
+                    onChange={(e) => updateService(service.id, 'numberOfDays', e.target.value)}
+                    placeholder="Days"
+                  />
+                </div>
+                <div className="min-w-0">
+                  <label>Rate per day ($)</label>
+                  <input
+                    type="number"
+                    min="0"
+                    step="0.01"
+                    value={service.ratePerDay ?? ''}
+                    onChange={(e) => updateService(service.id, 'ratePerDay', e.target.value === '' ? '' : parseFloat(e.target.value) || 0)}
+                    placeholder="From service type or enter manually"
+                  />
+                </div>
+              </div>
+
+              {/* Units: only when service type is units-based */}
+              {service.serviceType && isUnitsServiceType(service.serviceType) ? (
                 <div className="grid grid-cols-1 gap-2 mb-5">
                   <label>Number of units <span style={{ color: '#c0392b' }}>*</span></label>
                   <input

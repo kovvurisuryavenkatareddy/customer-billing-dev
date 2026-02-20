@@ -6,6 +6,7 @@ from datetime import datetime, timedelta
 from typing import Optional
 import hashlib
 import jwt
+import os
 import secrets
 
 # Import DB helper
@@ -18,8 +19,9 @@ router = APIRouter()
 # OAuth2 password flow (used by Swagger UI to prompt username/password)
 oauth2_scheme = OAuth2PasswordBearer(tokenUrl="/auth/token")
 
-# JWT Configuration
-SECRET_KEY = secrets.token_urlsafe(32)  # In production, use environment variable
+# JWT Configuration: use a stable key from env so tokens survive server restarts.
+# If not set, fall back to a fixed dev default (do not use random per-process in production).
+SECRET_KEY = os.environ.get("JWT_SECRET_KEY") or os.environ.get("SECRET_KEY") or "xf4eUpmuXWQYm3bS4yDW7TcQFAEDmctJSV7gziw21qw"
 ALGORITHM = "HS256"
 ACCESS_TOKEN_EXPIRE_MINUTES = 60 * 24  # 24 hours
 

@@ -12,6 +12,7 @@ export default function AddCustomerPage({ onNavigate }) {
   const [services, setServices] = useState([]);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
+  const [formKey, setFormKey] = useState(0);
   const navigate = useNavigate();
 
   useEffect(() => {
@@ -35,14 +36,15 @@ export default function AddCustomerPage({ onNavigate }) {
     const toastKey = 'add-customer';
     try {
       setSaving(true);
-      window.showToast?.({ key: toastKey, type: 'loading', message: 'Creating customer…', duration: 0 });
+      window.showToast?.({ key: toastKey, type: 'loading', message: 'Adding customer…', duration: 0 });
       const res = await fetch(`${API_BASE}/customers/`, {
         method: 'POST',
         headers: getAuthHeaders(),
         body: JSON.stringify(payload),
       });
       if (!res.ok) throw new Error('Failed to create');
-      window.showToast?.({ key: toastKey, message: 'Customer created', type: 'success' });
+      window.showToast?.({ key: toastKey, message: 'Customer added successfully.', type: 'success' });
+      setFormKey((k) => k + 1);
       if (onNavigate) onNavigate('home');
       else navigate('/');
     } catch (err) {
@@ -92,7 +94,7 @@ export default function AddCustomerPage({ onNavigate }) {
             <Spin size="large" tip="Loading services..." />
           </div>
         ) : (
-          <CustomerForm onSubmit={handleSubmit} services={services} submitting={saving} />
+          <CustomerForm key={formKey} onSubmit={handleSubmit} services={services} submitting={saving} />
         )}
       </Card>
     </div>

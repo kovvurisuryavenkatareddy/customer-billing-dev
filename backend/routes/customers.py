@@ -1,11 +1,12 @@
 from fastapi import APIRouter, HTTPException, Query, Depends
-from typing import Optional, List
+from typing import Optional, List, Any
 from pydantic import BaseModel
 from datetime import datetime
 import logging
 import csv
 import os
 import json
+import uuid
 
 # module logger
 logger = logging.getLogger(__name__)
@@ -109,6 +110,17 @@ class ResubmissionPayload(BaseModel):
     originalEntryId: int
     service: Optional[ServiceModel] = None
 
+
+class BatchCreatePayload(BaseModel):
+    """Create a new batch: N rows with same batch_id (UUID)."""
+    services: List[ServiceModel]
+
+
+class BatchUpdatePayload(BaseModel):
+    """Update only entries in this batch (by id)."""
+    services: List[dict]  # each may have id, serviceName, days, ratePerDay, etc.
+
+
 def ensure_customers_table():
     conn = get_db_connection()
     cur = conn.cursor()
@@ -130,7 +142,8 @@ def ensure_customers_table():
         )
         '''
     )
-    # Customer entries/submissions table for service records
+    # Customer entries/submissions table for service records.
+    # batch_id (UUID string): groups rows added in one save; one batch edited independently.
     cur.execute(
         '''
         CREATE TABLE IF NOT EXISTS customer_entries (
@@ -151,6 +164,7 @@ def ensure_customers_table():
             original_entry_id INTEGER REFERENCES customer_entries(id),
             resubmission_date TEXT,
             billing_comments TEXT,
+            batch_id TEXT,
             created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
             updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
         )
@@ -244,6 +258,23 @@ def ensure_customer_services_columns():
         conn.close()
 
 
+def ensure_customer_entries_columns():
+    """Add batch_id to customer_entries if missing (for batch-based add/edit)."""
+    conn = get_db_connection()
+    cur = conn.cursor()
+    try:
+        cur.execute("SELECT column_name FROM information_schema.columns WHERE table_name = 'customer_entries'")
+        existing = {row['column_name'] for row in cur.fetchall()}
+        if 'batch_id' not in existing:
+            cur.execute("ALTER TABLE customer_entries ADD COLUMN batch_id TEXT")
+            logger.info("Added batch_id to customer_entries")
+            conn.commit()
+    except Exception as e:
+        logger.debug("ensure_customer_entries_columns: %s", e)
+    finally:
+        conn.close()
+
+
 def ensure_all_tables():
     """
     Ensures all required tables exist. Call this before any database operation
@@ -254,6 +285,7 @@ def ensure_all_tables():
         ensure_customer_services_table()
         ensure_customer_services_columns()
         ensure_customers_columns()
+        ensure_customer_entries_columns()
     except Exception as e:
         logger.error(f"Error ensuring tables: {e}")
         import traceback; traceback.print_exc()
@@ -365,8 +397,9 @@ def create_customer(payload: CreateCustomerPayload, current_user: dict = Depends
             )
             customer_id = cur.fetchone()['id']
 
-        # Create entries for all services
+        # Create entries for all services (one batch_id per create)
         if services_list:
+            create_batch_id = str(uuid.uuid4())
             for service in services_list:
                 # Convert denial codes to JSON string if it's a list
                 denial_codes = service.get('denialCodes')
@@ -378,8 +411,8 @@ def create_customer(payload: CreateCustomerPayload, current_user: dict = Depends
                 cur.execute(
                     '''INSERT INTO customer_entries 
                        (customer_id, customer_code, service_name, start_date, end_date, days, rate_per_day, 
-                        amount_billed, amount_paid, date_of_payment, date_submitted, denial_codes, billing_comments) 
-                       VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?) RETURNING id''',
+                        amount_billed, amount_paid, date_of_payment, date_submitted, denial_codes, billing_comments, batch_id) 
+                       VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?) RETURNING id''',
                     (
                         customer_id,
                         customer_code,
@@ -394,6 +427,7 @@ def create_customer(payload: CreateCustomerPayload, current_user: dict = Depends
                         service.get('dateSubmitted'),
                         denial_codes,
                         customer.get('comments'),
+                        create_batch_id,
                     )
                 )
                 entry_id = cur.fetchone()['id']
@@ -1228,6 +1262,211 @@ def get_customer_entries(customer_id: int, current_user: dict = Depends(get_curr
         conn.close()
 
 
+# ---------- Batch-based Add/Edit (customer_entries.batch_id) ----------
+
+@router.get("/{customer_id}/batches")
+def list_customer_batches(customer_id: int, current_user: dict = Depends(get_current_user)):
+    """List batches for a customer. Each batch has one batch_id and N entries. Legacy rows (no batch_id) appear as one batch per row."""
+    ensure_all_tables()
+    conn = get_db_connection()
+    cur = conn.cursor()
+    try:
+        cur.execute('SELECT id FROM customers WHERE id = ?', (customer_id,))
+        if not cur.fetchone():
+            raise HTTPException(status_code=404, detail='customer not found')
+        cur.execute(
+            'SELECT id, batch_id, created_at FROM customer_entries WHERE customer_id = ? ORDER BY created_at',
+            (customer_id,)
+        )
+        rows = cur.fetchall()
+        # Group by batch_id; NULL batch_id => one batch per row (legacy) with synthetic id
+        batches_map = {}
+        for r in rows:
+            bid = r.get('batch_id') if isinstance(r, dict) else r['batch_id']
+            if bid is None or bid == '':
+                bid = f"legacy-{r.get('id') if isinstance(r, dict) else r['id']}"
+            created = r.get('created_at') if isinstance(r, dict) else r['created_at']
+            entry_id = r.get('id') if isinstance(r, dict) else r['id']
+            if bid not in batches_map:
+                batches_map[bid] = {'batch_id': bid, 'entry_count': 0, 'created_at': created, 'entry_ids': []}
+            batches_map[bid]['entry_count'] += 1
+            batches_map[bid]['entry_ids'].append(entry_id)
+        return {'batches': list(batches_map.values())}
+    finally:
+        conn.close()
+
+
+@router.get("/{customer_id}/batches/{batch_id}/entries")
+def get_batch_entries(customer_id: int, batch_id: str, current_user: dict = Depends(get_current_user)):
+    """Fetch only entries for this batch. Edit form uses this (do not fetch all services)."""
+    ensure_all_tables()
+    conn = get_db_connection()
+    cur = conn.cursor()
+    try:
+        cur.execute('SELECT id FROM customers WHERE id = ?', (customer_id,))
+        if not cur.fetchone():
+            raise HTTPException(status_code=404, detail='customer not found')
+        if batch_id.startswith('legacy-'):
+            try:
+                entry_id = int(batch_id.replace('legacy-', '', 1))
+            except ValueError:
+                raise HTTPException(status_code=404, detail='invalid batch_id')
+            cur.execute('SELECT * FROM customer_entries WHERE id = ? AND customer_id = ?', (entry_id, customer_id))
+        else:
+            cur.execute(
+                'SELECT * FROM customer_entries WHERE customer_id = ? AND batch_id = ? ORDER BY id',
+                (customer_id, batch_id)
+            )
+        rows = cur.fetchall()
+        entries_list = []
+        for entry in rows:
+            d = dict(entry)
+            if d.get('denial_codes'):
+                d['denial_codes'] = d['denial_codes'].split(',')
+            else:
+                d['denial_codes'] = []
+            entries_list.append(d)
+        return {'batch_id': batch_id, 'customer_id': customer_id, 'entries': entries_list}
+    finally:
+        conn.close()
+
+
+@router.post("/{customer_id}/batches", status_code=201)
+def create_batch(customer_id: int, payload: BatchCreatePayload, current_user: dict = Depends(get_current_user)):
+    """Add N services as one batch: one batch_id (UUID), N rows. Never combine with other batches."""
+    ensure_all_tables()
+    data = payload.dict() if hasattr(payload, 'dict') else (payload or {})
+    services_list = data.get('services') or []
+    if not services_list:
+        raise HTTPException(status_code=400, detail='at least one service required')
+    batch_id = str(uuid.uuid4())
+    conn = get_db_connection()
+    cur = conn.cursor()
+    try:
+        cur.execute('SELECT id, customer_code FROM customers WHERE id = ?', (customer_id,))
+        row = cur.fetchone()
+        if not row:
+            raise HTTPException(status_code=404, detail='customer not found')
+        customer_code = row.get('customer_code') if isinstance(row, dict) else row['customer_code'] or ''
+        entry_ids = []
+        for svc in services_list:
+            denial_codes_val = svc.get('denialCodes') if isinstance(svc, dict) else None
+            if isinstance(denial_codes_val, list):
+                denial_codes_val = ','.join(denial_codes_val) if denial_codes_val else None
+            elif denial_codes_val in ('null', '', None):
+                denial_codes_val = None
+            cur.execute(
+                '''INSERT INTO customer_entries
+                   (customer_id, customer_code, service_name, start_date, end_date, days, rate_per_day,
+                    amount_billed, amount_paid, date_of_payment, date_submitted, denial_codes, batch_id)
+                   VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?) RETURNING id''',
+                (
+                    customer_id,
+                    customer_code,
+                    svc.get('serviceName'),
+                    svc.get('startDate') or svc.get('start_date'),
+                    svc.get('endDate') or svc.get('end_date'),
+                    svc.get('days'),
+                    svc.get('ratePerDay'),
+                    svc.get('amountBilled'),
+                    svc.get('amountPaid', 0),
+                    svc.get('dateOfPayment'),
+                    svc.get('dateSubmitted'),
+                    denial_codes_val,
+                    batch_id,
+                )
+            )
+            entry_ids.append(cur.fetchone()['id'])
+        conn.commit()
+        return {'batch_id': batch_id, 'customer_id': customer_id, 'entry_ids': entry_ids, 'entry_count': len(entry_ids)}
+    except HTTPException:
+        raise
+    except Exception as e:
+        conn.rollback()
+        logger.exception("create_batch failed")
+        raise HTTPException(status_code=500, detail=str(e))
+    finally:
+        conn.close()
+
+
+@router.put("/{customer_id}/batches/{batch_id}")
+def update_batch(customer_id: int, batch_id: str, payload: BatchUpdatePayload, current_user: dict = Depends(get_current_user)):
+    """Update only entries in this batch (by id). Do not touch other batches."""
+    ensure_all_tables()
+    data = payload.dict() if hasattr(payload, 'dict') else (payload or {})
+    services_list = data.get('services') or []
+    if not services_list:
+        raise HTTPException(status_code=400, detail='at least one service required')
+    conn = get_db_connection()
+    cur = conn.cursor()
+    try:
+        cur.execute('SELECT id FROM customers WHERE id = ?', (customer_id,))
+        if not cur.fetchone():
+            raise HTTPException(status_code=404, detail='customer not found')
+        if batch_id.startswith('legacy-'):
+            try:
+                entry_id = int(batch_id.replace('legacy-', '', 1))
+            except ValueError:
+                raise HTTPException(status_code=404, detail='invalid batch_id')
+            allowed_ids = [entry_id]
+            cur.execute('SELECT id FROM customer_entries WHERE id = ? AND customer_id = ?', (entry_id, customer_id))
+            if not cur.fetchone():
+                raise HTTPException(status_code=404, detail='batch not found')
+        else:
+            cur.execute(
+                'SELECT id FROM customer_entries WHERE customer_id = ? AND batch_id = ? ORDER BY id',
+                (customer_id, batch_id)
+            )
+            allowed_ids = [r['id'] for r in cur.fetchall()]
+            if not allowed_ids:
+                raise HTTPException(status_code=404, detail='batch not found')
+        # Map payload services by id; update only allowed ids
+        for svc in services_list:
+            sid = svc.get('id') or svc.get('entryId') or svc.get('entry_id')
+            if sid is None:
+                continue
+            sid = int(sid)
+            if sid not in allowed_ids:
+                logger.warning("update_batch: skipping id %s not in batch", sid)
+                continue
+            denial_codes_val = svc.get('denialCodes')
+            if isinstance(denial_codes_val, list):
+                denial_codes_val = ','.join(denial_codes_val) if denial_codes_val else None
+            elif denial_codes_val in ('null', '', None):
+                denial_codes_val = None
+            cur.execute(
+                '''UPDATE customer_entries SET
+                   service_name = ?, start_date = ?, end_date = ?, days = ?, rate_per_day = ?,
+                   amount_billed = ?, amount_paid = ?, date_of_payment = ?, date_submitted = ?, denial_codes = ?,
+                   updated_at = CURRENT_TIMESTAMP
+                   WHERE id = ? AND customer_id = ?''',
+                (
+                    svc.get('serviceName'),
+                    svc.get('startDate') or svc.get('start_date'),
+                    svc.get('endDate') or svc.get('end_date'),
+                    svc.get('days'),
+                    svc.get('ratePerDay'),
+                    svc.get('amountBilled'),
+                    svc.get('amountPaid', 0),
+                    svc.get('dateOfPayment'),
+                    svc.get('dateSubmitted'),
+                    denial_codes_val,
+                    sid,
+                    customer_id,
+                )
+            )
+        conn.commit()
+        return {'batch_id': batch_id, 'customer_id': customer_id, 'updated': True}
+    except HTTPException:
+        raise
+    except Exception as e:
+        conn.rollback()
+        logger.exception("update_batch failed")
+        raise HTTPException(status_code=500, detail=str(e))
+    finally:
+        conn.close()
+
+
 @router.post("/{customer_id}/entries", status_code=201)
 def add_customer_entry(customer_id: int, payload: ServiceWrapper, current_user: dict = Depends(get_current_user)):
     """Add a new entry/service for an existing customer.
@@ -1509,6 +1748,7 @@ def get_all_entries(
         query = '''
             SELECT c.*,
                    e.id as entry_id,
+                   e.batch_id,
                    e.service_name,
                    e.start_date,
                    e.end_date,
@@ -1586,6 +1826,10 @@ def get_all_entries(
                 logger.info(f"Creating entry for customer {entry['id']} from legacy data (all entries view)")
                 entry_id = migrate_customer_service_to_entry(entry)
                 entry['entry_id'] = entry_id
+
+            # Expose batch_id for batch-level edit; legacy rows get synthetic batch_id
+            if entry.get('batch_id') is None or entry.get('batch_id') == '':
+                entry['batch_id'] = f"legacy-{entry.get('entry_id')}" if entry.get('entry_id') else None
 
             # Parse denial codes
             if entry.get('denial_codes'):

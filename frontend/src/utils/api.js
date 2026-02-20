@@ -21,29 +21,31 @@ export function getAuthHeaders() {
   };
 }
 
+// Only run logout/redirect once when multiple 401s occur in quick succession (e.g. parallel requests).
+let _401Handling = false;
 export function handle401Error() {
+  if (_401Handling) return;
+  _401Handling = true;
+  setTimeout(() => { _401Handling = false; }, 2000);
+
   localStorage.removeItem('token');
   localStorage.removeItem('user');
-  // Emit a sessionExpired event so React can update its state
   try {
     if (typeof window !== 'undefined') {
-      const ev = new Event('sessionExpired');
-      window.dispatchEvent(ev);
+      window.dispatchEvent(new Event('sessionExpired'));
     }
   } catch (e) {
-    // ignore
+    /* ignore */
   }
-
-  // Programmatic navigation via helper if available
   try {
     navigateToLogin();
   } catch (e) {
     if (typeof window !== 'undefined') window.location.hash = '#login';
   }
-
   if (window.showToast) {
     window.showToast({ message: 'Session expired. Please login again.', type: 'error' });
   }
+  setTimeout(() => { _401Handling = false; }, 2000);
 }
 
 // Wrap the global fetch to catch 401 responses and handle session expiry centrally.

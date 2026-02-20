@@ -3,7 +3,7 @@ import { formatMMDDYYYY, toISO } from '../utils/dates';
 import { Button, Input, Select, Space, Spin, Alert, Divider } from 'antd';
 import { API_BASE, getAuthHeaders } from '../utils/api';
 
-export default function CustomerEntryModal({ customerId, customerCode, onClose, onUpdated }) {
+export default function CustomerEntryModal({ customerId, batchId, customerCode, onClose, onUpdated }) {
   const [customer, setCustomer] = useState(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
@@ -22,28 +22,44 @@ export default function CustomerEntryModal({ customerId, customerCode, onClose, 
     if (customerId) {
       fetchCustomer();
     }
-  }, [customerId]);
+  }, [customerId, batchId]);
 
   const fetchCustomer = async () => {
     try {
       setLoading(true);
       setError(null);
       const headers = getAuthHeaders();
-      const res = await fetch(`${API_BASE}/customers/${customerId}`, { headers });
-      if (!res.ok) throw new Error('Failed to fetch customer');
-      const data = await res.json();
-      setCustomer(data);
-      // If user is not actively editing, keep edit fields in sync with server values.
-      if (!isEditing) {
-        const ln = data.last_name || data.lastName || '';
-        const fn = data.first_name || data.firstName || '';
-        const dobVal = data.date_of_birth || data.dob || data.dateOfBirth || '';
+      let cust;
+      // When batchId is set (clicked from a row), show only that batch's services; otherwise all entries
+      if (batchId) {
+        const [custRes, batchRes] = await Promise.all([
+          fetch(`${API_BASE}/customers/${customerId}`, { headers }),
+          fetch(`${API_BASE}/customers/${customerId}/batches/${batchId}/entries`, { headers }),
+        ]);
+        if (!custRes.ok) throw new Error('Failed to fetch customer');
+        if (!batchRes.ok) throw new Error('Failed to fetch services');
+        cust = await custRes.json();
+        const batchData = await batchRes.json();
+        const batchEntries = Array.isArray(batchData.entries) ? batchData.entries : [];
+        setCustomer({ ...cust, services: batchEntries });
+      } else {
+        const res = await fetch(`${API_BASE}/customers/${customerId}/entries`, { headers });
+        if (!res.ok) throw new Error('Failed to fetch customer');
+        const data = await res.json();
+        cust = data.customer || data;
+        const allEntries = Array.isArray(data.entries) ? data.entries : [];
+        setCustomer({ ...cust, services: allEntries });
+      }
+      if (!isEditing && cust) {
+        const ln = cust.last_name || cust.lastName || '';
+        const fn = cust.first_name || cust.firstName || '';
+        const dobVal = cust.date_of_birth || cust.dob || cust.dateOfBirth || '';
         setLastName(ln);
         setFirstName(fn);
         setDob(formatMMDDYYYY(dobVal) || '');
-        setIdNumber((data.id_number != null ? String(data.id_number) : '') || '');
-        setFIdNumber((data.f_id_number != null ? String(data.f_id_number) : '') || '');
-        setActiveStatus(data.active_status || 'active');
+        setIdNumber((cust.id_number != null ? String(cust.id_number) : '') || '');
+        setFIdNumber((cust.f_id_number != null ? String(cust.f_id_number) : '') || '');
+        setActiveStatus(cust.active_status || 'active');
       }
     } catch (err) {
       setError(err.message || 'Failed to load');
@@ -243,6 +259,101 @@ export default function CustomerEntryModal({ customerId, customerCode, onClose, 
                     />
                   </div>
                 </div>
+              )}
+
+              {/* Services: read-only, professional card layout */}
+              <Divider style={{ margin: '16px 0 8px' }} />
+              <div className="text-sm font-medium text-[#495057] mb-3">Services</div>
+              {Array.isArray(customer.services) && customer.services.length > 0 ? (() => {
+                const totalBilled = customer.services.reduce((s, e) => s + (Number(e.amount_billed ?? e.amountBilled ?? 0)), 0);
+                const totalPaid = customer.services.reduce((s, e) => s + (Number(e.amount_paid ?? e.amountPaid ?? 0)), 0);
+                const totalDue = totalBilled - totalPaid;
+                return (
+                <>
+                  <div
+                    style={{
+                      display: 'flex',
+                      alignItems: 'center',
+                      gap: '1.5rem',
+                      marginBottom: '1rem',
+                      padding: '10px 16px',
+                      background: 'linear-gradient(to right, #f1f5f9, #e2e8f0)',
+                      borderRadius: '8px',
+                      border: '1px solid #e2e8f0',
+                      fontSize: '13px',
+                      fontWeight: 600,
+                    }}
+                  >
+                    <span style={{ color: '#475569' }}>
+                      Grand Total: <span className="tabular-nums" style={{ color: '#1e293b' }}>${totalBilled.toFixed(2)}</span>
+                    </span>
+                    <span style={{ color: '#475569', paddingLeft: '1rem', borderLeft: '1px solid #cbd5e1' }}>
+                      Total Paid: <span className="tabular-nums" style={{ color: '#1e293b' }}>${totalPaid.toFixed(2)}</span>
+                    </span>
+                    <span style={{ paddingLeft: '1rem', borderLeft: '1px solid #cbd5e1' }}>
+                      Total Due: <span className="tabular-nums" style={{ color: totalDue > 0 ? '#dc2626' : '#64748b' }}>${totalDue.toFixed(2)}</span>
+                    </span>
+                  </div>
+                  <div className="space-y-3">
+                    {customer.services.map((s, idx) => {
+                      const billed = Number(s.amount_billed ?? s.amountBilled ?? 0);
+                      const paid = Number(s.amount_paid ?? s.amountPaid ?? 0);
+                      const due = billed - paid;
+                      const rate = Number(s.rate_per_day ?? s.ratePerDay ?? 0);
+                      const days = s.days != null ? s.days : '—';
+                      const denialList = Array.isArray(s.denial_codes) ? s.denial_codes : (s.denialCodes || (typeof s.denial_codes === 'string' && s.denial_codes ? s.denial_codes.split(',') : []));
+                      return (
+                        <div
+                          key={s.id || `svc-${idx}`}
+                          className="rounded-lg border border-[#e9ecef] bg-[#fafbfc] px-4 py-3"
+                        >
+                          <div className="text-[#1a253c] font-semibold text-[15px] mb-2">
+                            {s.service_name || s.serviceName || '—'}
+                          </div>
+                          <div className="grid grid-cols-2 gap-x-6 gap-y-1.5 text-sm">
+                            <div className="text-[#6c757d]">
+                              <span className="text-[#495057]">Rate/day</span>{' '}
+                              <span className="font-medium tabular-nums">${rate.toFixed(2)}</span>
+                            </div>
+                            <div className="text-[#6c757d]">
+                              <span className="text-[#495057]">Days</span>{' '}
+                              <span className="font-medium tabular-nums">{days}</span>
+                            </div>
+                            <div className="text-[#6c757d]">
+                              <span className="text-[#495057]">Billed</span>{' '}
+                              <span className="font-medium tabular-nums">${billed.toFixed(2)}</span>
+                            </div>
+                            <div className="text-[#6c757d]">
+                              <span className="text-[#495057]">Paid</span>{' '}
+                              <span className="font-medium tabular-nums">${paid.toFixed(2)}</span>
+                            </div>
+                            <div className="text-[#6c757d]">
+                              <span className="text-[#495057]">Due</span>{' '}
+                              <span className={`font-medium tabular-nums ${due > 0 ? 'text-[#c92a2a]' : 'text-[#495057]'}`}>
+                                ${due.toFixed(2)}
+                              </span>
+                            </div>
+                            <div className="text-[#6c757d]">
+                              <span className="text-[#495057]">Period</span>{' '}
+                              <span className="tabular-nums">
+                                {formatMMDDYYYY(s.start_date || s.startDate) || '—'} / {formatMMDDYYYY(s.end_date || s.endDate) || '—'}
+                              </span>
+                            </div>
+                            {denialList.length > 0 && (
+                              <div className="col-span-2 text-[#6c757d]">
+                                <span className="text-[#495057]">Denial codes</span>{' '}
+                                <span className="font-medium">{denialList.join(', ')}</span>
+                              </div>
+                            )}
+                          </div>
+                        </div>
+                      );
+                    })}
+                  </div>
+                </>
+                );
+              })() : (
+                <p className="text-[#6c757d] text-sm py-2">No services for this participant.</p>
               )}
             </>
           )}
