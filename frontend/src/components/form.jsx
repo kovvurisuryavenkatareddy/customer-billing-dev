@@ -529,13 +529,17 @@ export default function CustomerForm({ onSubmit, services: servicesProp = [], in
           </div>
 
           {services.map((service, index) => {
-            const code = getServiceCodeForType(service.serviceType) || '—';
-            const start = service.serviceStartDate || '—';
-            const end = service.serviceEndDate || '—';
+            const code = getServiceCodeForType(service.serviceType) || '';
+            const svcLabel = service.serviceType || code || '—';
+            const start = service.serviceStartDate || '';
+            const end = service.serviceEndDate || '';
             const billed = Number(service.amountBilled || 0);
             const paid = Number(service.amountPaid || 0);
             const due = billed - (Number.isNaN(paid) ? 0 : paid);
-            const header = `${index + 1} - ${code} - ${start} to ${end} - billed amt: $${billed.toFixed(2)} - due amt: $${due.toFixed(2)}`;
+            const periodPart = (start || end)
+              ? ` - ${start && end ? `${start} to ${end}` : (start || end)}`
+              : '';
+            const header = `${index + 1} - ${svcLabel}${periodPart} - billed amt: $${billed.toFixed(2)} - due amt: $${due.toFixed(2)}`;
             const showRemove = (services.length > 1 || (!hideCustomerFields && !isEditing && !isEditBatch));
 
             const serviceFields = (
@@ -931,10 +935,31 @@ export default function CustomerForm({ onSubmit, services: servicesProp = [], in
             return (
               <details
                 key={service.id}
-                className="rounded-xl border border-slate-200 bg-white shadow-sm mb-4 overflow-hidden"
+                className="group rounded-xl border border-slate-200 bg-white shadow-sm mb-4 overflow-hidden"
               >
-                <summary className="cursor-pointer select-none px-4 py-3 bg-slate-50 hover:bg-slate-100">
-                  <div className="text-sm font-semibold text-slate-900 tabular-nums">{header}</div>
+                <summary
+                  className="cursor-pointer select-none px-4 py-3 bg-slate-50 hover:bg-slate-100"
+                  style={{ listStyle: 'none' }}
+                >
+                  <div className="flex items-center justify-between gap-3">
+                    <div className="text-sm font-semibold text-slate-900 tabular-nums">
+                      {header}
+                    </div>
+                    <svg
+                      className="h-4 w-4 text-slate-500 transition-transform duration-200 group-open:rotate-180"
+                      viewBox="0 0 20 20"
+                      fill="none"
+                      xmlns="http://www.w3.org/2000/svg"
+                    >
+                      <path
+                        d="M5.25 7.5L10 12.25L14.75 7.5"
+                        stroke="currentColor"
+                        strokeWidth="1.6"
+                        strokeLinecap="round"
+                        strokeLinejoin="round"
+                      />
+                    </svg>
+                  </div>
                 </summary>
                 <div className="p-4">
                   {serviceFields}

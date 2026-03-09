@@ -336,7 +336,13 @@ export default function CustomerEntryModal({ customerId, batchId, customerCode, 
                             <div className="text-[#6c757d]">
                               <span className="text-[#495057]">Period</span>{' '}
                               <span className="tabular-nums">
-                                {formatMMDDYYYY(s.start_date || s.startDate) || '—'} - {formatMMDDYYYY(s.end_date || s.endDate) || '—'}
+                                {(() => {
+                                  const startStr = formatMMDDYYYY(s.start_date || s.startDate || '') || '';
+                                  const endStr = formatMMDDYYYY(s.end_date || s.endDate || '') || '';
+                                  if (!startStr && !endStr) return '—';
+                                  if (startStr && endStr) return `${startStr} - ${endStr}`;
+                                  return startStr || endStr;
+                                })()}
                               </span>
                             </div>
                             {denialList.length > 0 && (

@@ -181,9 +181,11 @@ export default function ReportsPage() {
       title: 'Period',
       key: 'period',
       render: (_, r) => {
-        const s = formatMMDDYYYY(r.start_date || r.startDate || '') || '—';
-        const e = formatMMDDYYYY(r.end_date || r.endDate || '') || '—';
-        return `${s} - ${e}`;
+        const s = formatMMDDYYYY(r.start_date || r.startDate || '') || '';
+        const e = formatMMDDYYYY(r.end_date || r.endDate || '') || '';
+        if (!s && !e) return '—';
+        if (s && e) return `${s} - ${e}`;
+        return s || e;
       },
     },
     {
