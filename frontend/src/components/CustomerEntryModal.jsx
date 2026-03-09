@@ -100,7 +100,7 @@ export default function CustomerEntryModal({ customerId, batchId, customerCode, 
       if ((dob || '').trim() !== '') {
         const iso = toISO(dob);
         if (!iso) {
-          if (window.showToast) window.showToast({ message: 'DOB must be in MM-DD-YYYY (or YYYY-MM-DD)', type: 'error' });
+          if (window.showToast) window.showToast({ message: 'DOB must be in MM/DD/YYYY (or YYYY-MM-DD)', type: 'error' });
           return;
         }
         dobIsoOrNull = iso;
@@ -237,7 +237,7 @@ export default function CustomerEntryModal({ customerId, batchId, customerCode, 
                   </div>
                   <div>
                     <strong>DOB</strong>
-                    <Input value={dob} onChange={(e) => setDob(e.target.value)} placeholder="MM-DD-YYYY" />
+                    <Input value={dob} onChange={(e) => setDob(e.target.value)} placeholder="MM/DD/YYYY" />
                   </div>
                   <div>
                     <strong>ID #</strong>
@@ -336,7 +336,7 @@ export default function CustomerEntryModal({ customerId, batchId, customerCode, 
                             <div className="text-[#6c757d]">
                               <span className="text-[#495057]">Period</span>{' '}
                               <span className="tabular-nums">
-                                {formatMMDDYYYY(s.start_date || s.startDate) || '—'} / {formatMMDDYYYY(s.end_date || s.endDate) || '—'}
+                                {formatMMDDYYYY(s.start_date || s.startDate) || '—'} - {formatMMDDYYYY(s.end_date || s.endDate) || '—'}
                               </span>
                             </div>
                             {denialList.length > 0 && (

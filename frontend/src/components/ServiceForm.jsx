@@ -76,7 +76,7 @@ export default function ServiceForm({ services = [], onSubmit, initial = null, o
       const svcEndDate = initial.endDate || initial.end_date || '';
       const submittedDate = initial.dateSubmitted || initial.date_submitted || '';
       const codes = initial.denialCodes || initial.denial_codes || [];
-      // Format dates to MM-DD-YYYY for cleaner display
+      // Format dates to MM/DD/YYYY for cleaner display
       setDateOfPayment(paymentDate ? formatMMDDYYYY(paymentDate) : '');
       setStartDate(svcStartDate ? formatMMDDYYYY(svcStartDate) : '');
       setEndDate(svcEndDate ? formatMMDDYYYY(svcEndDate) : '');
@@ -207,7 +207,7 @@ export default function ServiceForm({ services = [], onSubmit, initial = null, o
       <div className="relative">
         <input
           type="text"
-          placeholder="MM-DD-YYYY"
+          placeholder="MM/DD/YYYY"
           value={value}
           onChange={onChange}
           className="pr-10"

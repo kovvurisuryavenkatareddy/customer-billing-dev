@@ -1,6 +1,6 @@
 import React, { useMemo, useCallback, useState, useEffect } from 'react';
 import { Table, Button, Dropdown, Typography, Space } from 'antd';
-import { EditOutlined, PlusOutlined, EllipsisOutlined } from '@ant-design/icons';
+import { EditOutlined, EllipsisOutlined } from '@ant-design/icons';
 import { formatMMDDYYYY } from '../utils/dates';
 import CustomerEntryModal from './CustomerEntryModal';
 
@@ -125,11 +125,6 @@ export default function CustomerList({
     [dataSource]
   );
 
-  const uniqueServices = useMemo(() =>
-    [...new Set(dataSource.map(item => item.serviceName))].filter(Boolean).map(text => ({ text, value: text })),
-    [dataSource]
-  );
-
   // Define columns for Ant Design Table with sorting and filtering
   const columns = [
     {
@@ -188,21 +183,6 @@ export default function CustomerList({
       render: (text) => text || '—',
     },
     {
-      title: 'Service Type',
-      dataIndex: 'serviceName',
-      key: 'serviceName',
-      width: 150,
-      sorter: (a, b) => a.serviceName.localeCompare(b.serviceName),
-      filters: uniqueServices,
-      onFilter: (value, record) => record.serviceName === value,
-      ellipsis: true,
-      render: (text) => (
-        <span style={{ fontWeight: '500' }}>
-          {text || 'No service'}
-        </span>
-      ),
-    },
-    {
       title: 'Amount Billed',
       dataIndex: 'amountBilled',
       key: 'amountBilled',
@@ -250,7 +230,7 @@ export default function CustomerList({
     {
       title: 'Actions',
       key: 'actions',
-      width: 140,
+      width: 90,
       fixed: 'right',
       render: (_, record) => {
         const handleEdit = () => {
@@ -274,16 +254,10 @@ export default function CustomerList({
           });
         };
 
-        const handleAdd = () => onAddService?.(record.customer);
-
-        const items = [
-          { key: 'edit', label: 'Edit', icon: <EditOutlined /> },
-          { key: 'add', label: 'Add', icon: <PlusOutlined /> },
-        ];
+        const items = [{ key: 'edit', label: 'Edit', icon: <EditOutlined /> }];
 
         return (
           <div className="flex items-center justify-end">
-            {/* Desktop/tablet: show explicit buttons */}
             <Space size={4} className="hidden md:inline-flex">
               <Button
                 type="primary"
@@ -294,18 +268,8 @@ export default function CustomerList({
               >
                 Edit
               </Button>
-              <Button
-                type="default"
-                size="small"
-                icon={<PlusOutlined />}
-                onClick={handleAdd}
-                style={{ padding: '2px 8px', fontSize: '12px', minWidth: 'auto', height: 26 }}
-              >
-                Add
-              </Button>
             </Space>
 
-            {/* Mobile: compact dropdown */}
             <div className="md:hidden">
               <Dropdown
                 trigger={['click']}
@@ -313,7 +277,6 @@ export default function CustomerList({
                   items,
                   onClick: ({ key }) => {
                     if (key === 'edit') handleEdit();
-                    if (key === 'add') handleAdd();
                   },
                 }}
                 placement="bottomRight"

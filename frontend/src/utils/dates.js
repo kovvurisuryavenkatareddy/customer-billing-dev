@@ -1,4 +1,4 @@
-// Lightweight date helpers: parse various date string formats and format to MM-DD-YYYY or ISO (yyyy-mm-dd)
+// Lightweight date helpers: parse common date string formats and format to MM/DD/YYYY or ISO (yyyy-mm-dd)
 export function parseToDate(value) {
   if (!value) return null;
   if (value instanceof Date) return isNaN(value) ? null : value;
@@ -39,5 +39,5 @@ export function formatMMDDYYYY(value) {
   const mm = String(d.getMonth() + 1).padStart(2, '0');
   const dd = String(d.getDate()).padStart(2, '0');
   const yyyy = d.getFullYear();
-  return `${mm}-${dd}-${yyyy}`;
+  return `${mm}/${dd}/${yyyy}`;
 }

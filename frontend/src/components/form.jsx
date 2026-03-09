@@ -13,7 +13,7 @@ export function formInit() {
 }
 
 // Customer form component
-export default function CustomerForm({ onSubmit, services: servicesProp = [], initial = null, onCancel = null, isResubmission = false, submitting = false, hideCustomerFields = false } = {}) {
+export default function CustomerForm({ onSubmit, services: servicesProp = [], initial = null, onCancel = null, isResubmission = false, submitting = false, hideCustomerFields = false, allowMultipleServicesInEdit = false, useCollapsibleServices = false } = {}) {
   // Customer basic info state
   const [firstName, setFirstName] = useState('');
   const [lastName, setLastName] = useState('');
@@ -44,6 +44,17 @@ export default function CustomerForm({ onSubmit, services: servicesProp = [], in
     const normalizedName = name.toUpperCase();
     // Treat any service whose code or name contains H0038 as a units-based service
     return normalizedCode.includes('H0038') || normalizedName.includes('H0038');
+  }, [servicesProp]);
+
+  const getServiceCodeForType = useCallback((type) => {
+    if (!type) return '';
+    const direct = Array.isArray(servicesProp)
+      ? servicesProp.find(x => (x.name === type || x.serviceName === type || x.service_name === type))
+      : null;
+    const code = (direct?.code || direct?.serviceCode || direct?.service_code || '').toString().trim();
+    if (code) return code.toUpperCase();
+    const m = String(type).toUpperCase().match(/\bH\d{4}\b/);
+    return m ? m[0] : '';
   }, [servicesProp]);
 
   // Add service to list
@@ -260,7 +271,7 @@ export default function CustomerForm({ onSubmit, services: servicesProp = [], in
     (initial.service || (Array.isArray(initial.services) && initial.services.length > 0) || initial.customer || initial.firstName || initial.first_name)
   );
 
-  /** Edit batch: editing existing batch (has services), do not show "+ Add Service" */
+  /** Edit batch: editing existing batch (has services); show "+ Add Service" to add more rows */
   const isEditBatch = Boolean(hideCustomerFields && initial?.services && Array.isArray(initial.services) && initial.services.length > 0);
 
   // Basic validation
@@ -350,8 +361,9 @@ export default function CustomerForm({ onSubmit, services: servicesProp = [], in
     }
     setCustomerId(id);
 
-    // Build services payload array
+    // Build services payload array (include id so Edit Customer flow can update vs add)
     const servicesPayload = services.map(service => ({
+      id: service.id,
       serviceName: service.serviceType,
       days: Number(service.numberOfDays) || 0,
       units: isUnitsServiceType(service.serviceType) ? Number(service.units) || 0 : undefined,
@@ -432,7 +444,7 @@ export default function CustomerForm({ onSubmit, services: servicesProp = [], in
                 <div className="relative">
                   <input
                     type="text"
-                    placeholder="MM-DD-YYYY"
+                    placeholder="MM/DD/YYYY"
                     value={dateOfBirth}
                     onChange={(e) => setDateOfBirth(e.target.value)}
                     className="pr-10"
@@ -498,7 +510,7 @@ export default function CustomerForm({ onSubmit, services: servicesProp = [], in
               <div className="text-xs text-slate-500">Billing line items for this participant.</div>
             </div>
 
-            {!isEditing && !isEditBatch ? (
+            {(!isEditing || allowMultipleServicesInEdit || isEditBatch) ? (
               <button
                 type="button"
                 onClick={addService}
@@ -506,7 +518,7 @@ export default function CustomerForm({ onSubmit, services: servicesProp = [], in
               >
                 + Add Service
               </button>
-            ) : isEditing ? (
+            ) : isEditing && !allowMultipleServicesInEdit ? (
               <span
                 className="inline-flex items-center rounded-md border border-blue-200 bg-blue-50 px-3 py-2 text-xs font-semibold text-blue-800"
                 title="You are editing an existing service entry"
@@ -516,51 +528,57 @@ export default function CustomerForm({ onSubmit, services: servicesProp = [], in
             ) : null}
           </div>
 
-          {services.map((service, index) => (
-            <div
-              key={service.id}
-              className="rounded-xl border border-slate-200 bg-white p-4 shadow-sm mb-4"
-            >
-              <div className="flex items-center justify-between gap-3 mb-3">
-                <div className="text-sm font-semibold text-slate-900">Service {index + 1}</div>
-                {/* In add-customer flow services are optional: allow removing the only row. When adding services for existing customer, require at least one. */}
-                {(services.length > 1 || (!hideCustomerFields && !isEditing && !isEditBatch)) && (
-                  <button
-                    type="button"
-                    onClick={() => removeService(service.id)}
-                    className="inline-flex items-center rounded-md border border-rose-200 bg-rose-50 px-2 py-1 text-xs font-semibold text-rose-700 hover:bg-rose-100"
-                  >
-                    Remove
-                  </button>
-                )}
-              </div>
+          {services.map((service, index) => {
+            const code = getServiceCodeForType(service.serviceType) || '—';
+            const start = service.serviceStartDate || '—';
+            const end = service.serviceEndDate || '—';
+            const billed = Number(service.amountBilled || 0);
+            const paid = Number(service.amountPaid || 0);
+            const due = billed - (Number.isNaN(paid) ? 0 : paid);
+            const header = `${index + 1} - ${code} - ${start} to ${end} - billed amt: $${billed.toFixed(2)} - due amt: $${due.toFixed(2)}`;
+            const showRemove = (services.length > 1 || (!hideCustomerFields && !isEditing && !isEditBatch));
 
-              <div className="grid grid-cols-1 gap-2 mb-5">
-                <label>Type of Service <span style={{ color: '#c0392b' }}>*</span></label>
-                <select 
-                  value={service.serviceType} 
-                  onChange={(e) => updateService(service.id, 'serviceType', e.target.value)} 
-                  required 
-                >
-                  <option value="">Select service</option>
-                  {Array.isArray(servicesProp) && servicesProp.map(s => {
-                    const svcName = s.name || s.serviceName || s.service_name || '';
-                    const key = s.id || svcName;
-                    const code = (s.code || s.serviceCode || s.service_code || '').toString();
-                    const name = svcName.toString();
-                    const normalizedCode = code.toUpperCase().trim();
-                    const normalizedName = name.toUpperCase();
-                    const isUnit = normalizedCode.includes('H0038') || normalizedName.includes('H0038');
-                    const dayRate = Number(s.rate_per_day ?? s.ratePerDay ?? 0) || 0;
-                    const unitRate = Number(s.unitRate ?? s.ratePerUnit ?? s.rate_per_unit ?? dayRate) || dayRate;
-                    const displayRate = isUnit ? unitRate : dayRate;
-                    const perLabel = isUnit ? '/unit' : '/day';
-                    return (
-                      <option key={key} value={svcName}>{svcName} — ${displayRate}{perLabel}</option>
-                    );
-                  })}
-                </select>
-              </div>
+            const serviceFields = (
+              <>
+                <div className="flex items-center justify-between gap-3 mb-3">
+                  <div className="text-sm font-semibold text-slate-900">Service {index + 1}</div>
+                  {showRemove && (
+                    <button
+                      type="button"
+                      onClick={() => removeService(service.id)}
+                      className="inline-flex items-center rounded-md border border-rose-200 bg-rose-50 px-2 py-1 text-xs font-semibold text-rose-700 hover:bg-rose-100"
+                    >
+                      Remove
+                    </button>
+                  )}
+                </div>
+
+                <div className="grid grid-cols-1 gap-2 mb-5">
+                  <label>Type of Service <span style={{ color: '#c0392b' }}>*</span></label>
+                  <select
+                    value={service.serviceType}
+                    onChange={(e) => updateService(service.id, 'serviceType', e.target.value)}
+                    required
+                  >
+                    <option value="">Select service</option>
+                    {Array.isArray(servicesProp) && servicesProp.map(s => {
+                      const svcName = s.name || s.serviceName || s.service_name || '';
+                      const key = s.id || svcName;
+                      const codeRaw = (s.code || s.serviceCode || s.service_code || '').toString();
+                      const name = svcName.toString();
+                      const normalizedCode = codeRaw.toUpperCase().trim();
+                      const normalizedName = name.toUpperCase();
+                      const isUnit = normalizedCode.includes('H0038') || normalizedName.includes('H0038');
+                      const dayRate = Number(s.rate_per_day ?? s.ratePerDay ?? 0) || 0;
+                      const unitRate = Number(s.unitRate ?? s.ratePerUnit ?? s.rate_per_unit ?? dayRate) || dayRate;
+                      const displayRate = isUnit ? unitRate : dayRate;
+                      const perLabel = isUnit ? '/unit' : '/day';
+                      return (
+                        <option key={key} value={svcName}>{svcName} — ${displayRate}{perLabel}</option>
+                      );
+                    })}
+                  </select>
+                </div>
 
               {/* Start date, End date: show for day-based or when no type selected (Add flow) */}
               {(!service.serviceType || !isUnitsServiceType(service.serviceType)) ? (
@@ -570,7 +588,7 @@ export default function CustomerForm({ onSubmit, services: servicesProp = [], in
                     <div className="relative">
                       <input
                         type="text"
-                        placeholder="MM-DD-YYYY"
+                        placeholder="MM/DD/YYYY"
                         value={service.serviceStartDate}
                         onChange={(e) => updateService(service.id, 'serviceStartDate', e.target.value)}
                         required={!isUnitsServiceType(service.serviceType)}
@@ -602,7 +620,7 @@ export default function CustomerForm({ onSubmit, services: servicesProp = [], in
                     <div className="relative">
                       <input
                         type="text"
-                        placeholder="MM-DD-YYYY"
+                        placeholder="MM/DD/YYYY"
                         value={service.serviceEndDate}
                         onChange={(e) => updateService(service.id, 'serviceEndDate', e.target.value)}
                         required={!isUnitsServiceType(service.serviceType)}
@@ -701,7 +719,7 @@ export default function CustomerForm({ onSubmit, services: servicesProp = [], in
                   <div className="relative">
                     <input
                       type="text"
-                      placeholder="MM-DD-YYYY"
+                      placeholder="MM/DD/YYYY"
                       value={service.dateOfPayment}
                       onChange={(e) => updateService(service.id, 'dateOfPayment', e.target.value)}
                       className="pr-10"
@@ -733,7 +751,7 @@ export default function CustomerForm({ onSubmit, services: servicesProp = [], in
                   <div className="relative">
                     <input
                       type="text"
-                      placeholder="MM-DD-YYYY"
+                      placeholder="MM/DD/YYYY"
                       value={service.dateSubmitted}
                       onChange={(e) => updateService(service.id, 'dateSubmitted', e.target.value)}
                       className="pr-10"
@@ -896,8 +914,34 @@ export default function CustomerForm({ onSubmit, services: servicesProp = [], in
                   </span>
                 </div>
               </div>
-            </div>
-          ))}
+              </>
+            );
+
+            if (!useCollapsibleServices) {
+              return (
+                <div
+                  key={service.id}
+                  className="rounded-xl border border-slate-200 bg-white p-4 shadow-sm mb-4"
+                >
+                  {serviceFields}
+                </div>
+              );
+            }
+
+            return (
+              <details
+                key={service.id}
+                className="rounded-xl border border-slate-200 bg-white shadow-sm mb-4 overflow-hidden"
+              >
+                <summary className="cursor-pointer select-none px-4 py-3 bg-slate-50 hover:bg-slate-100">
+                  <div className="text-sm font-semibold text-slate-900 tabular-nums">{header}</div>
+                </summary>
+                <div className="p-4">
+                  {serviceFields}
+                </div>
+              </details>
+            );
+          })}
 
           {/* Grand Total */}
           <div className="rounded-xl border border-slate-200 bg-blue-50 px-4 py-3 font-semibold text-blue-900">
@@ -929,8 +973,8 @@ export default function CustomerForm({ onSubmit, services: servicesProp = [], in
           <button type="submit" className="btn-primary" disabled={submitting}>
             {submitting && <span className="btn-spinner" aria-hidden="true" />}
             {submitting
-              ? (hideCustomerFields ? 'Adding…' : 'Saving…')
-              : (hideCustomerFields ? 'Add Services' : (isResubmission ? 'Create Resubmission' : 'Save Customer'))}
+              ? (hideCustomerFields ? 'Saving…' : 'Saving…')
+              : (hideCustomerFields ? 'Save' : (isResubmission ? 'Create Resubmission' : 'Save Customer'))}
           </button>
         </div>
         </fieldset>

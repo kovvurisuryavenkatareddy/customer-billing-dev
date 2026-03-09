@@ -6,7 +6,30 @@ import { Card, Form, Input, Select, DatePicker, Button, Row, Col, Space } from '
 import { FilterOutlined, ClearOutlined, SearchOutlined } from '@ant-design/icons';
 import { toISO } from '../utils/dates';
 
-export default function CustomerSearch({ onSearch, status = 'active', onStatusChange }) {
+function normalizeForSearch(v) {
+  return String(v || '')
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, ' ')
+    .trim();
+}
+
+function fuzzyIncludes(haystack, needle) {
+  const h = normalizeForSearch(haystack);
+  const n = normalizeForSearch(needle);
+  if (!n) return true;
+  return h.includes(n);
+}
+
+export default function CustomerSearch({
+  onSearch,
+  status = 'active',
+  onStatusChange,
+  serviceName,
+  onServiceNameChange,
+  customerOptions = [],
+  selectedCustomerIds = [],
+  onSelectedCustomerIdsChange,
+}) {
   const [form] = Form.useForm();
 
   useEffect(() => {
@@ -43,6 +66,8 @@ export default function CustomerSearch({ onSearch, status = 'active', onStatusCh
   const clearFilters = () => {
     form.resetFields();
     onStatusChange?.('active');
+    if (onServiceNameChange) onServiceNameChange('');
+    if (onSelectedCustomerIdsChange) onSelectedCustomerIdsChange([]);
     onSearch({
       firstName: '',
       lastName: '',
@@ -115,9 +140,9 @@ export default function CustomerSearch({ onSearch, status = 'active', onStatusCh
           <Col xs={24} sm={12} md={8} lg={4}>
             <Form.Item name="dateOfBirth" label={<span style={labelStyle}>Date of Birth</span>}>
               <DatePicker
-                format="MM-DD-YYYY"
+                format="MM/DD/YYYY"
                 className="w-full"
-                placeholder="MM-DD-YYYY"
+                placeholder="MM/DD/YYYY"
                 allowClear
                 size="small"
               />
@@ -126,9 +151,9 @@ export default function CustomerSearch({ onSearch, status = 'active', onStatusCh
           <Col xs={24} sm={12} md={8} lg={4}>
             <Form.Item name="startDate" label={<span style={labelStyle}>From Date</span>}>
               <DatePicker
-                format="MM-DD-YYYY"
+                format="MM/DD/YYYY"
                 className="w-full"
-                placeholder="MM-DD-YYYY"
+                placeholder="MM/DD/YYYY"
                 allowClear
                 size="small"
               />
@@ -137,15 +162,51 @@ export default function CustomerSearch({ onSearch, status = 'active', onStatusCh
           <Col xs={24} sm={12} md={8} lg={4}>
             <Form.Item name="endDate" label={<span style={labelStyle}>To Date</span>}>
               <DatePicker
-                format="MM-DD-YYYY"
+                format="MM/DD/YYYY"
                 className="w-full"
-                placeholder="MM-DD-YYYY"
+                placeholder="MM/DD/YYYY"
                 allowClear
                 size="small"
               />
             </Form.Item>
           </Col>
         </Row>
+        {(onServiceNameChange || onSelectedCustomerIdsChange) && (
+          <Row gutter={[12, 8]}>
+            {onServiceNameChange && (
+              <Col xs={24} sm={12} md={8} lg={6}>
+                <Form.Item label={<span style={labelStyle}>Service Name</span>}>
+                  <Input
+                    size="small"
+                    placeholder="Search service name"
+                    allowClear
+                    value={serviceName}
+                    onChange={(e) => onServiceNameChange(e.target.value)}
+                  />
+                </Form.Item>
+              </Col>
+            )}
+            {onSelectedCustomerIdsChange && (
+              <Col xs={24} sm={12} md={16} lg={10}>
+                <Form.Item label={<span style={labelStyle}>Select Customer(s) for Export (optional)</span>}>
+                  <Select
+                    mode="multiple"
+                    allowClear
+                    showSearch
+                    optionFilterProp="label"
+                    filterOption={(input, option) => fuzzyIncludes(option?.label, input)}
+                    placeholder="If selected, export includes all rows for selected customers"
+                    options={customerOptions}
+                    value={selectedCustomerIds}
+                    onChange={(vals) => onSelectedCustomerIdsChange(vals)}
+                    className="w-full"
+                    size="small"
+                  />
+                </Form.Item>
+              </Col>
+            )}
+          </Row>
+        )}
       </Form>
     </Card>
   );

@@ -3,7 +3,6 @@ import { Input, Card, Spin, Modal, Empty, Button } from 'antd';
 import CustomerSearch from '../components/CustomerSearch';
 import CustomerList from '../components/CustomerList';
 import CustomerForm from '../components/form';
-import ServiceForm from '../components/ServiceForm';
 import { API_BASE, getAuthHeaders, handle401Error } from '../utils/api';
 import { formatMMDDYYYY, toISO } from '../utils/dates';
 
@@ -65,6 +64,8 @@ export default function CustomersPage({ showAddForm = false, onNavigate }) {
   const [savingEditService, setSavingEditService] = useState(false);
   const [openingEditModal, setOpeningEditModal] = useState(false);
   const [addFormKey, setAddFormKey] = useState(0);
+  const [editCustomerEntries, setEditCustomerEntries] = useState(null);
+  const [loadingEditEntries, setLoadingEditEntries] = useState(false);
 
   useEffect(() => {
     // fetch services for forms (run once on mount)
@@ -282,6 +283,86 @@ export default function CustomersPage({ showAddForm = false, onNavigate }) {
     }
   }
 
+  // Edit Customer modal: one customer, multiple services — update customer then each service (PUT existing, POST new)
+  async function handleEditCustomerSubmit(payload) {
+    const cust = editingItem?.customer;
+    if (!cust?.id) return;
+    setSavingEditCustomer(true);
+    const existingEntryIds = new Set((editCustomerEntries || []).map((e) => Number(e.id)).filter(Boolean));
+    try {
+      if (window.showToast) {
+        window.showToast({ key: 'edit-customer', type: 'loading', message: 'Updating customer…', duration: 0 });
+      }
+      const custRes = await fetch(`${API_BASE}/customers/${cust.id}`, {
+        method: 'PUT',
+        headers: getAuthHeaders(),
+        body: JSON.stringify({ customer: payload.customer }),
+      });
+      if (custRes.status === 401) {
+        handle401Error();
+        return;
+      }
+      if (!custRes.ok) throw new Error(`Customer update failed: ${custRes.status}`);
+      const servicesList = payload.services || [];
+      for (const s of servicesList) {
+        const serviceBody = {
+          serviceName: s.serviceName,
+          days: Number(s.days) || 0,
+          ratePerDay: s.ratePerDay,
+          amountBilled: s.amountBilled ?? 0,
+          amountPaid: s.amountPaid === '' ? 0 : Number(s.amountPaid),
+          dateOfPayment: s.dateOfPayment || null,
+          startDate: s.startDate || null,
+          endDate: s.endDate || null,
+          dateSubmitted: s.dateSubmitted || null,
+          denialCodes: s.denialCodes && s.denialCodes.length ? s.denialCodes : null,
+        };
+        const entryId = s.id != null ? Number(s.id) : null;
+        const isExisting = entryId && existingEntryIds.has(entryId);
+        if (isExisting) {
+          const res = await fetch(`${API_BASE}/customers/${cust.id}/services/${entryId}`, {
+            method: 'PUT',
+            headers: getAuthHeaders(),
+            body: JSON.stringify({ service: serviceBody }),
+          });
+          if (res.status === 401) {
+            handle401Error();
+            return;
+          }
+          if (!res.ok) throw new Error(`Service update failed: ${res.status}`);
+        } else {
+          const res = await fetch(`${API_BASE}/customers/${cust.id}/services`, {
+            method: 'POST',
+            headers: getAuthHeaders(),
+            body: JSON.stringify({ service: serviceBody }),
+          });
+          if (res.status === 401) {
+            handle401Error();
+            return;
+          }
+          if (!res.ok) throw new Error(`Add service failed: ${res.status}`);
+        }
+      }
+      if (window.showToast) {
+        window.showToast({ key: 'edit-customer', message: 'Customer and services updated.', type: 'success' });
+      }
+      await refreshCustomers();
+      setEditingItem(null);
+      setEditCustomerEntries(null);
+    } catch (err) {
+      console.error('Edit customer failed', err);
+      if (window.showToast) {
+        window.showToast({
+          key: 'edit-customer',
+          message: 'Failed to update: ' + (err.message || 'Unknown error'),
+          type: 'error',
+        });
+      }
+    } finally {
+      setSavingEditCustomer(false);
+    }
+  }
+
   // Function to refresh customer data
   async function fetchCustomers() {
     try {
@@ -400,10 +481,11 @@ export default function CustomersPage({ showAddForm = false, onNavigate }) {
   function handleCancelEdit() {
     setEditingItem(null);
     setBatchEntries(null);
+    setEditCustomerEntries(null);
     setOpeningEditModal(false);
   }
 
-  // Clear opening-edit loading when batch has loaded or after brief delay for non-batch edit
+  // Clear opening-edit loading when batch has loaded or when edit-customer entries have loaded
   useEffect(() => {
     if (!editingItem) {
       setOpeningEditModal(false);
@@ -413,9 +495,8 @@ export default function CustomersPage({ showAddForm = false, onNavigate }) {
       if (!loadingBatch) setOpeningEditModal(false);
       return;
     }
-    const t = setTimeout(() => setOpeningEditModal(false), 200);
-    return () => clearTimeout(t);
-  }, [editingItem, loadingBatch]);
+    if (!loadingEditEntries) setOpeningEditModal(false);
+  }, [editingItem, loadingBatch, loadingEditEntries]);
 
   // Fetch batch entries when editing a batch (Edit flow: only this batch's services)
   useEffect(() => {
@@ -448,6 +529,37 @@ export default function CustomersPage({ showAddForm = false, onNavigate }) {
       });
     return () => { mounted = false; };
   }, [editingItem?.batchId, editingItem?.customer?.id]);
+
+  // Fetch all entries for customer when opening Edit (non-batch): one customer record, all services in modal
+  useEffect(() => {
+    if (!editingItem?.customer?.id || editingItem?.batchId) {
+      setEditCustomerEntries(null);
+      return;
+    }
+    let mounted = true;
+    setLoadingEditEntries(true);
+    setEditCustomerEntries(null);
+    fetch(`${API_BASE}/customers/${editingItem.customer.id}/entries`, { headers: getAuthHeaders() })
+      .then((res) => {
+        if (res.status === 401) {
+          handle401Error();
+          return null;
+        }
+        if (!res.ok) throw new Error('Failed to fetch entries');
+        return res.json();
+      })
+      .then((data) => {
+        if (mounted && data?.entries) setEditCustomerEntries(data.entries);
+        else if (mounted) setEditCustomerEntries([]);
+      })
+      .catch(() => {
+        if (mounted) setEditCustomerEntries([]);
+      })
+      .finally(() => {
+        if (mounted) setLoadingEditEntries(false);
+      });
+    return () => { mounted = false; };
+  }, [editingItem?.customer?.id, editingItem?.batchId]);
 
   // Map API entries to form initial.services shape (use keys the form's useEffect expects)
   function mapEntriesToForm(entries) {
@@ -545,13 +657,13 @@ export default function CustomersPage({ showAddForm = false, onNavigate }) {
           title={
             editingItem?.batchId
               ? `Edit (${batchEntries?.length ?? 0} services) — ${editingItem?.customer?.first_name ?? ''} ${editingItem?.customer?.last_name ?? ''}`.trim()
-              : editingItem?.service?.id
-                ? `Edit service for ${editingItem?.customer?.first_name} ${editingItem?.customer?.last_name}`
+              : editingItem?.customer
+                ? `Edit Customer — ${editingItem.customer.first_name ?? ''} ${editingItem.customer.last_name ?? ''}`.trim()
                 : editTitle
           }
           onCancel={handleCancelEdit}
           footer={null}
-          width={editingItem?.batchId ? 800 : 640}
+          width={800}
           centered
           destroyOnClose
           maskClosable={!savingEditService && !savingEditCustomer && !loadingBatch && !openingEditModal}
@@ -571,7 +683,8 @@ export default function CustomersPage({ showAddForm = false, onNavigate }) {
                   onSubmit={async (payload) => {
                     const cust = editingItem.customer;
                     const entryIds = batchEntries.map((e) => e.id);
-                    const servicesPayload = (payload.services || []).map((s, i) => ({
+                    const allServices = payload.services || [];
+                    const batchServicesPayload = allServices.slice(0, entryIds.length).map((s, i) => ({
                       id: entryIds[i],
                       serviceName: s.serviceName || s.serviceType,
                       days: Number(s.days) || 0,
@@ -584,31 +697,58 @@ export default function CustomersPage({ showAddForm = false, onNavigate }) {
                       dateSubmitted: s.dateSubmitted ? toISO(s.dateSubmitted) : null,
                       denialCodes: s.denialCodes && s.denialCodes.length ? s.denialCodes : null,
                     }));
+                    const newServices = allServices.slice(entryIds.length);
                     try {
                       setSavingEditCustomer(true);
-                      window.showToast?.({ key: 'edit-batch', type: 'loading', message: 'Updating batch…', duration: 0 });
-                      const res = await fetch(
-                        `${API_BASE}/customers/${cust.id}/batches/${editingItem.batchId}`,
-                        {
-                          method: 'PUT',
-                          headers: getAuthHeaders(),
-                          body: JSON.stringify({ services: servicesPayload }),
+                      window.showToast?.({ key: 'edit-batch', type: 'loading', message: 'Saving…', duration: 0 });
+                      if (batchServicesPayload.length > 0) {
+                        const res = await fetch(
+                          `${API_BASE}/customers/${cust.id}/batches/${editingItem.batchId}`,
+                          {
+                            method: 'PUT',
+                            headers: getAuthHeaders(),
+                            body: JSON.stringify({ services: batchServicesPayload }),
+                          }
+                        );
+                        if (res.status === 401) {
+                          handle401Error();
+                          return;
                         }
-                      );
-                      if (res.status === 401) {
-                        handle401Error();
-                        return;
+                        if (!res.ok) throw new Error(await res.text().catch(() => 'Update failed'));
                       }
-                      if (!res.ok) throw new Error(await res.text().catch(() => 'Update failed'));
+                      for (const s of newServices) {
+                        const serviceBody = {
+                          serviceName: s.serviceName || s.serviceType,
+                          days: Number(s.days) || 0,
+                          ratePerDay: s.ratePerDay,
+                          amountBilled: s.amountBilled ?? 0,
+                          amountPaid: s.amountPaid === '' ? 0 : Number(s.amountPaid),
+                          dateOfPayment: s.dateOfPayment ? toISO(s.dateOfPayment) : null,
+                          startDate: s.startDate ? toISO(s.startDate) : null,
+                          endDate: s.endDate ? toISO(s.endDate) : null,
+                          dateSubmitted: s.dateSubmitted ? toISO(s.dateSubmitted) : null,
+                          denialCodes: s.denialCodes && s.denialCodes.length ? s.denialCodes : null,
+                        };
+                        const addRes = await fetch(`${API_BASE}/customers/${cust.id}/services`, {
+                          method: 'POST',
+                          headers: getAuthHeaders(),
+                          body: JSON.stringify({ service: serviceBody }),
+                        });
+                        if (addRes.status === 401) {
+                          handle401Error();
+                          return;
+                        }
+                        if (!addRes.ok) throw new Error(await addRes.text().catch(() => 'Add service failed'));
+                      }
                       await refreshCustomers();
                       setEditingItem(null);
                       setBatchEntries(null);
-                      window.showToast?.({ key: 'edit-batch', type: 'success', message: 'Batch updated.', duration: 3000 });
+                      window.showToast?.({ key: 'edit-batch', type: 'success', message: 'Saved.', duration: 3000 });
                     } catch (err) {
                       window.showToast?.({
                         key: 'edit-batch',
                         type: 'error',
-                        message: err.message || 'Failed to update batch',
+                        message: err.message || 'Failed to save',
                         duration: 4500,
                       });
                     } finally {
@@ -621,99 +761,33 @@ export default function CustomersPage({ showAddForm = false, onNavigate }) {
                     services: mapEntriesToForm(batchEntries),
                   }}
                   hideCustomerFields={true}
+                  useCollapsibleServices={true}
                 />
               )}
               {!loadingBatch && batchEntries && batchEntries.length === 0 && (
                 <div className="p-4 text-gray-500">No entries in this batch.</div>
               )}
             </Spin>
-          ) : editingItem && editingItem.service?.id && !editingItem.batchId ? (
-            <Spin spinning={openingEditModal || savingEditService} tip={openingEditModal ? 'Loading…' : 'Saving service...'}>
-              <ServiceForm
-                submitting={savingEditService}
-                services={services}
-                onSubmit={async (payload) => {
-                  const entryId = editingItem?.service?.id ?? editingItem?.service?.entryId ?? editingItem?.service?.entry_id;
-                  if (!entryId) {
-                    window.showToast?.({ type: 'error', message: 'Entry ID not found.', duration: 4500 });
-                    return;
-                  }
-                  try {
-                    setSavingEditService(true);
-                    window.showToast?.({ key: 'edit-svc', type: 'loading', message: 'Updating service…', duration: 0 });
-                    const res = await fetch(`${API_BASE}/customers/${editingItem.customer.id}/services/${entryId}`, {
-                      method: 'PUT',
-                      headers: getAuthHeaders(),
-                      body: JSON.stringify(payload),
-                    });
-                    if (res.status === 401) {
-                      handle401Error();
-                      return;
-                    }
-                    if (!res.ok) throw new Error(await res.text().catch(() => 'Update failed'));
-                    await refreshCustomers();
-                    setEditingItem(null);
-                    window.showToast?.({ key: 'edit-svc', type: 'success', message: 'Service updated.', duration: 3000 });
-                  } catch (err) {
-                    window.showToast?.({ key: 'edit-svc', type: 'error', message: err.message || 'Update failed', duration: 4500 });
-                  } finally {
-                    setSavingEditService(false);
-                  }
-                }}
-                onCancel={handleCancelEdit}
-                initial={editingItem.service}
-              />
-            </Spin>
           ) : editingItem && !editingItem.batchId && editingItem.customer ? (
-            // Customer with no entries: show empty Add Service form (first batch)
-            <Spin spinning={openingEditModal || savingEditCustomer} tip={openingEditModal ? 'Loading…' : 'Saving…'}>
-            <CustomerForm
-              submitting={savingEditCustomer}
-              services={services}
-              onSubmit={async (payload) => {
-                const servicesToAdd = payload.services || [];
-                if (servicesToAdd.length === 0) {
-                  window.showToast?.({ type: 'error', message: 'Add at least one service.', duration: 3500 });
-                  return;
-                }
-                const cust = editingItem.customer;
-                try {
-                  setSavingEditCustomer(true);
-                  window.showToast?.({ key: 'add-first-batch', type: 'loading', message: 'Adding services…', duration: 0 });
-                  const res = await fetch(`${API_BASE}/customers/${cust.id}/batches`, {
-                    method: 'POST',
-                    headers: getAuthHeaders(),
-                    body: JSON.stringify({ services: servicesToAdd }),
-                  });
-                  if (res.status === 401) {
-                    handle401Error();
-                    return;
-                  }
-                  if (!res.ok) throw new Error(await res.text().catch(() => 'Failed'));
-                  await refreshCustomers();
-                  setEditingItem(null);
-                  setBatchEntries(null);
-                  window.showToast?.({ key: 'add-first-batch', type: 'success', message: `Added ${servicesToAdd.length} service(s).`, duration: 3500 });
-                } catch (err) {
-                  window.showToast?.({ key: 'add-first-batch', type: 'error', message: err.message || 'Failed to add services', duration: 4500 });
-                } finally {
-                  setSavingEditCustomer(false);
-                }
-              }}
-              onCancel={handleCancelEdit}
-              initial={{ customer: editingItem.customer, services: [] }}
-              hideCustomerFields={true}
-            />
-            </Spin>
-          ) : editingItem ? (
-            <Spin spinning={openingEditModal || savingEditCustomer} tip={openingEditModal ? 'Loading…' : 'Saving…'}>
-            <CustomerForm
-              submitting={savingEditCustomer}
-              onSubmit={handleEditSubmit}
-              onCancel={handleCancelEdit}
-              services={services}
-              initial={editingItem}
-            />
+            // Edit Customer: one customer record, all services; Add Service adds rows in modal
+            <Spin
+              spinning={openingEditModal || loadingEditEntries || savingEditCustomer}
+              tip={openingEditModal || loadingEditEntries ? 'Loading…' : 'Saving…'}
+            >
+              {!loadingEditEntries && (
+                <CustomerForm
+                  submitting={savingEditCustomer}
+                  services={services}
+                  onSubmit={handleEditCustomerSubmit}
+                  onCancel={handleCancelEdit}
+                  initial={{
+                    customer: editingItem.customer,
+                    services: mapEntriesToForm(editCustomerEntries || []),
+                  }}
+                  allowMultipleServicesInEdit={true}
+                  useCollapsibleServices={true}
+                />
+              )}
             </Spin>
           ) : null}
         </Modal>
