@@ -232,6 +232,7 @@ export default function CustomerList({
       key: 'actions',
       width: 90,
       fixed: 'right',
+      align: 'center',
       render: (_, record) => {
         const handleEdit = () => {
           onEdit({
@@ -257,7 +258,7 @@ export default function CustomerList({
         const items = [{ key: 'edit', label: 'Edit', icon: <EditOutlined /> }];
 
         return (
-          <div className="flex items-center justify-end">
+          <div className="flex items-center justify-center">
             <Space size={4} className="hidden md:inline-flex">
               <Button
                 type="primary"
