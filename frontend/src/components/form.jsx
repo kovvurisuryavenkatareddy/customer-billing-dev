@@ -74,6 +74,8 @@ export default function CustomerForm({ onSubmit, services: servicesProp = [], in
       denialCodes: [],
       isAmountBilledManuallyEdited: false,
       isDaysManuallyEdited: false,
+      // When a new service is added (especially during Edit flow), keep its panel expanded.
+      isOpen: true,
     };
     setServices([...services, newService]);
   };
@@ -201,6 +203,8 @@ export default function CustomerForm({ onSubmit, services: servicesProp = [], in
           denialCodes: Array.isArray(service.denialCodes) ? service.denialCodes : (Array.isArray(service.denial_codes) ? service.denial_codes : (service.denial_codes ? [service.denial_codes] : [])),
           isAmountBilledManuallyEdited: false,
           isDaysManuallyEdited: String(service.days ?? service.numberOfDays ?? '') !== '',
+          // Existing services start collapsed when using collapsible panels.
+          isOpen: false,
         };
       });
       setServices(populatedServices);
@@ -223,6 +227,8 @@ export default function CustomerForm({ onSubmit, services: servicesProp = [], in
         denialCodes: Array.isArray(s.denialCodes) ? s.denialCodes : (Array.isArray(s.denial_codes) ? s.denial_codes : []),
         isAmountBilledManuallyEdited: false,
         isDaysManuallyEdited: String(s.days || s.numberOfDays || '') !== '',
+        // Single legacy service starts expanded so fields are visible.
+        isOpen: true,
       };
       setServices([singleService]);
     }
@@ -451,7 +457,9 @@ export default function CustomerForm({ onSubmit, services: servicesProp = [], in
                   />
                   <input
                     type="date"
-                    className="absolute right-0 top-0 bottom-0 w-10 opacity-0 cursor-pointer z-[2]"
+                    className="absolute right-0 top-0 bottom-0 opacity-0 cursor-pointer z-[2]"
+                    style={{ width: '2.5rem' }}
+                    value={dateOfBirth ? toISO(dateOfBirth) : ''}
                     onChange={(e) => {
                       if (e.target.value) {
                         setDateOfBirth(formatMMDDYYYY(e.target.value));
@@ -533,13 +541,15 @@ export default function CustomerForm({ onSubmit, services: servicesProp = [], in
             const svcLabel = service.serviceType || code || '—';
             const start = service.serviceStartDate || '';
             const end = service.serviceEndDate || '';
+            const startISO = start ? toISO(start) : '';
+            const endISO = end ? toISO(end) : '';
             const billed = Number(service.amountBilled || 0);
             const paid = Number(service.amountPaid || 0);
             const due = billed - (Number.isNaN(paid) ? 0 : paid);
             const periodPart = (start || end)
               ? ` - ${start && end ? `${start} to ${end}` : (start || end)}`
               : '';
-            const header = `${index + 1} - ${svcLabel}${periodPart} - billed amt: $${billed.toFixed(2)} - due amt: $${due.toFixed(2)}`;
+            const header = `${index + 1} - ${svcLabel}${periodPart} - Billed Amt: $${billed.toFixed(2)} - Due Amt: $${due.toFixed(2)}`;
             const showRemove = (services.length > 1 || (!hideCustomerFields && !isEditing && !isEditBatch));
 
             const serviceFields = (
@@ -600,7 +610,9 @@ export default function CustomerForm({ onSubmit, services: servicesProp = [], in
                       />
                       <input
                         type="date"
-                        className="absolute right-0 top-0 bottom-0 w-10 opacity-0 cursor-pointer z-[2]"
+                        className="absolute right-0 top-0 bottom-0 opacity-0 cursor-pointer z-[2]"
+                        style={{ width: '2.5rem' }}
+                        value={startISO}
                         onChange={(e) => {
                           if (e.target.value) {
                             updateService(service.id, 'serviceStartDate', formatMMDDYYYY(e.target.value));
@@ -632,7 +644,9 @@ export default function CustomerForm({ onSubmit, services: servicesProp = [], in
                       />
                       <input
                         type="date"
-                        className="absolute right-0 top-0 bottom-0 w-10 opacity-0 cursor-pointer z-[2]"
+                        className="absolute right-0 top-0 bottom-0 opacity-0 cursor-pointer z-[2]"
+                        style={{ width: '2.5rem' }}
+                        value={endISO}
                         onChange={(e) => {
                           if (e.target.value) {
                             updateService(service.id, 'serviceEndDate', formatMMDDYYYY(e.target.value));
@@ -730,7 +744,9 @@ export default function CustomerForm({ onSubmit, services: servicesProp = [], in
                     />
                     <input
                       type="date"
-                      className="absolute right-0 top-0 bottom-0 w-10 opacity-0 cursor-pointer z-[2]"
+                      className="absolute right-0 top-0 bottom-0 opacity-0 cursor-pointer z-[2]"
+                      style={{ width: '2.5rem' }}
+                      value={service.dateOfPayment ? toISO(service.dateOfPayment) : ''}
                       onChange={(e) => {
                         if (e.target.value) {
                           updateService(service.id, 'dateOfPayment', formatMMDDYYYY(e.target.value));
@@ -762,7 +778,9 @@ export default function CustomerForm({ onSubmit, services: servicesProp = [], in
                     />
                     <input
                       type="date"
-                      className="absolute right-0 top-0 bottom-0 w-10 opacity-0 cursor-pointer z-[2]"
+                      className="absolute right-0 top-0 bottom-0 opacity-0 cursor-pointer z-[2]"
+                      style={{ width: '2.5rem' }}
+                      value={service.dateSubmitted ? toISO(service.dateSubmitted) : ''}
                       onChange={(e) => {
                         if (e.target.value) {
                           updateService(service.id, 'dateSubmitted', formatMMDDYYYY(e.target.value));
@@ -932,10 +950,18 @@ export default function CustomerForm({ onSubmit, services: servicesProp = [], in
               );
             }
 
+            const handleToggleOpen = (open) => {
+              setServices(prev =>
+                prev.map(s => (s.id === service.id ? { ...s, isOpen: open } : s))
+              );
+            };
+
             return (
               <details
                 key={service.id}
                 className="group rounded-xl border border-slate-200 bg-white shadow-sm mb-4 overflow-hidden"
+                open={service.isOpen}
+                onToggle={(e) => handleToggleOpen(e.target.open)}
               >
                 <summary
                   className="cursor-pointer select-none px-4 py-3 bg-slate-50 hover:bg-slate-100"
