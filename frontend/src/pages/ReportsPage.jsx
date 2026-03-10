@@ -128,11 +128,11 @@ export default function ReportsPage() {
     { key: 'serviceName', label: 'Service Name', get: (r) => r.service_name || r.serviceName || '' },
     { key: 'startDate', label: 'Start Date', get: (r) => formatMMDDYYYY(r.start_date || r.startDate || '') },
     { key: 'endDate', label: 'End Date', get: (r) => formatMMDDYYYY(r.end_date || r.endDate || '') },
-    { key: 'days', label: 'Days', get: (r) => r.days ?? '' },
-    { key: 'ratePerDay', label: 'Rate/Day', get: (r) => safeNumber(r.rate_per_day ?? r.ratePerDay).toFixed(2) },
-    { key: 'amountBilled', label: 'Amount Billed', get: (r) => safeNumber(r.amount_billed ?? r.amountBilled).toFixed(2) },
-    { key: 'amountPaid', label: 'Amount Paid', get: (r) => safeNumber(r.amount_paid ?? r.amountPaid).toFixed(2) },
-    { key: 'due', label: 'Due', get: (r) => (safeNumber(r.amount_billed ?? r.amountBilled) - safeNumber(r.amount_paid ?? r.amountPaid)).toFixed(2) },
+    { key: 'days', label: 'Days', get: (r) => (r.days != null ? safeNumber(r.days) : '') },
+    { key: 'ratePerDay', label: 'Rate/Day', get: (r) => safeNumber(r.rate_per_day ?? r.ratePerDay) },
+    { key: 'amountBilled', label: 'Amount Billed', get: (r) => safeNumber(r.amount_billed ?? r.amountBilled) },
+    { key: 'amountPaid', label: 'Amount Paid', get: (r) => safeNumber(r.amount_paid ?? r.amountPaid) },
+    { key: 'due', label: 'Due', get: (r) => (safeNumber(r.amount_billed ?? r.amountBilled) - safeNumber(r.amount_paid ?? r.amountPaid)) },
     { key: 'paymentDate', label: 'Payment Date', get: (r) => formatMMDDYYYY(r.date_of_payment || r.dateOfPayment || '') },
     { key: 'dateSubmitted', label: 'Date Submitted', get: (r) => formatMMDDYYYY(r.date_submitted || r.dateSubmitted || '') },
     {
@@ -217,12 +217,64 @@ export default function ReportsPage() {
       header,
       ...body,
       [],
-      ['Grand Total', '', '', '', reportTotals.billed.toFixed(2)],
-      ['Total Paid', '', '', '', reportTotals.paid.toFixed(2)],
-      ['Total Due', '', '', '', reportTotals.due.toFixed(2)],
+      ['Grand Total', reportTotals.billed],
+      ['Total Paid', reportTotals.paid],
+      ['Total Due', reportTotals.due],
     ];
 
     const ws = XLSX.utils.aoa_to_sheet(aoa);
+    // Set professional column widths so users don't have to resize.
+    ws['!cols'] = fieldsInOrder.map((f) => {
+      switch (f.key) {
+        case 'customerName':
+          return { wch: 24 };
+        case 'serviceName':
+          return { wch: 20 };
+        case 'denialCodes':
+          return { wch: 18 };
+        case 'startDate':
+        case 'endDate':
+        case 'dob':
+        case 'paymentDate':
+        case 'dateSubmitted':
+          return { wch: 12 };
+        case 'idNumber':
+        case 'fIdNumber':
+          return { wch: 14 };
+        case 'days':
+          return { wch: 8 };
+        case 'ratePerDay':
+        case 'amountBilled':
+        case 'amountPaid':
+        case 'due':
+          return { wch: 14 };
+        default:
+          return { wch: Math.max(10, f.label.length + 2) };
+      }
+    });
+
+    // Apply simple styling to totals rows (background colors + bold).
+    const totalsStartRow = body.length + 3; // 1-based (header = 1, body, blank, then totals)
+    const totalsStyles = [
+      { label: 'Grand Total', color: 'FFE2F0CB' }, // light green
+      { label: 'Total Paid', color: 'FFDDEEFF' },  // light blue
+      { label: 'Total Due', color: 'FFFDE2E2' },   // light red
+    ];
+    totalsStyles.forEach((style, index) => {
+      const rowNumber = totalsStartRow + index; // 1-based
+      const labelCellRef = XLSX.utils.encode_cell({ r: rowNumber - 1, c: 0 });
+      const valueCellRef = XLSX.utils.encode_cell({ r: rowNumber - 1, c: 1 });
+      const applyStyle = (ref) => {
+        if (!ws[ref]) return;
+        ws[ref].s = {
+          font: { bold: true },
+          fill: { fgColor: { rgb: style.color } },
+        };
+      };
+      applyStyle(labelCellRef);
+      applyStyle(valueCellRef);
+    });
+
     const wb = XLSX.utils.book_new();
     XLSX.utils.book_append_sheet(wb, ws, 'Report');
     const filename = `report-${new Date().toISOString().slice(0, 10)}.xlsx`;
