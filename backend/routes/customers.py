@@ -21,6 +21,28 @@ except Exception:
 
 router = APIRouter()
 
+def _get_or_create_canonical_batch_id(cur, customer_id: int) -> str:
+    """
+    Enforce a single batch_id per customer.
+    Canonical batch_id = the oldest non-empty batch_id for this customer (by created_at),
+    or a newly generated UUID if none exists yet.
+    """
+    cur.execute(
+        """
+        SELECT batch_id
+        FROM customer_entries
+        WHERE customer_id = ? AND batch_id IS NOT NULL AND batch_id != ''
+        ORDER BY created_at ASC, id ASC
+        LIMIT 1
+        """,
+        (customer_id,)
+    )
+    row = cur.fetchone()
+    existing = row.get('batch_id') if isinstance(row, dict) else (row[0] if row else None)
+    if existing:
+        return str(existing)
+    return str(uuid.uuid4())
+
 
 # Pydantic models for clearer OpenAPI schemas
 class ServiceModel(BaseModel):
@@ -119,6 +141,14 @@ class BatchCreatePayload(BaseModel):
 class BatchUpdatePayload(BaseModel):
     """Update only entries in this batch (by id)."""
     services: List[dict]  # each may have id, serviceName, days, ratePerDay, etc.
+
+class BackfillBatchIdsPayload(BaseModel):
+    """
+    Backfill missing customer_entries.batch_id for existing data.
+    Groups consecutive NULL/empty batch rows per customer within a time window into one new UUID batch.
+    """
+    windowSeconds: int = 60
+    dryRun: bool = True
 
 
 def ensure_customers_table():
@@ -397,9 +427,10 @@ def create_customer(payload: CreateCustomerPayload, current_user: dict = Depends
             )
             customer_id = cur.fetchone()['id']
 
-        # Create entries for all services (one batch_id per create)
+        # Create entries for all services.
+        # IMPORTANT: We enforce ONE batch_id per customer (canonical batch id).
         if services_list:
-            create_batch_id = str(uuid.uuid4())
+            create_batch_id = _get_or_create_canonical_batch_id(cur, customer_id)
             for service in services_list:
                 # Convert denial codes to JSON string if it's a list
                 denial_codes = service.get('denialCodes')
@@ -1092,6 +1123,40 @@ def add_customer_service(customer_id: int, payload: ServiceWrapper, current_user
         customer_code = cust_row.get('customer_code') if isinstance(cust_row, dict) else cust_row['customer_code']
         logger.info(f"Found customer: {customer_code}")
 
+        # Determine batch_id to use.
+        # We enforce ONE canonical batch_id per customer.
+        batch_id_to_use = None
+        try:
+            incoming_batch_id = None
+            if isinstance(service, dict):
+                incoming_batch_id = service.get('batchId') or service.get('batch_id')
+            if incoming_batch_id and isinstance(incoming_batch_id, str) and incoming_batch_id.startswith('legacy-'):
+                legacy_id_str = incoming_batch_id.replace('legacy-', '', 1)
+                legacy_entry_id = int(legacy_id_str)
+                cur.execute(
+                    'SELECT batch_id FROM customer_entries WHERE id = ? AND customer_id = ?',
+                    (legacy_entry_id, customer_id)
+                )
+                legacy_row = cur.fetchone()
+                existing_batch = legacy_row.get('batch_id') if isinstance(legacy_row, dict) else (legacy_row['batch_id'] if legacy_row else None)
+                # Upgrade legacy entry to canonical batch id (single batch per customer).
+                canonical = _get_or_create_canonical_batch_id(cur, customer_id)
+                if not existing_batch or str(existing_batch) != str(canonical):
+                    cur.execute(
+                        'UPDATE customer_entries SET batch_id = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ? AND customer_id = ?',
+                        (canonical, legacy_entry_id, customer_id)
+                    )
+                batch_id_to_use = canonical
+            else:
+                # Ignore differing incoming batch ids; always use canonical.
+                batch_id_to_use = _get_or_create_canonical_batch_id(cur, customer_id)
+        except Exception as e:
+            logger.debug("add_customer_service: failed to determine batch_id: %s", e)
+            batch_id_to_use = None
+
+        if not batch_id_to_use:
+            batch_id_to_use = _get_or_create_canonical_batch_id(cur, customer_id)
+
         denial_codes_val = service.get('denialCodes')
         if isinstance(denial_codes_val, list):
             denial_codes_val = ','.join(denial_codes_val) if denial_codes_val else None
@@ -1104,8 +1169,8 @@ def add_customer_service(customer_id: int, payload: ServiceWrapper, current_user
         cur.execute(
             '''INSERT INTO customer_entries
                (customer_id, customer_code, service_name, start_date, end_date, days, rate_per_day,
-                amount_billed, amount_paid, date_of_payment, date_submitted, denial_codes, is_resubmission, billing_comments)
-               VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?) RETURNING id''',
+                amount_billed, amount_paid, date_of_payment, date_submitted, denial_codes, is_resubmission, billing_comments, batch_id)
+               VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?) RETURNING id''',
             (
                 customer_id,
                 customer_code,
@@ -1121,6 +1186,7 @@ def add_customer_service(customer_id: int, payload: ServiceWrapper, current_user
                 denial_codes_val,
                 False,
                 service.get('comments') if isinstance(service, dict) else '',
+                batch_id_to_use,
             )
         )
         entry_id = cur.fetchone()['id']
@@ -1976,6 +2042,192 @@ def get_latest_entries(
         
         return customers
         
+    finally:
+        conn.close()
+
+@router.post("/admin/backfill-batch-ids")
+def backfill_batch_ids(payload: BackfillBatchIdsPayload, current_user: dict = Depends(get_current_user)):
+    """
+    One-time repair for legacy data where `customer_entries.batch_id` is NULL.
+    Strategy: for each customer, group consecutive NULL/empty rows created within `windowSeconds`
+    into a single new UUID batch_id.
+    """
+    ensure_all_tables()
+    data = payload.dict() if hasattr(payload, "dict") else (payload or {})
+    window_seconds = int(data.get("windowSeconds") or 10)
+    dry_run = bool(data.get("dryRun", True))
+
+    if window_seconds < 0 or window_seconds > 3600:
+        raise HTTPException(status_code=400, detail="windowSeconds must be between 0 and 3600")
+
+    conn = get_db_connection()
+    cur = conn.cursor()
+    try:
+        cur.execute(
+            """
+            SELECT id, customer_id, created_at
+            FROM customer_entries
+            WHERE batch_id IS NULL OR batch_id = ''
+            ORDER BY customer_id, created_at, id
+            """
+        )
+        rows = cur.fetchall() or []
+
+        updated_rows = 0
+        created_batches = 0
+        batches_preview = []
+
+        def parse_ts(v):
+            if not v:
+                return None
+            if isinstance(v, datetime):
+                return v
+            s = str(v)
+            # Try common formats: 'YYYY-MM-DD HH:MM:SS' or ISO
+            for fmt in ("%Y-%m-%d %H:%M:%S", "%Y-%m-%dT%H:%M:%S", "%Y-%m-%dT%H:%M:%S.%f"):
+                try:
+                    return datetime.strptime(s.split("+")[0].replace("Z", ""), fmt)
+                except Exception:
+                    pass
+            try:
+                return datetime.fromisoformat(s.replace("Z", ""))
+            except Exception:
+                return None
+
+        current_customer = None
+        current_batch_id = None
+        current_group_ids = []
+        last_ts = None
+
+        def flush_group():
+            nonlocal updated_rows, created_batches, current_batch_id, current_group_ids
+            if not current_group_ids:
+                return
+            bid = current_batch_id or str(uuid.uuid4())
+            if not dry_run:
+                placeholder = ",".join(["?"] * len(current_group_ids))
+                cur.execute(
+                    f"UPDATE customer_entries SET batch_id = ?, updated_at = CURRENT_TIMESTAMP WHERE id IN ({placeholder})",
+                    [bid, *current_group_ids],
+                )
+            updated_rows += len(current_group_ids)
+            created_batches += 1
+            if len(batches_preview) < 25:
+                batches_preview.append({"batch_id": bid, "entry_ids": list(current_group_ids)})
+            current_batch_id = None
+            current_group_ids = []
+
+        for r in rows:
+            rid = r["id"] if isinstance(r, dict) else r[0]
+            cid = r["customer_id"] if isinstance(r, dict) else r[1]
+            ts_raw = r["created_at"] if isinstance(r, dict) else r[2]
+            ts = parse_ts(ts_raw)
+
+            if current_customer is None or cid != current_customer:
+                flush_group()
+                current_customer = cid
+                last_ts = ts
+                current_batch_id = str(uuid.uuid4())
+                current_group_ids = [rid]
+                continue
+
+            # If we cannot parse timestamps, treat each row as separate group.
+            if ts is None or last_ts is None:
+                flush_group()
+                current_batch_id = str(uuid.uuid4())
+                current_group_ids = [rid]
+                last_ts = ts
+                continue
+
+            delta = abs((ts - last_ts).total_seconds())
+            if delta <= window_seconds:
+                current_group_ids.append(rid)
+                last_ts = ts
+            else:
+                flush_group()
+                current_batch_id = str(uuid.uuid4())
+                current_group_ids = [rid]
+                last_ts = ts
+
+        flush_group()
+
+        if not dry_run:
+            conn.commit()
+
+        return {
+            "dryRun": dry_run,
+            "windowSeconds": window_seconds,
+            "batchesCreated": created_batches,
+            "rowsUpdated": updated_rows,
+            "preview": batches_preview,
+            "note": "Re-run with dryRun=false to apply. This only affects rows where batch_id is NULL/empty.",
+        }
+    except Exception as e:
+        conn.rollback()
+        logger.exception("backfill_batch_ids failed")
+        raise HTTPException(status_code=500, detail=str(e))
+    finally:
+        conn.close()
+
+
+@router.post("/admin/consolidate-customer-batch-ids")
+def consolidate_customer_batch_ids(dryRun: bool = True, current_user: dict = Depends(get_current_user)):
+    """
+    Repair endpoint: if a customer already has multiple different batch_ids, consolidate them into ONE.
+    Canonical batch_id = oldest non-empty batch_id for that customer (by created_at).
+    Also fills NULL/empty batch_id rows with the canonical.
+    """
+    ensure_all_tables()
+    conn = get_db_connection()
+    cur = conn.cursor()
+    try:
+        cur.execute("SELECT DISTINCT customer_id FROM customer_entries")
+        customer_ids = [r['customer_id'] if isinstance(r, dict) else r[0] for r in (cur.fetchall() or [])]
+        total_customers = 0
+        customers_changed = 0
+        rows_updated = 0
+        preview = []
+        for cid in customer_ids:
+            total_customers += 1
+            canonical = _get_or_create_canonical_batch_id(cur, int(cid))
+            # Count distinct batch ids excluding null/empty
+            cur.execute(
+                "SELECT DISTINCT batch_id FROM customer_entries WHERE customer_id = ? AND batch_id IS NOT NULL AND batch_id != ''",
+                (cid,)
+            )
+            bids = [r['batch_id'] if isinstance(r, dict) else r[0] for r in (cur.fetchall() or [])]
+            distinct = sorted({str(b) for b in bids if b})
+            # If there are multiple or there are null/empty rows, we consolidate.
+            cur.execute(
+                "SELECT COUNT(*) as cnt FROM customer_entries WHERE customer_id = ? AND (batch_id IS NULL OR batch_id = '' OR batch_id != ?)",
+                (cid, canonical)
+            )
+            cnt_row = cur.fetchone()
+            needs = (cnt_row.get('cnt') if isinstance(cnt_row, dict) else cnt_row[0]) or 0
+            if needs > 0 and canonical:
+                customers_changed += 1
+                rows_updated += int(needs)
+                if len(preview) < 25:
+                    preview.append({"customer_id": int(cid), "canonical": canonical, "existing": distinct})
+                if not dryRun:
+                    cur.execute(
+                        "UPDATE customer_entries SET batch_id = ?, updated_at = CURRENT_TIMESTAMP WHERE customer_id = ?",
+                        (canonical, cid)
+                    )
+        if not dryRun:
+            conn.commit()
+        return {
+            "dryRun": bool(dryRun),
+            "customersScanned": total_customers,
+            "customersChanged": customers_changed,
+            "rowsUpdated": rows_updated,
+            "preview": preview,
+            "note": "Run with dryRun=false to apply. This will force ONE batch_id per customer across ALL their entries.",
+        }
+    except Exception as e:
+        conn.rollback()
+        logger.exception("consolidate_customer_batch_ids failed")
+        raise HTTPException(status_code=500, detail=str(e))
     finally:
         conn.close()
 

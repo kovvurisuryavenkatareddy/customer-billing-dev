@@ -728,6 +728,8 @@ export default function CustomersPage({ showAddForm = false, onNavigate }) {
                           endDate: s.endDate ? toISO(s.endDate) : null,
                           dateSubmitted: s.dateSubmitted ? toISO(s.dateSubmitted) : null,
                           denialCodes: s.denialCodes && s.denialCodes.length ? s.denialCodes : null,
+                          // Ensure newly added services stay grouped under the same batch.
+                          batchId: editingItem.batchId,
                         };
                         const addRes = await fetch(`${API_BASE}/customers/${cust.id}/services`, {
                           method: 'POST',

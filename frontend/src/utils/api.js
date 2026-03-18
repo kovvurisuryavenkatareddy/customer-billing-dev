@@ -14,11 +14,11 @@ export const API_BASE =
   'http://localhost:8000';
 
 export function getAuthHeaders() {
-  const token = localStorage.getItem('token');
-  return {
-    'Content-Type': 'application/json',
-    'Authorization': token ? `Bearer ${token}` : '',
-  };
+  const tokenRaw = localStorage.getItem('token');
+  const token = (tokenRaw && tokenRaw !== 'undefined' && tokenRaw !== 'null') ? tokenRaw : '';
+  const headers = { 'Content-Type': 'application/json' };
+  if (token) headers['Authorization'] = `Bearer ${token}`;
+  return headers;
 }
 
 // Only run logout/redirect once when multiple 401s occur in quick succession (e.g. parallel requests).

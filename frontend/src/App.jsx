@@ -17,7 +17,8 @@ import { setNavigator } from './utils/router';
 const { Content } = Layout;
 
 function getInitialAuth() {
-  const token = localStorage.getItem('token');
+  const tokenRaw = localStorage.getItem('token');
+  const token = (tokenRaw && tokenRaw !== 'undefined' && tokenRaw !== 'null') ? tokenRaw : '';
   const savedUser = localStorage.getItem('user');
   if (!token || !savedUser) return { isAuthenticated: false, user: null };
   try {
