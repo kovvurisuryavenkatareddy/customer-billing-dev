@@ -6,6 +6,7 @@ import { Card, Form, Input, Select, DatePicker, Button, Row, Col, Space } from '
 import { FilterOutlined, ClearOutlined, SearchOutlined } from '@ant-design/icons';
 import { toISO } from '../utils/dates';
 
+<<<<<<< HEAD
 function normalizeForSearch(v) {
   return String(v || '')
     .toLowerCase()
@@ -30,6 +31,9 @@ export default function CustomerSearch({
   selectedCustomerIds = [],
   onSelectedCustomerIdsChange,
 }) {
+=======
+export default function CustomerSearch({ onSearch, status = 'active', onStatusChange }) {
+>>>>>>> 1f2e4a5f786650f7b5002f0154e176ad619d9400
   const [form] = Form.useForm();
 
   useEffect(() => {
@@ -66,8 +70,11 @@ export default function CustomerSearch({
   const clearFilters = () => {
     form.resetFields();
     onStatusChange?.('active');
+<<<<<<< HEAD
     if (onServiceNameChange) onServiceNameChange('');
     if (onSelectedCustomerIdsChange) onSelectedCustomerIdsChange([]);
+=======
+>>>>>>> 1f2e4a5f786650f7b5002f0154e176ad619d9400
     onSearch({
       firstName: '',
       lastName: '',
@@ -78,6 +85,7 @@ export default function CustomerSearch({
     });
   };
 
+<<<<<<< HEAD
   const labelStyle = { fontSize: 12, fontWeight: 600, color: '#475569' };
 
   return (
@@ -91,6 +99,19 @@ export default function CustomerSearch({
           <span className="text-sm font-semibold text-slate-800">Filter Participants</span>
         </Space>
         <Button size="small" icon={<ClearOutlined />} onClick={clearFilters}>
+=======
+  return (
+    <Card
+      className="mb-6 shadow-sm border border-blue-100"
+      styles={{ body: { padding: '20px 24px' } }}
+    >
+      <div className="flex flex-wrap items-center justify-between gap-4 mb-4">
+        <Space align="center">
+          <FilterOutlined className="text-[#007bff] text-lg" />
+          <span className="text-base font-semibold text-[#1a253c]">Filter Participants</span>
+        </Space>
+        <Button icon={<ClearOutlined />} onClick={clearFilters}>
+>>>>>>> 1f2e4a5f786650f7b5002f0154e176ad619d9400
           Clear filters
         </Button>
       </div>
@@ -98,7 +119,10 @@ export default function CustomerSearch({
       <Form
         form={form}
         layout="vertical"
+<<<<<<< HEAD
         size="small"
+=======
+>>>>>>> 1f2e4a5f786650f7b5002f0154e176ad619d9400
         initialValues={{
           status: status,
           firstName: '',
@@ -109,11 +133,18 @@ export default function CustomerSearch({
         }}
         onValuesChange={(_, all) => triggerSearch(all)}
       >
+<<<<<<< HEAD
         <Row gutter={[12, 8]}>
           <Col xs={24} sm={12} md={8} lg={4}>
             <Form.Item name="status" label={<span style={labelStyle}>Status</span>}>
               <Select
                 size="small"
+=======
+        <Row gutter={[16, 12]}>
+          <Col xs={24} sm={12} md={6}>
+            <Form.Item name="status" label="Status">
+              <Select
+>>>>>>> 1f2e4a5f786650f7b5002f0154e176ad619d9400
                 options={[
                   { value: 'active', label: 'Active' },
                   { value: 'inactive', label: 'Inactive' },
@@ -127,6 +158,7 @@ export default function CustomerSearch({
               />
             </Form.Item>
           </Col>
+<<<<<<< HEAD
           <Col xs={24} sm={12} md={8} lg={4}>
             <Form.Item name="firstName" label={<span style={labelStyle}>First Name</span>}>
               <Input size="small" placeholder="First name" allowClear />
@@ -167,10 +199,50 @@ export default function CustomerSearch({
                 placeholder="MM/DD/YYYY"
                 allowClear
                 size="small"
+=======
+          <Col xs={24} sm={12} md={6}>
+            <Form.Item name="firstName" label="First Name">
+              <Input placeholder="First name" allowClear />
+            </Form.Item>
+          </Col>
+          <Col xs={24} sm={12} md={6}>
+            <Form.Item name="lastName" label="Last Name">
+              <Input placeholder="Last name" allowClear />
+            </Form.Item>
+          </Col>
+          <Col xs={24} sm={12} md={6}>
+            <Form.Item name="dateOfBirth" label="Date of Birth">
+              <DatePicker
+                format="MM-DD-YYYY"
+                className="w-full"
+                placeholder="MM-DD-YYYY"
+                allowClear
+              />
+            </Form.Item>
+          </Col>
+          <Col xs={24} sm={12} md={6}>
+            <Form.Item name="startDate" label="From Date">
+              <DatePicker
+                format="MM-DD-YYYY"
+                className="w-full"
+                placeholder="MM-DD-YYYY"
+                allowClear
+              />
+            </Form.Item>
+          </Col>
+          <Col xs={24} sm={12} md={6}>
+            <Form.Item name="endDate" label="To Date">
+              <DatePicker
+                format="MM-DD-YYYY"
+                className="w-full"
+                placeholder="MM-DD-YYYY"
+                allowClear
+>>>>>>> 1f2e4a5f786650f7b5002f0154e176ad619d9400
               />
             </Form.Item>
           </Col>
         </Row>
+<<<<<<< HEAD
         {(onServiceNameChange || onSelectedCustomerIdsChange) && (
           <Row gutter={[12, 8]}>
             {onServiceNameChange && (
@@ -207,6 +279,8 @@ export default function CustomerSearch({
             )}
           </Row>
         )}
+=======
+>>>>>>> 1f2e4a5f786650f7b5002f0154e176ad619d9400
       </Form>
     </Card>
   );

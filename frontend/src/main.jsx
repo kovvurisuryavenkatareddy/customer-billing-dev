@@ -4,7 +4,10 @@
 import React from 'react';
 import ReactDOM from 'react-dom/client';
 import { ConfigProvider } from 'antd';
+<<<<<<< HEAD
 import 'antd/dist/reset.css';
+=======
+>>>>>>> 1f2e4a5f786650f7b5002f0154e176ad619d9400
 import './index.css';
 import './ant-overrides.css';
 import App from './App';

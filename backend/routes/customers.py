@@ -166,7 +166,10 @@ def ensure_customers_table():
             billing_comments TEXT,
             id_number TEXT,
             f_id_number TEXT,
+<<<<<<< HEAD
             total_amount_due DOUBLE PRECISION DEFAULT 0,
+=======
+>>>>>>> 1f2e4a5f786650f7b5002f0154e176ad619d9400
             created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
         )
         '''
@@ -222,7 +225,10 @@ def ensure_customers_columns():
         'billing_comments': 'TEXT',
         'id_number': 'TEXT',
         'f_id_number': 'TEXT',
+<<<<<<< HEAD
         'total_amount_due': 'DOUBLE PRECISION DEFAULT 0',
+=======
+>>>>>>> 1f2e4a5f786650f7b5002f0154e176ad619d9400
     }
     conn = get_db_connection()
     cur = conn.cursor()
@@ -617,7 +623,11 @@ def list_customers(
             'first_name': r['first_name'],
             'date_of_birth': r['date_of_birth'] if 'date_of_birth' in r.keys() else None,
             'active_status': r['active_status'] if 'active_status' in r.keys() else 'active',
+<<<<<<< HEAD
             'total_amount_due': r.get('total_amount_due', 0) if isinstance(r, dict) else getattr(r, 'total_amount_due', 0),
+=======
+            'total_amount_due': r['total_amount_due'],
+>>>>>>> 1f2e4a5f786650f7b5002f0154e176ad619d9400
             'id_number': r.get('id_number'),
             'f_id_number': r.get('f_id_number'),
         }
@@ -783,6 +793,7 @@ def update_customer(customer_id: int, payload: UpdateCustomerPayload, current_us
                 # Some older databases may not have billing_comments column; handle that gracefully.
                 comments_val = existing.get('billing_comments') if isinstance(existing, dict) and 'billing_comments' in existing else None
 
+<<<<<<< HEAD
             has_id_number = 'idNumber' in customer or 'id_number' in customer
             id_number_val = customer.get('idNumber') or customer.get('id_number') if has_id_number else (existing.get('id_number') if isinstance(existing, dict) else existing.get('id_number'))
             has_f_id_number = 'fIdNumber' in customer or 'f_id_number' in customer
@@ -824,6 +835,27 @@ def update_customer(customer_id: int, payload: UpdateCustomerPayload, current_us
                     raise
         else:
             logger.info("Skipping customer update - only updating service")
+=======
+        has_id_number = 'idNumber' in customer or 'id_number' in customer
+        id_number_val = customer.get('idNumber') or customer.get('id_number') if has_id_number else (existing.get('id_number') if isinstance(existing, dict) else existing.get('id_number'))
+        has_f_id_number = 'fIdNumber' in customer or 'f_id_number' in customer
+        f_id_number_val = customer.get('fIdNumber') or customer.get('f_id_number') if has_f_id_number else (existing.get('f_id_number') if isinstance(existing, dict) else existing.get('f_id_number'))
+
+        # Update customer record
+        cur.execute(
+            'UPDATE customers SET last_name = ?, first_name = ?, billing_comments = ?, date_of_birth = ?, active_status = ?, id_number = ?, f_id_number = ? WHERE id = ?',
+            (
+                last_name_val,
+                first_name_val,
+                comments_val,
+                dob_val,
+                active_status_val,
+                id_number_val,
+                f_id_number_val,
+                customer_id,
+            )
+        )
+>>>>>>> 1f2e4a5f786650f7b5002f0154e176ad619d9400
 
         entry_id = None
         if service:

@@ -61,6 +61,7 @@ body.sidebar-open-mobile {
   color: #1f2937;
   margin-bottom: 6px;
   font-size: 14px;
+<<<<<<< HEAD
 }
 .add-customer-form input,
 .add-customer-form select,
@@ -182,4 +183,37 @@ body.sidebar-open-mobile {
 .add-customer-form .form-actions .btn-secondary:disabled {
   opacity: 0.7;
   cursor: not-allowed;
+=======
+}
+.add-customer-form input,
+.add-customer-form select,
+.add-customer-form textarea {
+  width: 100%;
+  max-width: 100%;
+  border: 2px solid #d1d5db;
+  border-radius: 8px;
+  padding: 10px 12px;
+  background: #fff;
+  color: #1f2937;
+  font-size: 15px;
+  line-height: 1.4;
+}
+.add-customer-form input::placeholder,
+.add-customer-form textarea::placeholder {
+  color: #9ca3af;
+}
+.add-customer-form input:focus,
+.add-customer-form select:focus,
+.add-customer-form textarea:focus {
+  outline: none;
+  border-color: #007bff;
+  box-shadow: 0 0 0 3px rgba(0, 123, 255, 0.2);
+}
+.add-customer-form select {
+  cursor: pointer;
+  appearance: auto;
+}
+.add-customer-form .form-row {
+  margin-bottom: 1.25rem;
+>>>>>>> 1f2e4a5f786650f7b5002f0154e176ad619d9400
 }

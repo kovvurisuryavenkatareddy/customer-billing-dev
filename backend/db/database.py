@@ -5,35 +5,13 @@ import psycopg2
 import psycopg2.extras
 import psycopg2.pool
 
+DATABASE_URL = os.getenv('DATABASE_URL')
+# Optional schema to use for all connections. If set, we will ensure the schema
+# exists and set the session search_path so unqualified table names resolve
+# into this schema first.
 DATABASE_SCHEMA = os.getenv('DATABASE_SCHEMA') or 'public'
-
-# --- Connection pool (initialized once on first use) ---
-_pool: psycopg2.pool.ThreadedConnectionPool | None = None
-_pool_lock = threading.Lock()
-
-def _get_database_url():
-    url = os.getenv('DATABASE_URL')
-    if not url:
-        raise RuntimeError(
-            'DATABASE_URL environment variable must be set. '
-            'Add it to backend/.env: DATABASE_URL=postgresql://user:password@host:port/database'
-        )
-    return url
-
-def _get_pool() -> psycopg2.pool.ThreadedConnectionPool:
-    """Return the shared connection pool, creating it on first call."""
-    global _pool
-    if _pool is None:
-        with _pool_lock:
-            if _pool is None:  # double-checked locking
-                url = _get_database_url()
-                _pool = psycopg2.pool.ThreadedConnectionPool(
-                    minconn=2,
-                    maxconn=10,
-                    dsn=url,
-                )
-    return _pool
-
+if not DATABASE_URL:
+    raise RuntimeError('DATABASE_URL environment variable must be set for PostgreSQL connection.')
 
 class _PGConnWrapper:
     """Wraps a pooled psycopg2 connection.
@@ -100,8 +78,7 @@ def get_db_connection() -> _PGConnWrapper:
     (it returns the connection to the pool, not actually close it).
     """
     try:
-        pool = _get_pool()
-        conn = pool.getconn()
+        conn = psycopg2.connect(DATABASE_URL)
 
         # Reset any aborted transaction state
         if conn.status == psycopg2.extensions.STATUS_IN_TRANSACTION:

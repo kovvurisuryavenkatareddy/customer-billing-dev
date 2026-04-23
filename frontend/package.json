@@ -5,7 +5,10 @@
   "type": "module",
   "scripts": {
     "dev": "vite",
+<<<<<<< HEAD
     "host": "vite --host",
+=======
+>>>>>>> 1f2e4a5f786650f7b5002f0154e176ad619d9400
     "build": "vite build",
     "preview": "vite preview",
     "test": "vitest run"
@@ -18,8 +21,12 @@
     "react": "^19.2.0",
     "react-dom": "^19.2.0",
     "react-router-dom": "^6.30.1",
+<<<<<<< HEAD
     "web-vitals": "^2.1.4",
     "xlsx": "^0.18.5"
+=======
+    "web-vitals": "^2.1.4"
+>>>>>>> 1f2e4a5f786650f7b5002f0154e176ad619d9400
   },
   "devDependencies": {
     "@testing-library/dom": "^10.4.1",
