@@ -12,7 +12,8 @@ export default function CustomerList({
   onAddService,
   onChangeStatus,
   onCustomerUpdated,
-  searchText = ''
+  searchText = '',
+  onSelectionChange,
 }) {
   const [pagination, setPagination] = useState({ current: 1, pageSize: 10 });
   const [editingStatusFor, setEditingStatusFor] = useState(null);
@@ -22,6 +23,7 @@ export default function CustomerList({
   const [selectedBatchId, setSelectedBatchId] = useState(null);
   const [selectedCustomerCode, setSelectedCustomerCode] = useState(null);
   const [isInitialLoad, setIsInitialLoad] = useState(true);
+  const [selectedRowKeys, setSelectedRowKeys] = useState([]);
 
   useEffect(() => {
     if (customers.length > 0 && isInitialLoad) {
@@ -291,12 +293,30 @@ export default function CustomerList({
     },
   ];
 
+  const rowSelection = useMemo(() => {
+    return {
+      selectedRowKeys,
+      onChange: (nextKeys, selectedRows) => {
+        setSelectedRowKeys(nextKeys);
+
+        // IMPORTANT: table rows are grouped by batch, so dedupe customers by customerId.
+        const map = new Map();
+        for (const row of selectedRows || []) {
+          const cid = row?.customerId;
+          if (cid != null && !map.has(cid)) map.set(cid, row.customer);
+        }
+        onSelectionChange?.(Array.from(map.values()));
+      },
+    };
+  }, [selectedRowKeys, onSelectionChange]);
+
   return (
     <div>
       <Table
         className="customer-ledger-table"
         dataSource={filteredData}
         columns={columns}
+        rowSelection={rowSelection}
         size="small"
         bordered
         sticky

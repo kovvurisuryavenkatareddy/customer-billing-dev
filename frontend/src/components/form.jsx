@@ -13,7 +13,20 @@ export function formInit() {
 }
 
 // Customer form component
-export default function CustomerForm({ onSubmit, services: servicesProp = [], initial = null, onCancel = null, isResubmission = false, submitting = false, hideCustomerFields = false, allowMultipleServicesInEdit = false, useCollapsibleServices = false } = {}) {
+export default function CustomerForm({
+  onSubmit,
+  services: servicesProp = [],
+  initial = null,
+  onCancel = null,
+  isResubmission = false,
+  submitting = false,
+  hideCustomerFields = false,
+  allowMultipleServicesInEdit = false,
+  useCollapsibleServices = false,
+  onRemoveService = null,
+  onDraftChange = null,
+  hideActions = false,
+} = {}) {
   // Customer basic info state
   const [firstName, setFirstName] = useState('');
   const [lastName, setLastName] = useState('');
@@ -82,7 +95,18 @@ export default function CustomerForm({ onSubmit, services: servicesProp = [], in
 
   // Remove service from list
   const removeService = (serviceId) => {
-    setServices(services.filter(s => s.id !== serviceId));
+    const service = services.find(s => s.id === serviceId);
+    // If this is a saved entry (numeric id that came from the server), call the API
+    const isSavedEntry = service && typeof service.id === 'number' && service.id < 1e12; // temp IDs use Date.now() which is > 1e12
+    if (isSavedEntry && typeof onRemoveService === 'function') {
+      onRemoveService(service.id, () => {
+        // Remove from local state only after API confirms
+        setServices(services.filter(s => s.id !== serviceId));
+      });
+    } else {
+      // New unsaved row — just remove from local state
+      setServices(services.filter(s => s.id !== serviceId));
+    }
   };
 
   // Update service in list
@@ -203,8 +227,9 @@ export default function CustomerForm({ onSubmit, services: servicesProp = [], in
           denialCodes: Array.isArray(service.denialCodes) ? service.denialCodes : (Array.isArray(service.denial_codes) ? service.denial_codes : (service.denial_codes ? [service.denial_codes] : [])),
           isAmountBilledManuallyEdited: false,
           isDaysManuallyEdited: String(service.days ?? service.numberOfDays ?? '') !== '',
-          // Existing services start collapsed when using collapsible panels.
-          isOpen: false,
+          // In Quick Entry / Add Services flows (hideCustomerFields), keep expanded for speed.
+          // In Edit Customer flow, collapse existing services by default.
+          isOpen: Boolean(hideCustomerFields),
         };
       });
       setServices(populatedServices);
@@ -411,6 +436,67 @@ export default function CustomerForm({ onSubmit, services: servicesProp = [], in
     }
   };
 
+  // Draft callback for parent-controlled "Save All" flows.
+  // This intentionally does NOT validate to avoid blocking drafts while typing.
+  useEffect(() => {
+    if (typeof onDraftChange !== 'function') return;
+
+    // Generate stable-ish customer code for drafts:
+    // - prefer existing initial customer code if present
+    // - else use existing internal customerId if already computed
+    // - else fall back to initial.customer.id when editing existing customers
+    let id = null;
+    if (initial && initial.customer) {
+      id = initial.customer.customerCode || initial.customer.customer_code || initial.customer.id || null;
+    }
+    if (!id) id = customerId || null;
+    if (!id) id = (initial && (initial.id || initial.customerId)) ? (initial.id || initial.customerId) : null;
+    if (!id) id = 'cust-' + Date.now();
+
+    const servicesPayload = services.map(service => ({
+      id: service.id,
+      serviceName: service.serviceType,
+      days: Number(service.numberOfDays) || 0,
+      units: isUnitsServiceType(service.serviceType) ? Number(service.units) || 0 : undefined,
+      ratePerDay: (service.ratePerDay != null && service.ratePerDay !== '') ? Number(service.ratePerDay) : getRateForService(service.serviceType),
+      amountBilled: service.amountBilled || 0,
+      amountPaid: service.amountPaid === '' ? 0 : Number(service.amountPaid),
+      dateOfPayment: service.dateOfPayment ? toISO(service.dateOfPayment) : null,
+      startDate: service.serviceStartDate ? toISO(service.serviceStartDate) : null,
+      endDate: service.serviceEndDate ? toISO(service.serviceEndDate) : null,
+      dateSubmitted: service.dateSubmitted ? toISO(service.dateSubmitted) : null,
+      denialCodes: service.denialCodes && service.denialCodes.length > 0 ? service.denialCodes : null,
+    }));
+
+    onDraftChange({
+      customer: {
+        customerCode: String(id),
+        firstName: firstName.trim(),
+        lastName: lastName.trim(),
+        dateOfBirth: dateOfBirth ? toISO(dateOfBirth) : null,
+        activeStatus: activeStatus,
+        idNumber: idNumber.trim() || null,
+        fIdNumber: fIdNumber.trim() || null,
+      },
+      services: servicesPayload,
+      isResubmission,
+    });
+  }, [
+    onDraftChange,
+    initial,
+    customerId,
+    firstName,
+    lastName,
+    dateOfBirth,
+    activeStatus,
+    idNumber,
+    fIdNumber,
+    services,
+    isResubmission,
+    isUnitsServiceType,
+    getRateForService,
+  ]);
+
   return (
     <div className="w-full">
       {isResubmission && (
@@ -550,7 +636,9 @@ export default function CustomerForm({ onSubmit, services: servicesProp = [], in
               ? ` - ${start && end ? `${start} to ${end}` : (start || end)}`
               : '';
             const header = `${index + 1} - ${svcLabel}${periodPart} - Billed Amt: $${billed.toFixed(2)} - Due Amt: $${due.toFixed(2)}`;
-            const showRemove = (services.length > 1 || (!hideCustomerFields && !isEditing && !isEditBatch));
+            // In Quick Entry / Add Services (hideCustomerFields), always allow removing rows.
+            // In Add Customer flow, allow remove only when multiple rows exist (to keep at least one row optional).
+            const showRemove = (services.length > 1 || hideCustomerFields || (!hideCustomerFields && !isEditing && !isEditBatch));
 
             const serviceFields = (
               <>
@@ -1015,19 +1103,21 @@ export default function CustomerForm({ onSubmit, services: servicesProp = [], in
           </div>
         )}
 
-        <div className="form-actions flex gap-2 mt-4" style={{ justifyContent: onCancel ? 'space-between' : 'flex-end' }}>
-          {onCancel && (
-            <button type="button" className="btn-secondary" onClick={() => onCancel()} disabled={submitting}>
-              {submitting ? 'Please wait…' : 'Cancel'}
+        {!hideActions && (
+          <div className="form-actions flex gap-2 mt-4" style={{ justifyContent: onCancel ? 'space-between' : 'flex-end' }}>
+            {onCancel && (
+              <button type="button" className="btn-secondary" onClick={() => onCancel()} disabled={submitting}>
+                {submitting ? 'Please wait…' : 'Cancel'}
+              </button>
+            )}
+            <button type="submit" className="btn-primary" disabled={submitting}>
+              {submitting && <span className="btn-spinner" aria-hidden="true" />}
+              {submitting
+                ? (hideCustomerFields ? 'Saving…' : 'Saving…')
+                : (hideCustomerFields ? 'Save' : (isResubmission ? 'Create Resubmission' : 'Save Customer'))}
             </button>
-          )}
-          <button type="submit" className="btn-primary" disabled={submitting}>
-            {submitting && <span className="btn-spinner" aria-hidden="true" />}
-            {submitting
-              ? (hideCustomerFields ? 'Saving…' : 'Saving…')
-              : (hideCustomerFields ? 'Save' : (isResubmission ? 'Create Resubmission' : 'Save Customer'))}
-          </button>
-        </div>
+          </div>
+        )}
         </fieldset>
       </form>
     </div>

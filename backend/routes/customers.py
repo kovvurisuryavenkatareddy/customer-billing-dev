@@ -154,7 +154,6 @@ class BackfillBatchIdsPayload(BaseModel):
 def ensure_customers_table():
     conn = get_db_connection()
     cur = conn.cursor()
-    # Main customers table for basic customer info
     cur.execute(
         '''
         CREATE TABLE IF NOT EXISTS customers (
@@ -172,8 +171,6 @@ def ensure_customers_table():
         )
         '''
     )
-    # Customer entries/submissions table for service records.
-    # batch_id (UUID string): groups rows added in one save; one batch edited independently.
     cur.execute(
         '''
         CREATE TABLE IF NOT EXISTS customer_entries (
@@ -200,6 +197,17 @@ def ensure_customers_table():
         )
         '''
     )
+    # Indexes for fast lookups
+    cur.execute('CREATE INDEX IF NOT EXISTS idx_customer_entries_customer_id ON customer_entries(customer_id)')
+    cur.execute('CREATE INDEX IF NOT EXISTS idx_customer_entries_start_date ON customer_entries(start_date)')
+    cur.execute('CREATE INDEX IF NOT EXISTS idx_customers_active_status ON customers(active_status)')
+    cur.execute('CREATE INDEX IF NOT EXISTS idx_customers_last_name ON customers(lower(last_name))')
+    cur.execute('CREATE INDEX IF NOT EXISTS idx_customers_first_name ON customers(lower(first_name))')
+    # batch_id index only if column exists
+    try:
+        cur.execute('CREATE INDEX IF NOT EXISTS idx_customer_entries_batch_id ON customer_entries(batch_id)')
+    except Exception:
+        pass
     conn.commit()
     conn.close()
 
@@ -253,6 +261,7 @@ def ensure_customer_services_table():
         )
         '''
     )
+    cur.execute('CREATE INDEX IF NOT EXISTS idx_customer_services_customer_id ON customer_services(customer_id)')
     conn.commit()
     conn.close()
 
@@ -367,9 +376,6 @@ def append_activity_log(action: str, customer: dict, service: dict | None, custo
 
 @router.post("/", status_code=201)
 def create_customer(payload: CreateCustomerPayload, current_user: dict = Depends(get_current_user)):
-    # Ensure all tables exist before creating
-    ensure_all_tables()
-    
     # payload expected: { customer: {...}, services: [{...}] } or { customer: {...}, service: {...} }
     import traceback
     data = payload.dict() if hasattr(payload, 'dict') else (payload or {})
@@ -504,9 +510,6 @@ def list_customers(
     status: Optional[str] = Query('active', description="Filter by active_status: 'active', 'inactive', or 'all'"),
     current_user: dict = Depends(get_current_user)
 ):
-    # Ensure all tables exist before querying
-    ensure_all_tables()
-    
     conn = get_db_connection()
     cur = conn.cursor()
     
@@ -669,9 +672,6 @@ def list_customers(
 
 @router.get("/{customer_id}")
 def get_customer(customer_id: int, current_user: dict = Depends(get_current_user)):
-    # Ensure all tables exist
-    ensure_all_tables()
-    
     conn = get_db_connection()
     cur = conn.cursor()
     cur.execute('SELECT * FROM customers WHERE id = ?', (customer_id,))
@@ -712,9 +712,6 @@ def update_customer(customer_id: int, payload: UpdateCustomerPayload, current_us
     """
     logger.debug(f"=== UPDATE CUSTOMER {customer_id} ===")
     logger.debug(f"Payload: {payload}")
-    
-    # Ensure all tables exist
-    ensure_all_tables()
     
     data = payload.dict() if hasattr(payload, 'dict') else (payload or {})
     customer = data.get('customer') if isinstance(data, dict) else None
@@ -997,9 +994,6 @@ def update_customer(customer_id: int, payload: UpdateCustomerPayload, current_us
 def update_customer_service(customer_id: int, service_id: int, payload: ServiceWrapper, current_user: dict = Depends(get_current_user)):
     """Update a service line for a customer. Payload: { service: { serviceName, days, ratePerDay, amountBilled, amountPaid, dateOfPayment } }
     """
-    # Ensure all tables exist
-    ensure_all_tables()
-    
     data = payload.dict() if hasattr(payload, 'dict') else (payload or {})
     service = data.get('service') if isinstance(data, dict) else None
     if not service:
@@ -1090,6 +1084,47 @@ def update_customer_service(customer_id: int, service_id: int, payload: ServiceW
     return { 'id': service_id, 'updated': True }
 
 
+@router.delete("/{customer_id}/services/{service_id}", status_code=200)
+def delete_customer_service(customer_id: int, service_id: int, current_user: dict = Depends(get_current_user)):
+    """Delete a specific service entry for a customer."""
+    conn = get_db_connection()
+    cur = conn.cursor()
+    try:
+        # Try customer_entries first (primary table)
+        cur.execute('SELECT id FROM customer_entries WHERE id = ? AND customer_id = ?', (service_id, customer_id))
+        entry_row = cur.fetchone()
+        if entry_row:
+            cur.execute('DELETE FROM customer_entries WHERE id = ? AND customer_id = ?', (service_id, customer_id))
+            logger.info(f"Deleted customer_entries row {service_id} for customer {customer_id}")
+        else:
+            # Fall back to legacy customer_services table
+            cur.execute('SELECT id FROM customer_services WHERE id = ? AND customer_id = ?', (service_id, customer_id))
+            if not cur.fetchone():
+                raise HTTPException(status_code=404, detail='service not found')
+            cur.execute('DELETE FROM customer_services WHERE id = ? AND customer_id = ?', (service_id, customer_id))
+            logger.info(f"Deleted customer_services row {service_id} for customer {customer_id}")
+
+        # Update total_amount_due
+        try:
+            cur.execute('SELECT COALESCE(SUM(amount_billed),0) as total FROM customer_entries WHERE customer_id = %s', (customer_id,))
+            total = cur.fetchone()['total']
+            cur.execute('UPDATE customers SET total_amount_due = %s WHERE id = %s', (total, customer_id))
+        except Exception as e:
+            logger.debug(f"Skipping total_amount_due update: {e}")
+
+        conn.commit()
+    except HTTPException:
+        raise
+    except Exception as exc:
+        conn.rollback()
+        logger.error(f"Failed to delete service {service_id}: {exc}")
+        raise HTTPException(status_code=500, detail=str(exc))
+    finally:
+        conn.close()
+
+    return {'id': service_id, 'deleted': True}
+
+
 @router.post("/{customer_id}/services", status_code=201)
 def add_customer_service(customer_id: int, payload: ServiceWrapper, current_user: dict = Depends(get_current_user)):
     """Add a new service line for an existing customer.
@@ -1098,9 +1133,6 @@ def add_customer_service(customer_id: int, payload: ServiceWrapper, current_user
     """
     logger.info(f"=== ADD SERVICE for customer {customer_id} ===")
     logger.debug(f"Payload received: {payload}")
-    
-    # Ensure all tables exist
-    ensure_all_tables()
     
     data = payload.dict() if hasattr(payload, 'dict') else (payload or {})
     service = data.get('service') if isinstance(data, dict) else None
@@ -1259,8 +1291,6 @@ def delete_all_customers(current_user: dict = Depends(get_current_user)):
     Returns counts of rows deleted for customers and customer_services.
     """
     # Ensure tables exist so the operation is safe even on a fresh DB
-    ensure_all_tables()
-
     conn = get_db_connection()
     cur = conn.cursor()
     try:
@@ -1289,7 +1319,6 @@ def delete_all_customers(current_user: dict = Depends(get_current_user)):
 @router.get("/{customer_id}/entries")
 def get_customer_entries(customer_id: int, current_user: dict = Depends(get_current_user)):
     """Get all entries/submissions for a specific customer"""
-    ensure_all_tables()
     conn = get_db_connection()
     cur = conn.cursor()
     
@@ -1333,7 +1362,6 @@ def get_customer_entries(customer_id: int, current_user: dict = Depends(get_curr
 @router.get("/{customer_id}/batches")
 def list_customer_batches(customer_id: int, current_user: dict = Depends(get_current_user)):
     """List batches for a customer. Each batch has one batch_id and N entries. Legacy rows (no batch_id) appear as one batch per row."""
-    ensure_all_tables()
     conn = get_db_connection()
     cur = conn.cursor()
     try:
@@ -1365,7 +1393,6 @@ def list_customer_batches(customer_id: int, current_user: dict = Depends(get_cur
 @router.get("/{customer_id}/batches/{batch_id}/entries")
 def get_batch_entries(customer_id: int, batch_id: str, current_user: dict = Depends(get_current_user)):
     """Fetch only entries for this batch. Edit form uses this (do not fetch all services)."""
-    ensure_all_tables()
     conn = get_db_connection()
     cur = conn.cursor()
     try:
@@ -1400,7 +1427,6 @@ def get_batch_entries(customer_id: int, batch_id: str, current_user: dict = Depe
 @router.post("/{customer_id}/batches", status_code=201)
 def create_batch(customer_id: int, payload: BatchCreatePayload, current_user: dict = Depends(get_current_user)):
     """Add N services as one batch: one batch_id (UUID), N rows. Never combine with other batches."""
-    ensure_all_tables()
     data = payload.dict() if hasattr(payload, 'dict') else (payload or {})
     services_list = data.get('services') or []
     if not services_list:
@@ -1458,7 +1484,6 @@ def create_batch(customer_id: int, payload: BatchCreatePayload, current_user: di
 @router.put("/{customer_id}/batches/{batch_id}")
 def update_batch(customer_id: int, batch_id: str, payload: BatchUpdatePayload, current_user: dict = Depends(get_current_user)):
     """Update only entries in this batch (by id). Do not touch other batches."""
-    ensure_all_tables()
     data = payload.dict() if hasattr(payload, 'dict') else (payload or {})
     services_list = data.get('services') or []
     if not services_list:
@@ -1541,8 +1566,6 @@ def add_customer_entry(customer_id: int, payload: ServiceWrapper, current_user: 
     """
     logger.info(f"=== ADD ENTRY for customer {customer_id} ===")
     logger.debug(f"Payload received: {payload}")
-    
-    ensure_all_tables()
     
     data = payload.dict() if hasattr(payload, 'dict') else (payload or {})
     service = data.get('service') if isinstance(data, dict) else None
@@ -1673,8 +1696,6 @@ def create_resubmission(customer_id: int, payload: ResubmissionPayload, current_
     logger.info(f"Creating resubmission for customer {customer_id}")
     logger.debug(f"Received payload: {payload}")
     
-    ensure_all_tables()
-    
     data = payload.dict() if hasattr(payload, 'dict') else (payload or {})
     original_entry_id = data.get('originalEntryId')
     service = data.get('service', {})
@@ -1804,8 +1825,6 @@ def get_all_entries(
     current_user: dict = Depends(get_current_user)
 ):
     """Get **all** service entries for each customer (one row per entry)."""
-    ensure_all_tables()
-
     conn = get_db_connection()
     cur = conn.cursor()
 
@@ -1928,8 +1947,6 @@ def get_latest_entries(
     current_user: dict = Depends(get_current_user)
 ):
     """Get the latest entry for each customer (for main table display)"""
-    ensure_all_tables()
-    
     conn = get_db_connection()
     cur = conn.cursor()
     
@@ -2052,7 +2069,6 @@ def backfill_batch_ids(payload: BackfillBatchIdsPayload, current_user: dict = De
     Strategy: for each customer, group consecutive NULL/empty rows created within `windowSeconds`
     into a single new UUID batch_id.
     """
-    ensure_all_tables()
     data = payload.dict() if hasattr(payload, "dict") else (payload or {})
     window_seconds = int(data.get("windowSeconds") or 10)
     dry_run = bool(data.get("dryRun", True))
@@ -2177,7 +2193,6 @@ def consolidate_customer_batch_ids(dryRun: bool = True, current_user: dict = Dep
     Canonical batch_id = oldest non-empty batch_id for that customer (by created_at).
     Also fills NULL/empty batch_id rows with the canonical.
     """
-    ensure_all_tables()
     conn = get_db_connection()
     cur = conn.cursor()
     try:
@@ -2235,8 +2250,6 @@ def consolidate_customer_batch_ids(dryRun: bool = True, current_user: dict = Dep
 @router.delete("/clear-all-data")
 def clear_all_data(current_user: dict = Depends(get_current_user)):
     """Clear all customer and customer_entries data (development only)"""
-    ensure_all_tables()
-    
     conn = get_db_connection()
     cur = conn.cursor()
     

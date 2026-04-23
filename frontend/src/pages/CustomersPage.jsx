@@ -3,6 +3,7 @@ import { Input, Card, Spin, Modal, Empty, Button } from 'antd';
 import CustomerSearch from '../components/CustomerSearch';
 import CustomerList from '../components/CustomerList';
 import CustomerForm from '../components/form';
+import QuickEntryModal from '../components/QuickEntryModal';
 import { API_BASE, getAuthHeaders, handle401Error } from '../utils/api';
 import { formatMMDDYYYY, toISO } from '../utils/dates';
 
@@ -66,6 +67,8 @@ export default function CustomersPage({ showAddForm = false, onNavigate }) {
   const [addFormKey, setAddFormKey] = useState(0);
   const [editCustomerEntries, setEditCustomerEntries] = useState(null);
   const [loadingEditEntries, setLoadingEditEntries] = useState(false);
+  const [quickEntryCustomers, setQuickEntryCustomers] = useState([]);
+  const [showQuickEntry, setShowQuickEntry] = useState(false);
 
   useEffect(() => {
     // fetch services for forms (run once on mount)
@@ -151,7 +154,7 @@ export default function CustomersPage({ showAddForm = false, onNavigate }) {
         await refreshCustomers();
         setNotFound(false);
         if (window.showToast) {
-          window.showToast({ key: 'add-customer', message: 'Customer added successfully.', type: 'success' });
+          window.showToast({ key: 'add-customer', message: 'Customer added successfully.', type: 'success', duration: 3000 });
         }
         setAddFormKey((k) => k + 1);
         if (onNavigate) onNavigate('home');
@@ -193,6 +196,33 @@ export default function CustomersPage({ showAddForm = false, onNavigate }) {
   async function refreshCustomers() {
     const data = await fetchCustomersFromServer(filters || {});
     if (data) setCustomers(data);
+  }
+
+  // Remove a saved service entry via API — called from the Remove button inside the edit form
+  async function handleRemoveService(entryId, onSuccess) {
+    const customerId = editingItem?.customer?.id;
+    if (!customerId || !entryId) {
+      window.showToast?.({ type: 'error', message: 'Cannot remove: missing entry ID.' });
+      return;
+    }
+    try {
+      const res = await fetch(`${API_BASE}/customers/${customerId}/services/${entryId}`, {
+        method: 'DELETE',
+        headers: getAuthHeaders(),
+      });
+      if (res.status === 401) { handle401Error(); return; }
+      if (!res.ok) {
+        const errText = await res.text();
+        throw new Error(`Delete failed: ${res.status} - ${errText}`);
+      }
+      window.showToast?.({ type: 'success', message: 'Service removed successfully.', duration: 3000 });
+      // Update local editCustomerEntries so the form reflects the removal
+      setEditCustomerEntries(prev => (prev || []).filter(e => e.id !== entryId));
+      if (typeof onSuccess === 'function') onSuccess();
+    } catch (err) {
+      console.error('Failed to remove service', err);
+      window.showToast?.({ type: 'error', message: 'Failed to remove service: ' + (err.message || 'Unknown error'), duration: 4000 });
+    }
   }
 
   // When user clicks edit in list, receive { customer, service }
@@ -283,15 +313,19 @@ export default function CustomersPage({ showAddForm = false, onNavigate }) {
     }
   }
 
-  // Edit Customer modal: one customer, multiple services — update customer then each service (PUT existing, POST new)
   async function handleEditCustomerSubmit(payload) {
     const cust = editingItem?.customer;
     if (!cust?.id) return;
     setSavingEditCustomer(true);
     const existingEntryIds = new Set((editCustomerEntries || []).map((e) => Number(e.id)).filter(Boolean));
+    
+    // OPTIMISTIC: close modal immediately
+    setEditingItem(null);
+    setEditCustomerEntries(null);
+    
     try {
       if (window.showToast) {
-        window.showToast({ key: 'edit-customer', type: 'loading', message: 'Updating customer…', duration: 0 });
+        window.showToast({ key: 'edit-customer', type: 'loading', message: 'Saving changes…', duration: 0 });
       }
       const custRes = await fetch(`${API_BASE}/customers/${cust.id}`, {
         method: 'PUT',
@@ -325,10 +359,7 @@ export default function CustomersPage({ showAddForm = false, onNavigate }) {
             headers: getAuthHeaders(),
             body: JSON.stringify({ service: serviceBody }),
           });
-          if (res.status === 401) {
-            handle401Error();
-            return;
-          }
+          if (res.status === 401) { handle401Error(); return; }
           if (!res.ok) throw new Error(`Service update failed: ${res.status}`);
         } else {
           const res = await fetch(`${API_BASE}/customers/${cust.id}/services`, {
@@ -336,28 +367,22 @@ export default function CustomersPage({ showAddForm = false, onNavigate }) {
             headers: getAuthHeaders(),
             body: JSON.stringify({ service: serviceBody }),
           });
-          if (res.status === 401) {
-            handle401Error();
-            return;
-          }
+          if (res.status === 401) { handle401Error(); return; }
           if (!res.ok) throw new Error(`Add service failed: ${res.status}`);
         }
       }
       if (window.showToast) {
-        window.showToast({ key: 'edit-customer', message: 'Customer and services updated.', type: 'success' });
+        window.showToast({ key: 'edit-customer', message: 'Customer updated successfully.', type: 'success', duration: 3000 });
       }
-      await refreshCustomers();
-      setEditingItem(null);
-      setEditCustomerEntries(null);
+      // Refresh in background
+      refreshCustomers();
     } catch (err) {
-      console.error('Edit customer failed', err);
+      console.error('Failed to update customer/service', err);
       if (window.showToast) {
-        window.showToast({
-          key: 'edit-customer',
-          message: 'Failed to update: ' + (err.message || 'Unknown error'),
-          type: 'error',
-        });
+        window.showToast({ key: 'edit-customer', message: 'Failed to save: ' + (err.message || 'Unknown error'), type: 'error', duration: 4500 });
       }
+      // Refresh to restore correct state on error
+      refreshCustomers();
     } finally {
       setSavingEditCustomer(false);
     }
@@ -381,6 +406,8 @@ export default function CustomersPage({ showAddForm = false, onNavigate }) {
 
   // inline update handler for CustomerList
   async function handleUpdate(customerId, serviceId, body) {
+    const toastKey = `update-service-${serviceId}`;
+    window.showToast?.({ key: toastKey, type: 'loading', message: 'Updating service…', duration: 0 });
     try {
       const res = await fetch(`${API_BASE}/customers/${customerId}/services/${serviceId}`, {
         method: 'PUT',
@@ -391,14 +418,20 @@ export default function CustomersPage({ showAddForm = false, onNavigate }) {
         handle401Error();
         return;
       }
+      if (!res.ok) throw new Error(`Update failed: ${res.status}`);
+      window.showToast?.({ key: toastKey, type: 'success', message: 'Service updated successfully.', duration: 3000 });
       await refreshCustomers();
     } catch (err) {
       console.error('Failed to update service inline', err);
+      window.showToast?.({ key: toastKey, type: 'error', message: err.message || 'Failed to update service.', duration: 4000 });
     }
   }
 
   // Inline change of customer status (active/inactive) from the table
   async function handleChangeStatus(customerId, newStatus) {
+    const label = newStatus === 'active' ? 'activated' : 'deactivated';
+    const toastKey = `status-${customerId}`;
+    window.showToast?.({ key: toastKey, type: 'loading', message: 'Updating status…', duration: 0 });
     try {
       const res = await fetch(`${API_BASE}/customers/${customerId}`, {
         method: 'PUT',
@@ -410,11 +443,13 @@ export default function CustomersPage({ showAddForm = false, onNavigate }) {
         return;
       }
       if (!res.ok) {
-        console.error('Failed to update customer status', await res.text());
+        throw new Error(`Status update failed: ${res.status}`);
       }
+      window.showToast?.({ key: toastKey, type: 'success', message: `Participant ${label} successfully.`, duration: 3000 });
       await refreshCustomers();
     } catch (err) {
       console.error('Failed to update customer status', err);
+      window.showToast?.({ key: toastKey, type: 'error', message: err.message || 'Failed to update status.', duration: 4000 });
     }
   }
 
@@ -427,13 +462,48 @@ export default function CustomersPage({ showAddForm = false, onNavigate }) {
     if (!addingServiceFor) return;
     setSavingAddService(true);
     const toastKey = `add-service-${addingServiceFor.id}`;
+    
+    // OPTIMISTIC UPDATE: Immediately add to UI
+    const tempId = `temp-${Date.now()}`;
+    const optimisticEntry = {
+      id: addingServiceFor.id,
+      customer_id: addingServiceFor.id,
+      entry_id: tempId,
+      first_name: addingServiceFor.first_name,
+      last_name: addingServiceFor.last_name,
+      date_of_birth: addingServiceFor.date_of_birth,
+      active_status: addingServiceFor.active_status,
+      id_number: addingServiceFor.id_number,
+      f_id_number: addingServiceFor.f_id_number,
+      service_name: payload.service.serviceName,
+      start_date: payload.service.startDate,
+      end_date: payload.service.endDate,
+      days: payload.service.days,
+      rate_per_day: payload.service.ratePerDay,
+      amount_billed: payload.service.amountBilled,
+      amount_paid: payload.service.amountPaid || 0,
+      date_of_payment: payload.service.dateOfPayment,
+      date_submitted: payload.service.dateSubmitted,
+      denial_codes: payload.service.denialCodes || [],
+      is_resubmission: false,
+      batch_id: null,
+      created_at: new Date().toISOString(),
+      _optimistic: true, // Flag to identify optimistic entries
+    };
+    
+    // Add optimistic entry to customers list immediately
+    setCustomers(prev => [optimisticEntry, ...prev]);
+    
+    // Close modal immediately for instant feedback
+    setAddingServiceFor(null);
+    
     try {
       const custId = addingServiceFor.id;
       console.log('=== ADDING SERVICE ===');
       console.log('Customer ID:', custId);
       console.log('Payload:', JSON.stringify(payload, null, 2));
 
-      window.showToast?.({ key: toastKey, type: 'loading', message: 'Adding service…', duration: 0 });
+      window.showToast?.({ key: toastKey, type: 'loading', message: 'Saving service…', duration: 0 });
       
       const res = await fetch(`${API_BASE}/customers/${custId}/services`, {
         method: 'POST',
@@ -445,22 +515,30 @@ export default function CustomersPage({ showAddForm = false, onNavigate }) {
       
       if (res.status === 401) {
         handle401Error();
+        // Rollback optimistic update
+        setCustomers(prev => prev.filter(c => c.entry_id !== tempId));
         return;
       }
       
       if (!res.ok) {
         const errorText = await res.text();
         console.error('Error response:', errorText);
+        // Rollback optimistic update
+        setCustomers(prev => prev.filter(c => c.entry_id !== tempId));
         throw new Error(`Failed to add service: ${res.status} - ${errorText}`);
       }
       
       const result = await res.json();
       console.log('Service added successfully:', result);
       
-      await refreshCustomers();
-      setAddingServiceFor(null);
+      // Replace optimistic entry with real data from server
+      setCustomers(prev => prev.map(c => 
+        c.entry_id === tempId 
+          ? { ...optimisticEntry, entry_id: result.entry_id || result.id, _optimistic: false }
+          : c
+      ));
 
-      window.showToast?.({ key: toastKey, type: 'success', message: 'Service added successfully.', duration: 3000 });
+      window.showToast?.({ key: toastKey, type: 'success', message: `Service "${payload.service.serviceName || 'Service'}" added successfully.`, duration: 3000 });
     } catch (err) {
       console.error('Failed to add service', err);
       window.showToast?.({
@@ -613,15 +691,24 @@ export default function CustomersPage({ showAddForm = false, onNavigate }) {
             className="mb-6 overflow-x-hidden"
             title={<span className="text-lg font-semibold">{statusFilter === 'active' ? 'Active' : statusFilter === 'inactive' ? 'Inactive' : 'All'} Participant Records</span>}
             extra={
-              <Input.Search
-                placeholder="Search by name, ID, or service"
-                allowClear
-                enterButton
-                size="middle"
-                value={tableSearchText}
-                onSearch={setTableSearchText}
-                onChange={(e) => setTableSearchText(e.target.value)}
-              />
+              <div className="flex items-center gap-2">
+                <Button
+                  type="default"
+                  disabled={quickEntryCustomers.length === 0}
+                  onClick={() => setShowQuickEntry(true)}
+                >
+                  Quick Entry{quickEntryCustomers.length ? ` (${quickEntryCustomers.length})` : ''}
+                </Button>
+                <Input.Search
+                  placeholder="Search by name, ID, or service"
+                  allowClear
+                  enterButton
+                  size="middle"
+                  value={tableSearchText}
+                  onSearch={setTableSearchText}
+                  onChange={(e) => setTableSearchText(e.target.value)}
+                />
+              </div>
             }
           >
             {notFound && customers.length === 0 ? (
@@ -644,13 +731,43 @@ export default function CustomersPage({ showAddForm = false, onNavigate }) {
                   onUpdate={handleUpdate}
                   onAddService={handleAddService}
                   onChangeStatus={handleChangeStatus}
-                  onCustomerUpdated={refreshCustomers}
+                  onSelectionChange={(selectedCustomers) => {
+                    setQuickEntryCustomers(Array.isArray(selectedCustomers) ? selectedCustomers : []);
+                  }}
+                  onCustomerUpdated={(action, key) => {
+                    if (action === 'optimistic-delete' && key) {
+                      // Immediately remove the row from UI
+                      setCustomers(prev => prev.filter(c => {
+                        const rowKey = c.batch_id || (c.entry_id != null ? `legacy-${c.entry_id}` : `single-${c.id}-${c.entry_id}`);
+                        return rowKey !== key;
+                      }));
+                    } else {
+                      refreshCustomers();
+                    }
+                  }}
                   searchText={tableSearchText}
                 />
               </div>
             )}
           </Card>
         )}
+
+        <Modal
+          open={showQuickEntry}
+          title={`Quick Entry${quickEntryCustomers.length ? ` — ${quickEntryCustomers.length} customer(s)` : ''}`}
+          onCancel={() => setShowQuickEntry(false)}
+          footer={null}
+          width={980}
+          centered
+          destroyOnClose
+          styles={{ body: { maxHeight: '72vh', overflowY: 'auto', padding: 16, background: '#f8fafc' } }}
+        >
+          <QuickEntryModal
+            selectedCustomers={quickEntryCustomers}
+            servicesCatalog={services}
+            onClose={() => setShowQuickEntry(false)}
+          />
+        </Modal>
 
         <Modal
           open={!!editingItem}
@@ -700,7 +817,10 @@ export default function CustomersPage({ showAddForm = false, onNavigate }) {
                     const newServices = allServices.slice(entryIds.length);
                     try {
                       setSavingEditCustomer(true);
-                      window.showToast?.({ key: 'edit-batch', type: 'loading', message: 'Saving…', duration: 0 });
+                      // OPTIMISTIC: close modal immediately, sync in background
+                      setEditingItem(null);
+                      setBatchEntries(null);
+                      window.showToast?.({ key: 'edit-batch', type: 'loading', message: 'Saving services…', duration: 0 });
                       if (batchServicesPayload.length > 0) {
                         const res = await fetch(
                           `${API_BASE}/customers/${cust.id}/batches/${editingItem.batchId}`,
@@ -728,7 +848,6 @@ export default function CustomersPage({ showAddForm = false, onNavigate }) {
                           endDate: s.endDate ? toISO(s.endDate) : null,
                           dateSubmitted: s.dateSubmitted ? toISO(s.dateSubmitted) : null,
                           denialCodes: s.denialCodes && s.denialCodes.length ? s.denialCodes : null,
-                          // Ensure newly added services stay grouped under the same batch.
                           batchId: editingItem.batchId,
                         };
                         const addRes = await fetch(`${API_BASE}/customers/${cust.id}/services`, {
@@ -742,15 +861,14 @@ export default function CustomersPage({ showAddForm = false, onNavigate }) {
                         }
                         if (!addRes.ok) throw new Error(await addRes.text().catch(() => 'Add service failed'));
                       }
-                      await refreshCustomers();
-                      setEditingItem(null);
-                      setBatchEntries(null);
-                      window.showToast?.({ key: 'edit-batch', type: 'success', message: 'Saved.', duration: 3000 });
+                      // Refresh in background after save
+                      refreshCustomers();
+                      window.showToast?.({ key: 'edit-batch', type: 'success', message: 'Services updated successfully.', duration: 3000 });
                     } catch (err) {
                       window.showToast?.({
                         key: 'edit-batch',
                         type: 'error',
-                        message: err.message || 'Failed to save',
+                        message: 'Failed to save services: ' + (err.message || 'Unknown error'),
                         duration: 4500,
                       });
                     } finally {
@@ -764,6 +882,7 @@ export default function CustomersPage({ showAddForm = false, onNavigate }) {
                   }}
                   hideCustomerFields={true}
                   useCollapsibleServices={true}
+                  onRemoveService={handleRemoveService}
                 />
               )}
               {!loadingBatch && batchEntries && batchEntries.length === 0 && (
@@ -788,6 +907,7 @@ export default function CustomersPage({ showAddForm = false, onNavigate }) {
                   }}
                   allowMultipleServicesInEdit={true}
                   useCollapsibleServices={true}
+                  onRemoveService={handleRemoveService}
                 />
               )}
             </Spin>
@@ -820,7 +940,7 @@ export default function CustomersPage({ showAddForm = false, onNavigate }) {
                 try {
                   setSavingAddService(true);
                   const toastKey = `add-batch-${addingServiceFor.id}`;
-                  window.showToast?.({ key: toastKey, type: 'loading', message: 'Adding batch…', duration: 0 });
+                  window.showToast?.({ key: toastKey, type: 'loading', message: `Adding ${servicesToAdd.length} service(s)…`, duration: 0 });
                   const res = await fetch(`${API_BASE}/customers/${addingServiceFor.id}/batches`, {
                     method: 'POST',
                     headers: getAuthHeaders(),
@@ -839,14 +959,14 @@ export default function CustomersPage({ showAddForm = false, onNavigate }) {
                   window.showToast?.({
                     key: toastKey,
                     type: 'success',
-                    message: `Added ${servicesToAdd.length} service(s) as new batch.`,
-                    duration: 3500,
+                    message: `${servicesToAdd.length} service(s) added successfully.`,
+                    duration: 3000,
                   });
                 } catch (err) {
                   window.showToast?.({
                     key: `add-batch-${addingServiceFor.id}`,
                     type: 'error',
-                    message: err.message || 'Failed to add services',
+                    message: 'Failed to add services: ' + (err.message || 'Unknown error'),
                     duration: 4500,
                   });
                 } finally {

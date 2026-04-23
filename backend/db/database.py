@@ -1,27 +1,47 @@
 import os
 import traceback
+import threading
 import psycopg2
 import psycopg2.extras
+import psycopg2.pool
 
-# Optional schema to use for all connections. If set, we will ensure the schema
-# exists and set the session search_path so unqualified table names resolve
-# into this schema first.
 DATABASE_SCHEMA = os.getenv('DATABASE_SCHEMA') or 'public'
 
+# --- Connection pool (initialized once on first use) ---
+_pool: psycopg2.pool.ThreadedConnectionPool | None = None
+_pool_lock = threading.Lock()
+
 def _get_database_url():
-    """Get DATABASE_URL from environment, raising error if not set."""
     url = os.getenv('DATABASE_URL')
     if not url:
         raise RuntimeError(
-            'DATABASE_URL environment variable must be set for PostgreSQL connection. '
-            'Please create a .env file in the backend directory with: DATABASE_URL=postgresql://user:password@host:port/database'
+            'DATABASE_URL environment variable must be set. '
+            'Add it to backend/.env: DATABASE_URL=postgresql://user:password@host:port/database'
         )
     return url
 
+def _get_pool() -> psycopg2.pool.ThreadedConnectionPool:
+    """Return the shared connection pool, creating it on first call."""
+    global _pool
+    if _pool is None:
+        with _pool_lock:
+            if _pool is None:  # double-checked locking
+                url = _get_database_url()
+                _pool = psycopg2.pool.ThreadedConnectionPool(
+                    minconn=2,
+                    maxconn=10,
+                    dsn=url,
+                )
+    return _pool
+
+
 class _PGConnWrapper:
-    """Wrap a psycopg2 connection to provide a .cursor() returning a RealDictCursor
-    so code that expects dict-like rows (r['id']) continues to work.
+    """Wraps a pooled psycopg2 connection.
+    - cursor() returns RealDictCursor so rows behave like dicts.
+    - close() returns the connection to the pool instead of closing it.
+    - Translates SQLite-style ? placeholders to %s automatically.
     """
+
     def __init__(self, conn):
         self._conn = conn
 
@@ -30,7 +50,6 @@ class _PGConnWrapper:
             self._cur = cur
 
         def execute(self, sql, params=None):
-            # translate sqlite-style ? placeholders to psycopg2 %s placeholders
             if params is not None and '?' in sql:
                 sql = sql.replace('?', '%s')
             return self._cur.execute(sql, params or None)
@@ -63,35 +82,38 @@ class _PGConnWrapper:
         return self._conn.rollback()
 
     def close(self):
-        return self._conn.close()
+        """Return connection to pool instead of closing it."""
+        try:
+            _get_pool().putconn(self._conn)
+        except Exception:
+            try:
+                self._conn.close()
+            except Exception:
+                pass
 
-    # expose execute/fetch helpers optionally
     def __getattr__(self, name):
         return getattr(self._conn, name)
 
-def get_db_connection():
-    """Return a psycopg2 connection wrapper using `DATABASE_URL`.
-    The wrapper's cursor() will return RealDictCursor so route code can keep
-    treating rows like dictionaries.
+
+def get_db_connection() -> _PGConnWrapper:
+    """Get a connection from the pool. Always call conn.close() when done
+    (it returns the connection to the pool, not actually close it).
     """
     try:
-        database_url = _get_database_url()
-        conn = psycopg2.connect(database_url)
+        pool = _get_pool()
+        conn = pool.getconn()
 
-        # If a non-public schema is configured, try to ensure it exists and
-        # set the search_path so unqualified table names use it.
+        # Reset any aborted transaction state
+        if conn.status == psycopg2.extensions.STATUS_IN_TRANSACTION:
+            conn.rollback()
+
+        # Set schema search path if needed
         if DATABASE_SCHEMA and DATABASE_SCHEMA.lower() != 'public':
             try:
                 cur = conn.cursor()
-                # Create schema if it doesn't exist. If permission is missing,
-                # this will raise and we'll continue without aborting the connection.
-                cur.execute(f'CREATE SCHEMA IF NOT EXISTS "{DATABASE_SCHEMA}"')
                 cur.execute(f'SET search_path TO "{DATABASE_SCHEMA}", public')
                 cur.close()
-                conn.commit()
             except Exception:
-                # don't fail the whole connection when schema creation isn't allowed;
-                # log the traceback and continue so callers can decide how to proceed.
                 traceback.print_exc()
 
         return _PGConnWrapper(conn)
