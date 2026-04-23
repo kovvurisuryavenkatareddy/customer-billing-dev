@@ -1,14 +1,7 @@
-<<<<<<< HEAD
 import React, { useState, useEffect, useRef } from 'react';
 import { formatMMDDYYYY, toISO } from '../utils/dates';
 
 export default function ServiceForm({ services = [], onSubmit, initial = null, onCancel, submitting = false }) {
-=======
-import React, { useState, useEffect } from 'react';
-import { formatMMDDYYYY, toISO } from '../utils/dates';
-
-export default function ServiceForm({ services = [], onSubmit, initial = null, onCancel }) {
->>>>>>> 1f2e4a5f786650f7b5002f0154e176ad619d9400
   const [serviceType, setServiceType] = useState('');
   const [days, setDays] = useState('');
   const [units, setUnits] = useState('');
@@ -23,13 +16,10 @@ export default function ServiceForm({ services = [], onSubmit, initial = null, o
   const [searchTerm, setSearchTerm] = useState('');
   const [showDropdown, setShowDropdown] = useState(false);
   const [isAmountBilledManuallyEdited, setIsAmountBilledManuallyEdited] = useState(false);
-<<<<<<< HEAD
   const [isDaysManuallyEdited, setIsDaysManuallyEdited] = useState(false);
 
   // Prevent derived-calculation effect from overwriting initial values on first load of `initial`.
   const skipDerivedOnceRef = useRef(false);
-=======
->>>>>>> 1f2e4a5f786650f7b5002f0154e176ad619d9400
 
   // Denial code options
   const denialCodeOptions = ['D1', 'D2', 'D3', 'D4', 'D5', 'D6', 'D7', 'D8', 'D9', 'D10'];
@@ -49,10 +39,7 @@ export default function ServiceForm({ services = [], onSubmit, initial = null, o
 
   useEffect(() => {
     if (initial) {
-<<<<<<< HEAD
       skipDerivedOnceRef.current = true;
-=======
->>>>>>> 1f2e4a5f786650f7b5002f0154e176ad619d9400
       // Normalize initial service against provided services list
       const rawName = (initial.serviceName || initial.service_name || '').toString();
       const match = Array.isArray(services) ? services.find(x => {
@@ -61,7 +48,6 @@ export default function ServiceForm({ services = [], onSubmit, initial = null, o
       }) : null;
       const svcName = match ? (match.name || match.serviceName || match.service_name) : (initial.serviceName || initial.service_name || '');
       setServiceType(svcName);
-<<<<<<< HEAD
 
       const initialDaysRaw = initial.days ?? initial.days ?? '';
       const initialDaysStr = (initialDaysRaw === null || typeof initialDaysRaw === 'undefined') ? '' : String(initialDaysRaw);
@@ -71,16 +57,10 @@ export default function ServiceForm({ services = [], onSubmit, initial = null, o
       const initialAmountBilledRaw = initial.amountBilled ?? initial.amount_billed ?? 0;
       const initialAmountBilledNum = Number(initialAmountBilledRaw) || 0;
       setAmountBilled(initialAmountBilledNum);
-=======
-      setDays(initial.days ?? initial.days ?? '');
-      setRatePerDay(initial.ratePerDay ?? initial.rate_per_day ?? 0);
-      setAmountBilled(initial.amountBilled ?? initial.amount_billed ?? 0);
->>>>>>> 1f2e4a5f786650f7b5002f0154e176ad619d9400
       setAmountPaid(initial.amountPaid || initial.amount_paid || '');
       if (typeof initial.units !== 'undefined') {
         setUnits(String(initial.units));
       }
-<<<<<<< HEAD
       // Editing behavior:
       // - If days already exists, treat it as an explicit value and do not re-derive it from dates
       //   unless the user changes the dates (we flip this flag off in the date fields' handlers).
@@ -91,19 +71,12 @@ export default function ServiceForm({ services = [], onSubmit, initial = null, o
       // Allow recalculation when user changes days/dates, but never on initial load (skipDerivedOnceRef).
       // We only lock recalculation after the user manually edits Amount Billed in this session.
       setIsAmountBilledManuallyEdited(false);
-=======
-      setIsAmountBilledManuallyEdited(true); // When editing, preserve the existing amount
->>>>>>> 1f2e4a5f786650f7b5002f0154e176ad619d9400
       const paymentDate = initial.dateOfPayment || initial.date_of_payment || '';
       const svcStartDate = initial.startDate || initial.start_date || '';
       const svcEndDate = initial.endDate || initial.end_date || '';
       const submittedDate = initial.dateSubmitted || initial.date_submitted || '';
       const codes = initial.denialCodes || initial.denial_codes || [];
-<<<<<<< HEAD
       // Format dates to MM/DD/YYYY for cleaner display
-=======
-      // Format dates to MM-DD-YYYY for cleaner display
->>>>>>> 1f2e4a5f786650f7b5002f0154e176ad619d9400
       setDateOfPayment(paymentDate ? formatMMDDYYYY(paymentDate) : '');
       setStartDate(svcStartDate ? formatMMDDYYYY(svcStartDate) : '');
       setEndDate(svcEndDate ? formatMMDDYYYY(svcEndDate) : '');
@@ -111,10 +84,7 @@ export default function ServiceForm({ services = [], onSubmit, initial = null, o
       setDenialCodes(Array.isArray(codes) ? codes : (codes ? [codes] : []));
     } else {
       setIsAmountBilledManuallyEdited(false); // Reset flag for new entries
-<<<<<<< HEAD
       setIsDaysManuallyEdited(false);
-=======
->>>>>>> 1f2e4a5f786650f7b5002f0154e176ad619d9400
     }
   }, [initial]);
 
@@ -124,17 +94,10 @@ export default function ServiceForm({ services = [], onSubmit, initial = null, o
     if (s) {
       const dd = s.default_days ?? s.defaultDays ?? 1;
       // only set days if dates not provided
-<<<<<<< HEAD
       if ((!startDate || !endDate) && !isDaysManuallyEdited) setDays(String(dd));
       setRatePerDay(Number(s.rate_per_day ?? s.ratePerDay ?? 0));
     }
   }, [serviceType, services, startDate, endDate, isDaysManuallyEdited]);
-=======
-      if (!startDate || !endDate) setDays(String(dd));
-      setRatePerDay(Number(s.rate_per_day ?? s.ratePerDay ?? 0));
-    }
-  }, [serviceType, services, startDate, endDate]);
->>>>>>> 1f2e4a5f786650f7b5002f0154e176ad619d9400
 
   // Helper: determine if current service should be treated as units-based (e.g., H0038)
   const isUnitsServiceType = (type) => {
@@ -148,14 +111,11 @@ export default function ServiceForm({ services = [], onSubmit, initial = null, o
 
   // compute derived amount billed from dates/days or units, depending on service type
   useEffect(() => {
-<<<<<<< HEAD
     if (skipDerivedOnceRef.current) {
       skipDerivedOnceRef.current = false;
       return;
     }
 
-=======
->>>>>>> 1f2e4a5f786650f7b5002f0154e176ad619d9400
     if (isUnitsServiceType(serviceType)) {
       if (!isAmountBilledManuallyEdited) {
         const u = parseFloat(units);
@@ -175,7 +135,6 @@ export default function ServiceForm({ services = [], onSubmit, initial = null, o
       if (!isNaN(s) && !isNaN(e) && e >= s) {
         const msInDay = 24 * 60 * 60 * 1000;
         const diffDays = Math.floor((e - s) / msInDay) + 1; // inclusive
-<<<<<<< HEAD
 
         // If user hasn't overridden Days, keep Days in sync with date range.
         // If they did override Days, keep their number (e.g., 4 days even if dates span 3).
@@ -193,16 +152,6 @@ export default function ServiceForm({ services = [], onSubmit, initial = null, o
         }
       } else {
         if (!isDaysManuallyEdited) setDays('');
-=======
-        setDays(String(diffDays));
-        // Recalculate amount billed if it wasn't manually edited
-        if (!isAmountBilledManuallyEdited) {
-          const r = Number(ratePerDay);
-          if (!isNaN(r)) setAmountBilled(Math.round(diffDays * r * 100) / 100);
-        }
-      } else {
-        setDays('');
->>>>>>> 1f2e4a5f786650f7b5002f0154e176ad619d9400
         if (!isAmountBilledManuallyEdited) {
           setAmountBilled(0);
         }
@@ -215,11 +164,7 @@ export default function ServiceForm({ services = [], onSubmit, initial = null, o
         if (!isNaN(d) && !isNaN(r)) setAmountBilled(Math.round(d * r * 100) / 100);
       }
     }
-<<<<<<< HEAD
   }, [serviceType, units, startDate, endDate, days, ratePerDay, isAmountBilledManuallyEdited, isDaysManuallyEdited]);
-=======
-  }, [serviceType, units, startDate, endDate, days, ratePerDay, isAmountBilledManuallyEdited]);
->>>>>>> 1f2e4a5f786650f7b5002f0154e176ad619d9400
 
   const handleSubmit = (e) => {
     e.preventDefault();
@@ -229,12 +174,8 @@ export default function ServiceForm({ services = [], onSubmit, initial = null, o
       const s = new Date(startDate);
       const eDate = new Date(endDate);
       if (!isNaN(s) && !isNaN(eDate) && eDate < s) {
-<<<<<<< HEAD
         if (window.showToast) window.showToast({ message: 'Service end date cannot be before start date.', type: 'error' });
         else window.alert('Service end date cannot be before service start date');
-=======
-        window.alert('Service end date cannot be before service start date');
->>>>>>> 1f2e4a5f786650f7b5002f0154e176ad619d9400
         return;
       }
     }
@@ -257,7 +198,6 @@ export default function ServiceForm({ services = [], onSubmit, initial = null, o
     if (typeof onSubmit === 'function') onSubmit(payload);
   };
 
-<<<<<<< HEAD
   const computedPaid = amountPaid === '' ? 0 : Number(amountPaid) || 0;
   const computedDue = (Number(amountBilled) || 0) - computedPaid;
 
@@ -579,554 +519,10 @@ export default function ServiceForm({ services = [], onSubmit, initial = null, o
                 </div>
               )}
             </div>
-=======
-  return (
-    <div style={{ 
-      maxWidth: '600px', 
-      margin: '0 auto',
-      minHeight: '400px',
-      transition: 'all 0.3s ease'
-    }}>
-    <form onSubmit={handleSubmit}>
-      <div className="flex flex-wrap items-center gap-3 mb-6 box-border w-full min-w-0">
-        <label>Type of service</label>
-        <select value={serviceType} onChange={(e) => setServiceType(e.target.value)}>
-          <option value="">-- select --</option>
-          {Array.isArray(services) && services.map(s => {
-            const svcName = s.name || s.serviceName || s.service_name || '';
-            const code = (s.code || s.serviceCode || s.service_code || '').toString();
-            const name = svcName.toString();
-            const normalizedCode = code.toUpperCase().trim();
-            const normalizedName = name.toUpperCase();
-            const isUnit = normalizedCode.includes('H0038') || normalizedName.includes('H0038');
-            const rate = s.rate_per_day ?? s.ratePerDay ?? 0;
-            const key = s.id || svcName;
-            const perLabel = isUnit ? '/unit' : '/day';
-            return (
-              <option key={key} value={svcName}>{svcName} — ${rate}{perLabel}</option>
-            );
-          })}
-        </select>
-      </div>
-
-      {!isUnitsServiceType(serviceType) && (
-      <div className="flex gap-3 items-start mb-6">
-        <div className="flex flex-wrap items-center gap-3 mb-6 box-border w-full min-w-0">
-          <label>Service start date</label>
-          <div style={{ position: 'relative', flex: 1 }}>
-            <input 
-              type="text" 
-              placeholder="MM-DD-YYYY" 
-              value={startDate} 
-              onChange={(e) => setStartDate(e.target.value)}
-              style={{ 
-                width: '100%',
-                paddingRight: '40px',
-                boxSizing: 'border-box'
-              }}
-            />
-            <input
-              type="date"
-              style={{
-                position: 'absolute',
-                right: '0',
-                top: '0',
-                bottom: '0',
-                width: '40px',
-                opacity: 0,
-                cursor: 'pointer',
-                zIndex: 2
-              }}
-              onChange={(e) => {
-                if (e.target.value) {
-                  setStartDate(formatMMDDYYYY(e.target.value));
-                }
-              }}
-              onFocus={(e) => e.target.showPicker && e.target.showPicker()}
-            />
-            <svg 
-              width="20" 
-              height="20" 
-              viewBox="0 0 24 24" 
-              fill="none" 
-              xmlns="http://www.w3.org/2000/svg"
-              style={{
-                position: 'absolute',
-                right: '10px',
-                top: '50%',
-                transform: 'translateY(-50%)',
-                pointerEvents: 'none',
-                color: '#007bff',
-                zIndex: 1
-              }}
-            >
-              <rect x="3" y="4" width="18" height="18" rx="2" stroke="currentColor" strokeWidth="2" fill="none"/>
-              <line x1="16" y1="2" x2="16" y2="6" stroke="currentColor" strokeWidth="2" strokeLinecap="round"/>
-              <line x1="8" y1="2" x2="8" y2="6" stroke="currentColor" strokeWidth="2" strokeLinecap="round"/>
-              <line x1="3" y1="10" x2="21" y2="10" stroke="currentColor" strokeWidth="2"/>
-              <rect x="7" y="14" width="2" height="2" fill="currentColor"/>
-              <rect x="11" y="14" width="2" height="2" fill="currentColor"/>
-              <rect x="15" y="14" width="2" height="2" fill="currentColor"/>
-            </svg>
-          </div>
-        </div>
-
-        <div className="flex flex-wrap items-center gap-3 mb-6 box-border w-full min-w-0">
-          <label>Service end date</label>
-          <div style={{ position: 'relative', flex: 1 }}>
-            <input 
-              type="text" 
-              placeholder="MM-DD-YYYY" 
-              value={endDate} 
-              onChange={(e) => setEndDate(e.target.value)}
-              style={{ 
-                width: '100%',
-                paddingRight: '40px',
-                boxSizing: 'border-box'
-              }}
-            />
-            <input
-              type="date"
-              style={{
-                position: 'absolute',
-                right: '0',
-                top: '0',
-                bottom: '0',
-                width: '40px',
-                opacity: 0,
-                cursor: 'pointer',
-                zIndex: 2
-              }}
-              onChange={(e) => {
-                if (e.target.value) {
-                  setEndDate(formatMMDDYYYY(e.target.value));
-                }
-              }}
-              onFocus={(e) => e.target.showPicker && e.target.showPicker()}
-            />
-            <svg 
-              width="20" 
-              height="20" 
-              viewBox="0 0 24 24" 
-              fill="none" 
-              xmlns="http://www.w3.org/2000/svg"
-              style={{
-                position: 'absolute',
-                right: '10px',
-                top: '50%',
-                transform: 'translateY(-50%)',
-                pointerEvents: 'none',
-                color: '#007bff',
-                zIndex: 1
-              }}
-            >
-              <rect x="3" y="4" width="18" height="18" rx="2" stroke="currentColor" strokeWidth="2" fill="none"/>
-              <line x1="16" y1="2" x2="16" y2="6" stroke="currentColor" strokeWidth="2" strokeLinecap="round"/>
-              <line x1="8" y1="2" x2="8" y2="6" stroke="currentColor" strokeWidth="2" strokeLinecap="round"/>
-              <line x1="3" y1="10" x2="21" y2="10" stroke="currentColor" strokeWidth="2"/>
-              <rect x="7" y="14" width="2" height="2" fill="currentColor"/>
-              <rect x="11" y="14" width="2" height="2" fill="currentColor"/>
-              <rect x="15" y="14" width="2" height="2" fill="currentColor"/>
-            </svg>
-          </div>
-        </div>
-      </div>
-      )}
-
-      {!isUnitsServiceType(serviceType) && (
-      <div className="flex flex-wrap items-center gap-3 mb-6 box-border w-full min-w-0">
-        <label>Number of days</label>
-        <input 
-          type="number" 
-          min="0" 
-          step="1"
-          value={days} 
-          onChange={(e) => {
-            setDays(e.target.value);
-            // Recalculate amount billed when days change (unless amount was manually edited)
-            if (!isAmountBilledManuallyEdited) {
-              const d = parseFloat(e.target.value);
-              const r = Number(ratePerDay);
-              if (!isNaN(d) && d >= 0 && !isNaN(r)) {
-                setAmountBilled(Math.round(d * r * 100) / 100);
-              } else {
-                setAmountBilled(0);
-              }
-            }
-          }}
-        />
-      </div>
-      )}
-
-      {isUnitsServiceType(serviceType) && (
-      <div className="flex flex-wrap items-center gap-3 mb-6 box-border w-full min-w-0">
-        <label>Number of units</label>
-        <input 
-          type="number" 
-          min="0" 
-          step="1"
-          value={units} 
-          onChange={(e) => {
-            setUnits(e.target.value);
-            if (!isAmountBilledManuallyEdited) {
-              const u = parseFloat(e.target.value);
-              const r = Number(ratePerDay);
-              if (!isNaN(u) && u >= 0 && !isNaN(r)) {
-                setAmountBilled(Math.round(u * r * 100) / 100);
-              } else {
-                setAmountBilled(0);
-              }
-            }
-          }}
-        />
-      </div>
-      )}
-
-      <div className="flex flex-wrap items-center gap-3 mb-6 box-border w-full min-w-0">
-        <label>Rate per day ($)</label>
-        <input type="number" min="0" value={ratePerDay} readOnly />
-      </div>
-
-      <div className="flex flex-wrap items-center gap-3 mb-6 box-border w-full min-w-0">
-        <label>Amount billed ($)</label>
-        <input 
-          type="number" 
-          min="0"
-          step="0.01"
-          value={amountBilled} 
-          onChange={(e) => {
-            const value = parseFloat(e.target.value);
-            if (!isNaN(value) && value >= 0) {
-              setAmountBilled(value);
-              setIsAmountBilledManuallyEdited(true);
-            } else if (e.target.value === '' || e.target.value === '-') {
-              setAmountBilled(0);
-              setIsAmountBilledManuallyEdited(true);
-            }
-          }}
-        />
-      </div>
-
-      <div className="flex flex-wrap items-center gap-3 mb-6 box-border w-full min-w-0">
-        <label>Date Submitted</label>
-        <div style={{ position: 'relative', flex: 1 }}>
-          <input 
-            type="text" 
-            placeholder="MM-DD-YYYY" 
-            value={dateSubmitted} 
-            onChange={(e) => setDateSubmitted(e.target.value)}
-            style={{ 
-              width: '100%',
-              paddingRight: '40px',
-              boxSizing: 'border-box'
-            }}
-          />
-          <input
-            type="date"
-            style={{
-              position: 'absolute',
-              right: '0',
-              top: '0',
-              bottom: '0',
-              width: '40px',
-              opacity: 0,
-              cursor: 'pointer',
-              zIndex: 2
-            }}
-            onChange={(e) => {
-              if (e.target.value) {
-                setDateSubmitted(formatMMDDYYYY(e.target.value));
-              }
-            }}
-            onFocus={(e) => e.target.showPicker && e.target.showPicker()}
-          />
-          <svg 
-            width="20" 
-            height="20" 
-            viewBox="0 0 24 24" 
-            fill="none" 
-            xmlns="http://www.w3.org/2000/svg"
-            style={{
-              position: 'absolute',
-              right: '10px',
-              top: '50%',
-              transform: 'translateY(-50%)',
-              pointerEvents: 'none',
-              color: '#007bff',
-              zIndex: 1
-            }}
-          >
-            <rect x="3" y="4" width="18" height="18" rx="2" stroke="currentColor" strokeWidth="2" fill="none"/>
-            <line x1="16" y1="2" x2="16" y2="6" stroke="currentColor" strokeWidth="2" strokeLinecap="round"/>
-            <line x1="8" y1="2" x2="8" y2="6" stroke="currentColor" strokeWidth="2" strokeLinecap="round"/>
-            <line x1="3" y1="10" x2="21" y2="10" stroke="currentColor" strokeWidth="2"/>
-            <rect x="7" y="14" width="2" height="2" fill="currentColor"/>
-            <rect x="11" y="14" width="2" height="2" fill="currentColor"/>
-            <rect x="15" y="14" width="2" height="2" fill="currentColor"/>
-          </svg>
-        </div>
-      </div>
-
-      <div className="flex flex-wrap items-center gap-3 mb-6 box-border w-full min-w-0">
-        <label>Amount paid ($)</label>
-        <input type="number" min="0" value={amountPaid} onChange={(e) => setAmountPaid(e.target.value)} />
-      </div>
-
-      <div className="flex flex-wrap items-center gap-3 mb-6 box-border w-full min-w-0">
-        <label>Date of payment</label>
-        <div style={{ position: 'relative', flex: 1 }}>
-          <input 
-            type="text" 
-            placeholder="MM-DD-YYYY" 
-            value={dateOfPayment} 
-            onChange={(e) => setDateOfPayment(e.target.value)}
-            style={{ 
-              width: '100%',
-              paddingRight: '40px',
-              boxSizing: 'border-box'
-            }}
-          />
-          <input
-            type="date"
-            style={{
-              position: 'absolute',
-              right: '0',
-              top: '0',
-              bottom: '0',
-              width: '40px',
-              opacity: 0,
-              cursor: 'pointer',
-              zIndex: 2
-            }}
-            onChange={(e) => {
-              if (e.target.value) {
-                setDateOfPayment(formatMMDDYYYY(e.target.value));
-              }
-            }}
-            onFocus={(e) => e.target.showPicker && e.target.showPicker()}
-          />
-          <svg 
-            width="20" 
-            height="20" 
-            viewBox="0 0 24 24" 
-            fill="none" 
-            xmlns="http://www.w3.org/2000/svg"
-            style={{
-              position: 'absolute',
-              right: '10px',
-              top: '50%',
-              transform: 'translateY(-50%)',
-              pointerEvents: 'none',
-              color: '#667eea',
-              zIndex: 1
-            }}
-          >
-            <rect x="3" y="4" width="18" height="18" rx="2" stroke="currentColor" strokeWidth="2" fill="none"/>
-            <line x1="16" y1="2" x2="16" y2="6" stroke="currentColor" strokeWidth="2" strokeLinecap="round"/>
-            <line x1="8" y1="2" x2="8" y2="6" stroke="currentColor" strokeWidth="2" strokeLinecap="round"/>
-            <line x1="3" y1="10" x2="21" y2="10" stroke="currentColor" strokeWidth="2"/>
-            <rect x="7" y="14" width="2" height="2" fill="currentColor"/>
-            <rect x="11" y="14" width="2" height="2" fill="currentColor"/>
-            <rect x="15" y="14" width="2" height="2" fill="currentColor"/>
-          </svg>
-        </div>
-      </div>
-
-      <div className="flex flex-wrap items-center gap-3 mb-6 box-border w-full min-w-0">
-        <label>Denial Code</label>
-        <div style={{ position: 'relative' }}>
-          <div
-            style={{
-              minHeight: '40px',
-              padding: '8px 40px 8px 12px',
-              border: '1px solid #ddd',
-              borderRadius: '4px',
-              cursor: 'text',
-              backgroundColor: 'white',
-              display: 'flex',
-              flexWrap: 'wrap',
-              alignItems: 'center',
-              gap: '4px'
-            }}
-            onClick={() => {
-              setShowDropdown(true);
-              const input = document.getElementById('service-denial-input');
-              input && input.focus();
-            }}
-          >
-            {denialCodes.length > 0 && denialCodes.map(code => (
-              <span
-                key={code}
-                style={{
-                  background: '#e6f3ff',
-                  color: '#007bff',
-                  padding: '2px 6px',
-                  borderRadius: '12px',
-                  fontSize: '12px',
-                  fontWeight: '500',
-                  display: 'flex',
-                  alignItems: 'center',
-                  gap: '6px'
-                }}
-              >
-                {code}
-                <button
-                  type="button"
-                  onClick={(e) => {
-                    e.stopPropagation();
-                    setDenialCodes(denialCodes.filter(c => c !== code));
-                  }}
-                  style={{
-                    background: 'none',
-                    border: 'none',
-                    color: '#007bff',
-                    cursor: 'pointer',
-                    padding: '0',
-                    width: '16px',
-                    height: '16px',
-                    borderRadius: '50%',
-                    display: 'flex',
-                    alignItems: 'center',
-                    justifyContent: 'center',
-                    fontSize: '12px'
-                  }}
-                >
-                  ×
-                </button>
-              </span>
-            ))}
-
-            <input
-              id="service-denial-input"
-              value={searchTerm}
-              onChange={(e) => { setSearchTerm(e.target.value); setShowDropdown(true); }}
-              onKeyDown={(e) => {
-                if (e.key === 'Enter') {
-                  e.preventDefault();
-                  const val = searchTerm.trim();
-                  if (val) {
-                    if (!denialCodes.includes(val)) setDenialCodes([...denialCodes, val]);
-                    setSearchTerm('');
-                    setShowDropdown(false);
-                  }
-                } else if (e.key === 'Backspace' && searchTerm === '') {
-                  // remove last tag
-                  setDenialCodes(denialCodes.slice(0, -1));
-                } else if (e.key === 'ArrowDown') {
-                  const first = document.querySelector('#service-denial-codes-dropdown .option-item');
-                  first && first.focus();
-                }
-              }}
-              placeholder={denialCodes.length === 0 ? 'Type to search or add denial codes...' : ''}
-              style={{
-                border: 'none',
-                outline: 'none',
-                flex: 1,
-                minWidth: '120px',
-                fontSize: '14px',
-                padding: '4px 0'
-              }}
-            />
-
-            <svg
-              style={{
-                position: 'absolute',
-                right: '12px',
-                top: '50%',
-                transform: 'translateY(-50%)',
-                width: '16px',
-                height: '16px',
-                pointerEvents: 'none'
-              }}
-              fill="currentColor"
-              viewBox="0 0 20 20"
-            >
-              <path fillRule="evenodd" d="M5.293 7.293a1 1 0 011.414 0L10 10.586l3.293-3.293a1 1 0 111.414 1.414l-4 4a1 1 0 01-1.414 0l-4-4a1 1 0 010-1.414z" clipRule="evenodd" />
-            </svg>
-          </div>
-
-          <div
-            id="service-denial-codes-dropdown"
-            style={{
-              display: showDropdown ? 'block' : 'none',
-              position: 'absolute',
-              top: '100%',
-              left: '0',
-              right: '0',
-              backgroundColor: 'white',
-              border: '1px solid #ddd',
-              borderTop: 'none',
-              borderRadius: '0 0 4px 4px',
-              boxShadow: '0 2px 8px rgba(0,0,0,0.1)',
-              zIndex: 1000,
-              maxHeight: '200px',
-              overflowY: 'auto'
-            }}
-          >
-            {denialCodeOptions
-              .filter(code => code.toLowerCase().includes(searchTerm.toLowerCase()))
-              .map(code => (
-                <div
-                  key={code}
-                  tabIndex={0}
-                  className="option-item"
-                  onClick={() => {
-                    if (denialCodes.includes(code)) {
-                      setDenialCodes(denialCodes.filter(c => c !== code));
-                    } else {
-                      setDenialCodes([...denialCodes, code]);
-                    }
-                    setSearchTerm('');
-                    setShowDropdown(false);
-                  }}
-                  onKeyDown={(e) => {
-                    if (e.key === 'Enter') {
-                      e.preventDefault();
-                      e.target.click();
-                    }
-                  }}
-                  style={{
-                    padding: '8px 12px',
-                    cursor: 'pointer',
-                    backgroundColor: denialCodes.includes(code) ? '#e6f3ff' : 'transparent',
-                    color: denialCodes.includes(code) ? '#007bff' : '#333',
-                    display: 'flex',
-                    alignItems: 'center',
-                    justifyContent: 'space-between',
-                    borderBottom: '1px solid #f0f0f0'
-                  }}
-                >
-                  <span>{code}</span>
-                  {denialCodes.includes(code) && (
-                    <svg width="16" height="16" fill="currentColor" viewBox="0 0 20 20">
-                      <path fillRule="evenodd" d="M16.707 5.293a1 1 0 010 1.414l-8 8a1 1 0 01-1.414 0l-4-4a1 1 0 011.414-1.414L8 12.586l7.293-7.293a1 1 0 011.414 0z" clipRule="evenodd" />
-                    </svg>
-                  )}
-                </div>
-              ))}
-
-            {/* allow adding the typed custom value as an option */}
-            {searchTerm.trim() !== '' && !denialCodeOptions.some(c => c.toLowerCase() === searchTerm.trim().toLowerCase()) && (
-              <div
-                onClick={() => {
-                  const val = searchTerm.trim();
-                  if (val) {
-                    setDenialCodes([...denialCodes, val]);
-                    setSearchTerm('');
-                    setShowDropdown(false);
-                  }
-                }}
-                style={{ padding: '8px 12px', cursor: 'pointer', backgroundColor: '#fff8e6' }}
-              >
-                Add "{searchTerm}"
-              </div>
-            )}
->>>>>>> 1f2e4a5f786650f7b5002f0154e176ad619d9400
           </div>
         </div>
       </div>
 
-<<<<<<< HEAD
       <div className="form-actions flex gap-2 mt-4 pt-3 border-t border-slate-200" style={{ justifyContent: 'space-between' }}>
         {onCancel && (
           <button type="button" className="btn-secondary" onClick={onCancel} disabled={submitting}>
@@ -1139,14 +535,6 @@ export default function ServiceForm({ services = [], onSubmit, initial = null, o
         </button>
       </div>
       </fieldset>
-=======
-      <div className="flex gap-2 mt-4" style={{ justifyContent: 'space-between' }}>
-        {onCancel && (
-          <button type="button" className="bg-secondary text-white py-3 px-6 rounded-lg font-medium cursor-pointer hover:bg-secondary-hover border-0" onClick={onCancel}>Cancel</button>
-        )}
-        <button type="submit">Add Service</button>
-      </div>
->>>>>>> 1f2e4a5f786650f7b5002f0154e176ad619d9400
     </form>
     </div>
   );

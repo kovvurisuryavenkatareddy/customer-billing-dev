@@ -23,12 +23,9 @@ export default function LoginPage({ onLoginSuccess }) {
       });
       const data = await response.json();
       if (!response.ok) throw new Error(data.detail || 'Login failed');
-<<<<<<< HEAD
       if (!data?.access_token || typeof data.access_token !== 'string') {
         throw new Error('Login succeeded but token was missing. Please contact admin.');
       }
-=======
->>>>>>> 1f2e4a5f786650f7b5002f0154e176ad619d9400
       localStorage.setItem('token', data.access_token);
       localStorage.setItem('user', JSON.stringify(data.user));
       onLoginSuccess?.(data.user);
@@ -62,11 +59,7 @@ export default function LoginPage({ onLoginSuccess }) {
         )}
 
         <Form form={form} layout="vertical" onFinish={handleSubmit} requiredMark={false}>
-<<<<<<< HEAD
-          <Form.Item name="email" label="Email Addresssss" rules={[{ required: true, message: 'Enter your email' }, { type: 'email', message: 'Invalid email' }]}>
-=======
           <Form.Item name="email" label="Email Address" rules={[{ required: true, message: 'Enter your email' }, { type: 'email', message: 'Invalid email' }]}>
->>>>>>> 1f2e4a5f786650f7b5002f0154e176ad619d9400
             <Input prefix={<MailOutlined className="text-gray-400" />} placeholder="Enter your email" size="large" disabled={loading} />
           </Form.Item>
           <Form.Item name="password" label="Password" rules={[{ required: true, message: 'Enter your password' }]}>

@@ -9,10 +9,7 @@ import SignupPage from './pages/SignupPage';
 import ToastContainer from './components/Toast';
 import BillingImport from './components/BillingImport';
 import ServicesPage from './pages/ServicesPage';
-<<<<<<< HEAD
 import ReportsPage from './pages/ReportsPage';
-=======
->>>>>>> 1f2e4a5f786650f7b5002f0154e176ad619d9400
 import { Routes, Route, useLocation } from 'react-router-dom';
 import { useNavigate, Navigate } from 'react-router-dom';
 import { setNavigator } from './utils/router';
@@ -20,12 +17,8 @@ import { setNavigator } from './utils/router';
 const { Content } = Layout;
 
 function getInitialAuth() {
-<<<<<<< HEAD
   const tokenRaw = localStorage.getItem('token');
   const token = (tokenRaw && tokenRaw !== 'undefined' && tokenRaw !== 'null') ? tokenRaw : '';
-=======
-  const token = localStorage.getItem('token');
->>>>>>> 1f2e4a5f786650f7b5002f0154e176ad619d9400
   const savedUser = localStorage.getItem('user');
   if (!token || !savedUser) return { isAuthenticated: false, user: null };
   try {
@@ -40,10 +33,7 @@ function pathToPage(pathname) {
   if (pathname.startsWith('/add-customer')) return 'add-customer';
   if (pathname.startsWith('/data-import')) return 'data-import';
   if (pathname.startsWith('/services')) return 'services';
-<<<<<<< HEAD
   if (pathname.startsWith('/reports')) return 'reports';
-=======
->>>>>>> 1f2e4a5f786650f7b5002f0154e176ad619d9400
   return 'home';
 }
 
@@ -147,10 +137,7 @@ function App() {
             <Route path="/add-customer" element={isAuthenticated ? <AddCustomerPage onNavigate={handleNavigate} /> : <Navigate to="/login" replace />} />
             <Route path="/data-import" element={isAuthenticated ? <BillingImport /> : <Navigate to="/login" replace />} />
             <Route path="/services" element={isAuthenticated ? <ServicesPage /> : <Navigate to="/login" replace />} />
-<<<<<<< HEAD
             <Route path="/reports" element={isAuthenticated ? <ReportsPage /> : <Navigate to="/login" replace />} />
-=======
->>>>>>> 1f2e4a5f786650f7b5002f0154e176ad619d9400
             <Route path="*" element={<Navigate to={isAuthenticated ? '/' : '/login'} replace />} />
           </Routes>
         </Content>

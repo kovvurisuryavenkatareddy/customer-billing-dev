@@ -1,5 +1,4 @@
 import React, { useState, useEffect } from 'react';
-<<<<<<< HEAD
 import { formatMMDDYYYY, toISO } from '../utils/dates';
 import { Button, Input, Select, Space, Spin, Alert, Divider } from 'antd';
 import { API_BASE, getAuthHeaders } from '../utils/api';
@@ -19,34 +18,17 @@ export default function CustomerEntryModal({ customerId, batchId, customerCode, 
   const [fIdNumber, setFIdNumber] = useState('');
   const [activeStatus, setActiveStatus] = useState('active');
 
-=======
-import { formatMMDDYYYY } from '../utils/dates';
-import { API_BASE, getAuthHeaders } from '../utils/api';
-
-export default function CustomerEntryModal({ customerId, customerCode, onClose }) {
-  const [customer, setCustomer] = useState(null);
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState(null);
-  const [editingStatus, setEditingStatus] = useState(false);
-  const [saving, setSaving] = useState(false);
-
->>>>>>> 1f2e4a5f786650f7b5002f0154e176ad619d9400
   useEffect(() => {
     if (customerId) {
       fetchCustomer();
     }
-<<<<<<< HEAD
   }, [customerId, batchId]);
-=======
-  }, [customerId]);
->>>>>>> 1f2e4a5f786650f7b5002f0154e176ad619d9400
 
   const fetchCustomer = async () => {
     try {
       setLoading(true);
       setError(null);
       const headers = getAuthHeaders();
-<<<<<<< HEAD
       let cust;
       // When batchId is set (clicked from a row), show only that batch's services; otherwise all entries
       if (batchId) {
@@ -79,12 +61,6 @@ export default function CustomerEntryModal({ customerId, customerCode, onClose }
         setFIdNumber((cust.f_id_number != null ? String(cust.f_id_number) : '') || '');
         setActiveStatus(cust.active_status || 'active');
       }
-=======
-      const res = await fetch(`${API_BASE}/customers/${customerId}`, { headers });
-      if (!res.ok) throw new Error('Failed to fetch customer');
-      const data = await res.json();
-      setCustomer(data);
->>>>>>> 1f2e4a5f786650f7b5002f0154e176ad619d9400
     } catch (err) {
       setError(err.message || 'Failed to load');
     } finally {
@@ -92,7 +68,6 @@ export default function CustomerEntryModal({ customerId, customerCode, onClose }
     }
   };
 
-<<<<<<< HEAD
   const beginEdit = () => {
     if (!customer) return;
     const ln = customer.last_name || customer.lastName || '';
@@ -108,14 +83,10 @@ export default function CustomerEntryModal({ customerId, customerCode, onClose }
   };
 
   const saveDetails = async () => {
-=======
-  const saveStatus = async (newStatus) => {
->>>>>>> 1f2e4a5f786650f7b5002f0154e176ad619d9400
     if (!customer) return;
     try {
       setSaving(true);
       const headers = getAuthHeaders();
-<<<<<<< HEAD
 
       const trimmedLast = (lastName || '').trim();
       const trimmedFirst = (firstName || '').trim();
@@ -170,20 +141,6 @@ export default function CustomerEntryModal({ customerId, customerCode, onClose }
     } catch (err) {
       console.error('Failed to save participant details', err);
       if (window.showToast) window.showToast({ message: err.message || 'Failed to update participant', type: 'error' });
-=======
-      const res = await fetch(`${API_BASE}/customers/${customerId}`, {
-        method: 'PUT',
-        headers: { ...headers },
-        body: JSON.stringify({ customer: { active_status: newStatus } })
-      });
-      if (!res.ok) throw new Error('Failed to save status');
-      setCustomer(prev => ({ ...prev, active_status: newStatus }));
-      setEditingStatus(false);
-      if (window.showToast) window.showToast({ message: 'Status updated', type: 'success' });
-    } catch (err) {
-      console.error('Failed to save status', err);
-      if (window.showToast) window.showToast({ message: 'Failed to update status', type: 'error' });
->>>>>>> 1f2e4a5f786650f7b5002f0154e176ad619d9400
     } finally {
       setSaving(false);
     }
@@ -202,7 +159,6 @@ export default function CustomerEntryModal({ customerId, customerCode, onClose }
         </div>
 
         <div className="p-5 max-h-[65vh] overflow-y-auto overflow-x-hidden">
-<<<<<<< HEAD
           {loading && (
             <div className="flex items-center justify-center py-8">
               <Spin />
@@ -259,36 +215,6 @@ export default function CustomerEntryModal({ customerId, customerCode, onClose }
                     <span style={{
                       display: 'inline-block',
                       marginLeft: 8,
-=======
-          {loading && <div style={{ textAlign: 'center', padding: '20px' }}>Loading...</div>}
-
-          {error && (
-            <div style={{ color: '#dc3545', background: '#f8d7da', border: '1px solid #f5c6cb', padding: '10px', borderRadius: '4px', marginBottom: '20px' }}>
-              Error: {error}
-            </div>
-          )}
-
-          {!loading && !error && customer && (
-            <div style={{ display: 'grid', gap: '12px' }}>
-              <div>
-                <strong>Name:</strong> {(customer.last_name || customer.lastName ? (customer.last_name || customer.lastName) : '') + ((customer.first_name || customer.firstName) ? (', ' + (customer.first_name || customer.firstName)) : '')}
-              </div>
-              <div>
-                <strong>DOB:</strong> {formatMMDDYYYY(customer.date_of_birth || customer.dob || customer.dateOfBirth || '') || '—'}
-              </div>
-              <div>
-                <strong>ID #:</strong> {(customer.id_number != null && customer.id_number !== '') ? customer.id_number : '—'}
-              </div>
-              <div>
-                <strong>F ID #:</strong> {(customer.f_id_number != null && customer.f_id_number !== '') ? customer.f_id_number : '—'}
-              </div>
-              <div>
-                <strong>Status:</strong>
-                {!editingStatus ? (
-                  <span style={{ marginLeft: 8 }}>
-                    <span style={{
-                      display: 'inline-block',
->>>>>>> 1f2e4a5f786650f7b5002f0154e176ad619d9400
                       padding: '6px 10px',
                       borderRadius: '999px',
                       background: (customer.active_status || 'active') === 'active' ? '#e6ffed' : '#fff3f3',
@@ -297,7 +223,6 @@ export default function CustomerEntryModal({ customerId, customerCode, onClose }
                       fontWeight: 600,
                       textTransform: 'capitalize'
                     }}>{(customer.active_status || 'active')}</span>
-<<<<<<< HEAD
                   </div>
                 </div>
               ) : (
@@ -437,21 +362,6 @@ export default function CustomerEntryModal({ customerId, customerCode, onClose }
                 <p className="text-[#6c757d] text-sm py-2">No services for this participant.</p>
               )}
             </>
-=======
-                    <button onClick={() => setEditingStatus(true)} style={{ marginLeft: 12, padding: '6px 10px' }}>Change</button>
-                  </span>
-                ) : (
-                  <span style={{ marginLeft: 8 }}>
-                    <select disabled={saving} value={customer.active_status || 'active'} onChange={(e) => saveStatus(e.target.value)}>
-                      <option value="active">Active</option>
-                      <option value="inactive">Inactive</option>
-                    </select>
-                    <button onClick={() => setEditingStatus(false)} style={{ marginLeft: 8 }} disabled={saving}>Cancel</button>
-                  </span>
-                )}
-              </div>
-            </div>
->>>>>>> 1f2e4a5f786650f7b5002f0154e176ad619d9400
           )}
         </div>
       </div>

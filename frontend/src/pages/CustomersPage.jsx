@@ -3,14 +3,9 @@ import { Input, Card, Spin, Modal, Empty, Button } from 'antd';
 import CustomerSearch from '../components/CustomerSearch';
 import CustomerList from '../components/CustomerList';
 import CustomerForm from '../components/form';
-<<<<<<< HEAD
 import QuickEntryModal from '../components/QuickEntryModal';
 import { API_BASE, getAuthHeaders, handle401Error } from '../utils/api';
 import { formatMMDDYYYY, toISO } from '../utils/dates';
-=======
-import ServiceForm from '../components/ServiceForm';
-import { API_BASE, getAuthHeaders, handle401Error } from '../utils/api';
->>>>>>> 1f2e4a5f786650f7b5002f0154e176ad619d9400
 
 // Simple in-memory client-side store with optional server calls
 // accept optional AbortSignal to cancel in-flight fetches
@@ -56,18 +51,14 @@ export default function CustomersPage({ showAddForm = false, onNavigate }) {
   const [notFound, setNotFound] = useState(false);
   const [services, setServices] = useState([]);
   const [editingItem, setEditingItem] = useState(null);
-<<<<<<< HEAD
   const [batchEntries, setBatchEntries] = useState(null);
   const [loadingBatch, setLoadingBatch] = useState(false);
-=======
->>>>>>> 1f2e4a5f786650f7b5002f0154e176ad619d9400
   const [addingServiceFor, setAddingServiceFor] = useState(null);
   const [showAddCustomer, setShowAddCustomer] = useState(showAddForm);
   const [tableSearchText, setTableSearchText] = useState('');
   const [statusFilter, setStatusFilter] = useState('active');
   const [loading, setLoading] = useState(true);
   const [servicesLoaded, setServicesLoaded] = useState(false);
-<<<<<<< HEAD
   const [savingAddCustomer, setSavingAddCustomer] = useState(false);
   const [savingEditCustomer, setSavingEditCustomer] = useState(false);
   const [savingAddService, setSavingAddService] = useState(false);
@@ -78,8 +69,6 @@ export default function CustomersPage({ showAddForm = false, onNavigate }) {
   const [loadingEditEntries, setLoadingEditEntries] = useState(false);
   const [quickEntryCustomers, setQuickEntryCustomers] = useState([]);
   const [showQuickEntry, setShowQuickEntry] = useState(false);
-=======
->>>>>>> 1f2e4a5f786650f7b5002f0154e176ad619d9400
 
   useEffect(() => {
     // fetch services for forms (run once on mount)
@@ -145,16 +134,11 @@ export default function CustomersPage({ showAddForm = false, onNavigate }) {
   }
 
   function handleSubmit(payload) {
-<<<<<<< HEAD
     (async () => {
       setSavingAddCustomer(true);
       if (window.showToast) {
         window.showToast({ key: 'add-customer', type: 'loading', message: 'Adding customer…', duration: 0 });
       }
-=======
-    // Try to send to server, otherwise store locally (append id)
-    (async () => {
->>>>>>> 1f2e4a5f786650f7b5002f0154e176ad619d9400
       try {
         const res = await fetch(`${API_BASE}/customers/`, {
           method: 'POST',
@@ -166,7 +150,6 @@ export default function CustomersPage({ showAddForm = false, onNavigate }) {
           return;
         }
         if (!res.ok) throw new Error('failed');
-<<<<<<< HEAD
         await res.json();
         await refreshCustomers();
         setNotFound(false);
@@ -178,25 +161,6 @@ export default function CustomersPage({ showAddForm = false, onNavigate }) {
       } catch (err) {
         console.warn('Server not available or POST failed, adding locally', err);
         const svc = payload.services?.[0] || payload.service;
-=======
-        const created = await res.json();
-        // Refresh the entire list to get the latest data
-        await refreshCustomers();
-        setNotFound(false);
-        
-        // Show success toast
-        if (window.showToast) {
-          window.showToast({ message: 'Customer added successfully!', type: 'success' });
-        }
-        
-        // Navigate to home page
-        if (onNavigate) {
-          onNavigate('home');
-        }
-      } catch (err) {
-        console.warn('Server not available or POST failed, adding locally', err);
-        // local fallback: synthesize an entry
->>>>>>> 1f2e4a5f786650f7b5002f0154e176ad619d9400
         const id = Date.now();
         const entry = {
           id,
@@ -205,7 +169,6 @@ export default function CustomersPage({ showAddForm = false, onNavigate }) {
           last_name: payload.customer.lastName,
           id_number: payload.customer.idNumber || null,
           f_id_number: payload.customer.fIdNumber || null,
-<<<<<<< HEAD
           service_name: svc?.serviceName ?? '—',
           start_date: svc?.startDate ?? null,
           end_date: svc?.endDate ?? null,
@@ -225,30 +188,6 @@ export default function CustomersPage({ showAddForm = false, onNavigate }) {
         if (onNavigate) onNavigate('home');
       } finally {
         setSavingAddCustomer(false);
-=======
-          service_name: payload.service.serviceName,
-          start_date: payload.service.startDate,
-          end_date: payload.service.endDate,
-          days: payload.service.days,
-          rate_per_day: payload.service.ratePerDay,
-          amount_billed: payload.service.amountBilled,
-          amount_paid: payload.service.amountPaid || 0,
-          due: (payload.service.amountBilled || 0) - (payload.service.amountPaid || 0),
-          active_status: payload.customer.activeStatus || 'active'
-        };
-        setCustomers(prev => [entry, ...prev]);
-        setNotFound(false);
-        
-        // Show success toast (offline/local fallback)
-        if (window.showToast) {
-          window.showToast({ message: 'Customer added (offline)', type: 'info' });
-        }
-        
-        // Navigate to home page
-        if (onNavigate) {
-          onNavigate('home');
-        }
->>>>>>> 1f2e4a5f786650f7b5002f0154e176ad619d9400
       }
     })();
   }
@@ -259,7 +198,6 @@ export default function CustomersPage({ showAddForm = false, onNavigate }) {
     if (data) setCustomers(data);
   }
 
-<<<<<<< HEAD
   // Remove a saved service entry via API — called from the Remove button inside the edit form
   async function handleRemoveService(entryId, onSuccess) {
     const customerId = editingItem?.customer?.id;
@@ -291,12 +229,6 @@ export default function CustomersPage({ showAddForm = false, onNavigate }) {
   function handleEdit(item) {
     setEditingItem(item);
     setOpeningEditModal(true);
-=======
-  // When user clicks edit in list, receive { customer, service }
-  function handleEdit(item) {
-    setEditingItem(item);
-    // scroll to top or focus form could be added here
->>>>>>> 1f2e4a5f786650f7b5002f0154e176ad619d9400
     window.scrollTo({ top: 0, behavior: 'smooth' });
   }
 
@@ -304,7 +236,6 @@ export default function CustomersPage({ showAddForm = false, onNavigate }) {
     if (!editingItem) return;
     const cust = editingItem.customer;
     
-<<<<<<< HEAD
     console.log('=== EDIT SUBMIT ===');
     console.log('editingItem:', editingItem);
     console.log('payload:', payload);
@@ -337,21 +268,12 @@ export default function CustomersPage({ showAddForm = false, onNavigate }) {
       
       console.log('Final servicePayload being sent:', servicePayload);
       
-=======
-    try {
-      // Use the updated customer endpoint that handles both customer and service/entry updates
-      // This endpoint now handles resubmission logic based on the isResubmission flag
->>>>>>> 1f2e4a5f786650f7b5002f0154e176ad619d9400
       const custRes = await fetch(`${API_BASE}/customers/${cust.id}`, {
         method: 'PUT',
         headers: getAuthHeaders(),
         body: JSON.stringify({
           customer: payload.customer,
-<<<<<<< HEAD
           service: servicePayload,
-=======
-          service: payload.service,
->>>>>>> 1f2e4a5f786650f7b5002f0154e176ad619d9400
           isResubmission: payload.isResubmission || false
         }),
       });
@@ -386,7 +308,6 @@ export default function CustomersPage({ showAddForm = false, onNavigate }) {
           type: 'error' 
         });
       }
-<<<<<<< HEAD
     } finally {
       setSavingEditCustomer(false);
     }
@@ -464,8 +385,6 @@ export default function CustomersPage({ showAddForm = false, onNavigate }) {
       refreshCustomers();
     } finally {
       setSavingEditCustomer(false);
-=======
->>>>>>> 1f2e4a5f786650f7b5002f0154e176ad619d9400
     }
   }
 
@@ -487,11 +406,8 @@ export default function CustomersPage({ showAddForm = false, onNavigate }) {
 
   // inline update handler for CustomerList
   async function handleUpdate(customerId, serviceId, body) {
-<<<<<<< HEAD
     const toastKey = `update-service-${serviceId}`;
     window.showToast?.({ key: toastKey, type: 'loading', message: 'Updating service…', duration: 0 });
-=======
->>>>>>> 1f2e4a5f786650f7b5002f0154e176ad619d9400
     try {
       const res = await fetch(`${API_BASE}/customers/${customerId}/services/${serviceId}`, {
         method: 'PUT',
@@ -502,29 +418,20 @@ export default function CustomersPage({ showAddForm = false, onNavigate }) {
         handle401Error();
         return;
       }
-<<<<<<< HEAD
       if (!res.ok) throw new Error(`Update failed: ${res.status}`);
       window.showToast?.({ key: toastKey, type: 'success', message: 'Service updated successfully.', duration: 3000 });
       await refreshCustomers();
     } catch (err) {
       console.error('Failed to update service inline', err);
       window.showToast?.({ key: toastKey, type: 'error', message: err.message || 'Failed to update service.', duration: 4000 });
-=======
-      await refreshCustomers();
-    } catch (err) {
-      console.error('Failed to update service inline', err);
->>>>>>> 1f2e4a5f786650f7b5002f0154e176ad619d9400
     }
   }
 
   // Inline change of customer status (active/inactive) from the table
   async function handleChangeStatus(customerId, newStatus) {
-<<<<<<< HEAD
     const label = newStatus === 'active' ? 'activated' : 'deactivated';
     const toastKey = `status-${customerId}`;
     window.showToast?.({ key: toastKey, type: 'loading', message: 'Updating status…', duration: 0 });
-=======
->>>>>>> 1f2e4a5f786650f7b5002f0154e176ad619d9400
     try {
       const res = await fetch(`${API_BASE}/customers/${customerId}`, {
         method: 'PUT',
@@ -536,7 +443,6 @@ export default function CustomersPage({ showAddForm = false, onNavigate }) {
         return;
       }
       if (!res.ok) {
-<<<<<<< HEAD
         throw new Error(`Status update failed: ${res.status}`);
       }
       window.showToast?.({ key: toastKey, type: 'success', message: `Participant ${label} successfully.`, duration: 3000 });
@@ -544,13 +450,6 @@ export default function CustomersPage({ showAddForm = false, onNavigate }) {
     } catch (err) {
       console.error('Failed to update customer status', err);
       window.showToast?.({ key: toastKey, type: 'error', message: err.message || 'Failed to update status.', duration: 4000 });
-=======
-        console.error('Failed to update customer status', await res.text());
-      }
-      await refreshCustomers();
-    } catch (err) {
-      console.error('Failed to update customer status', err);
->>>>>>> 1f2e4a5f786650f7b5002f0154e176ad619d9400
     }
   }
 
@@ -561,7 +460,6 @@ export default function CustomersPage({ showAddForm = false, onNavigate }) {
 
   async function handleAddServiceSubmit(payload) {
     if (!addingServiceFor) return;
-<<<<<<< HEAD
     setSavingAddService(true);
     const toastKey = `add-service-${addingServiceFor.id}`;
     
@@ -607,16 +505,11 @@ export default function CustomersPage({ showAddForm = false, onNavigate }) {
 
       window.showToast?.({ key: toastKey, type: 'loading', message: 'Saving service…', duration: 0 });
       
-=======
-    try {
-      const custId = addingServiceFor.id;
->>>>>>> 1f2e4a5f786650f7b5002f0154e176ad619d9400
       const res = await fetch(`${API_BASE}/customers/${custId}/services`, {
         method: 'POST',
         headers: getAuthHeaders(),
         body: JSON.stringify(payload),
       });
-<<<<<<< HEAD
       
       console.log('Response status:', res.status);
       
@@ -656,17 +549,6 @@ export default function CustomersPage({ showAddForm = false, onNavigate }) {
       });
     } finally {
       setSavingAddService(false);
-=======
-      if (res.status === 401) {
-        handle401Error();
-        return;
-      }
-      if (!res.ok) throw new Error('failed to add service');
-      await refreshCustomers();
-      setAddingServiceFor(null);
-    } catch (err) {
-      console.error('Failed to add service', err);
->>>>>>> 1f2e4a5f786650f7b5002f0154e176ad619d9400
     }
   }
 
@@ -676,7 +558,6 @@ export default function CustomersPage({ showAddForm = false, onNavigate }) {
 
   function handleCancelEdit() {
     setEditingItem(null);
-<<<<<<< HEAD
     setBatchEntries(null);
     setEditCustomerEntries(null);
     setOpeningEditModal(false);
@@ -783,8 +664,6 @@ export default function CustomersPage({ showAddForm = false, onNavigate }) {
       denialCodes: Array.isArray(e.denial_codes) ? e.denial_codes : [],
       denial_codes: Array.isArray(e.denial_codes) ? e.denial_codes : [],
     }));
-=======
->>>>>>> 1f2e4a5f786650f7b5002f0154e176ad619d9400
   }
 
   if (!servicesLoaded) {
@@ -803,17 +682,12 @@ export default function CustomersPage({ showAddForm = false, onNavigate }) {
   })() : '';
 
   return (
-<<<<<<< HEAD
     <div className="w-full max-w-full mx-auto p-4 md:p-8 box-border overflow-x-hidden">
-=======
-    <div className="w-full max-w-full mx-auto p-4 md:p-8 box-border overflow-x-auto">
->>>>>>> 1f2e4a5f786650f7b5002f0154e176ad619d9400
       {!showAddCustomer && <CustomerSearch onSearch={handleSearch} status={statusFilter} onStatusChange={handleStatusChange} />}
 
       <div>
         {!showAddCustomer && (
           <Card
-<<<<<<< HEAD
             className="mb-6 overflow-x-hidden"
             title={<span className="text-lg font-semibold">{statusFilter === 'active' ? 'Active' : statusFilter === 'inactive' ? 'Inactive' : 'All'} Participant Records</span>}
             extra={
@@ -835,20 +709,6 @@ export default function CustomersPage({ showAddForm = false, onNavigate }) {
                   onChange={(e) => setTableSearchText(e.target.value)}
                 />
               </div>
-=======
-            className="mb-6 overflow-x-auto"
-            title={<span className="text-lg font-semibold">{statusFilter === 'active' ? 'Active' : statusFilter === 'inactive' ? 'Inactive' : 'All'} Participant Records</span>}
-            extra={
-              <Input.Search
-                placeholder="Search by name, ID, or service"
-                allowClear
-                enterButton
-                size="middle"
-                value={tableSearchText}
-                onSearch={setTableSearchText}
-                onChange={(e) => setTableSearchText(e.target.value)}
-              />
->>>>>>> 1f2e4a5f786650f7b5002f0154e176ad619d9400
             }
           >
             {notFound && customers.length === 0 ? (
@@ -871,7 +731,6 @@ export default function CustomersPage({ showAddForm = false, onNavigate }) {
                   onUpdate={handleUpdate}
                   onAddService={handleAddService}
                   onChangeStatus={handleChangeStatus}
-<<<<<<< HEAD
                   onSelectionChange={(selectedCustomers) => {
                     setQuickEntryCustomers(Array.isArray(selectedCustomers) ? selectedCustomers : []);
                   }}
@@ -886,8 +745,6 @@ export default function CustomersPage({ showAddForm = false, onNavigate }) {
                       refreshCustomers();
                     }
                   }}
-=======
->>>>>>> 1f2e4a5f786650f7b5002f0154e176ad619d9400
                   searchText={tableSearchText}
                 />
               </div>
@@ -896,7 +753,6 @@ export default function CustomersPage({ showAddForm = false, onNavigate }) {
         )}
 
         <Modal
-<<<<<<< HEAD
           open={showQuickEntry}
           title={`Quick Entry${quickEntryCustomers.length ? ` — ${quickEntryCustomers.length} customer(s)` : ''}`}
           onCancel={() => setShowQuickEntry(false)}
@@ -1056,22 +912,10 @@ export default function CustomersPage({ showAddForm = false, onNavigate }) {
               )}
             </Spin>
           ) : null}
-=======
-          open={!!editingItem}
-          title={editTitle}
-          onCancel={handleCancelEdit}
-          footer={null}
-          width={640}
-          destroyOnClose
-          styles={{ body: { maxHeight: '65vh', overflowY: 'auto' } }}
-        >
-          {editingItem && <CustomerForm onSubmit={handleEditSubmit} onCancel={handleCancelEdit} services={services} initial={editingItem} />}
->>>>>>> 1f2e4a5f786650f7b5002f0154e176ad619d9400
         </Modal>
 
         <Modal
           open={!!addingServiceFor}
-<<<<<<< HEAD
           title={addingServiceFor ? `Add services for ${addingServiceFor.first_name} ${addingServiceFor.last_name}` : ''}
           onCancel={handleCancelAddService}
           footer={null}
@@ -1137,27 +981,12 @@ export default function CustomersPage({ showAddForm = false, onNavigate }) {
               hideCustomerFields={true}
             />
             </Spin>
-=======
-          title={addingServiceFor ? `Add service for ${addingServiceFor.first_name} ${addingServiceFor.last_name}` : ''}
-          onCancel={handleCancelAddService}
-          footer={null}
-          width={640}
-          destroyOnClose
-          styles={{ body: { maxHeight: '65vh', overflowY: 'auto' } }}
-        >
-          {addingServiceFor && (
-            <ServiceForm services={services} onSubmit={handleAddServiceSubmit} onCancel={handleCancelAddService} />
->>>>>>> 1f2e4a5f786650f7b5002f0154e176ad619d9400
           )}
         </Modal>
 
         {showAddCustomer && (
           <Card title={<span className="text-xl font-bold text-[#1a253c]">Add New Customer</span>} className="mt-4 overflow-x-auto">
-<<<<<<< HEAD
             <CustomerForm key={addFormKey} submitting={savingAddCustomer} onSubmit={handleSubmit} services={services} />
-=======
-            <CustomerForm onSubmit={handleSubmit} services={services} />
->>>>>>> 1f2e4a5f786650f7b5002f0154e176ad619d9400
           </Card>
         )}
       </div>

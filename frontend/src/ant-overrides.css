@@ -1,13 +1,10 @@
 /* Ant Design + ledger overrides only - rest replaced by Tailwind */
 :root { --primary: #007bff; --primary-hover: #0056b3; --text-primary: #1a253c; --text-body: #333; --filter-bg: #f8f9fa; }
-<<<<<<< HEAD
 
 /* Ensure toasts are visible above fixed header/sidebar/modals */
 .ant-message {
   z-index: 5000 !important;
 }
-=======
->>>>>>> 1f2e4a5f786650f7b5002f0154e176ad619d9400
 /* Ant Design Table Customization */
 .ant-table-wrapper {
   width: 100% !important;
@@ -298,7 +295,6 @@ button.customer-name:focus-visible {
   background-color: #f8fbff;
 }
 
-<<<<<<< HEAD
 /* Professional skin for the customers ledger table only */
 .customer-ledger-table.ant-table-wrapper {
   box-shadow: none !important;
@@ -373,8 +369,6 @@ button.customer-name:focus-visible {
   border-radius: 8px !important;
 }
 
-=======
->>>>>>> 1f2e4a5f786650f7b5002f0154e176ad619d9400
 /* Summary table - remove conflicting styles */
 .ant-table-summary {
   background: transparent !important;
