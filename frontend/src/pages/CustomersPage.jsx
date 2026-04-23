@@ -338,7 +338,7 @@ export default function CustomersPage({ showAddForm = false, onNavigate }) {
       }
       if (!custRes.ok) throw new Error(`Customer update failed: ${custRes.status}`);
       const servicesList = payload.services || [];
-      for (const s of servicesList) {
+      await Promise.all(servicesList.map(async (s) => {
         const serviceBody = {
           serviceName: s.serviceName,
           days: Number(s.days) || 0,
@@ -359,7 +359,7 @@ export default function CustomersPage({ showAddForm = false, onNavigate }) {
             headers: getAuthHeaders(),
             body: JSON.stringify({ service: serviceBody }),
           });
-          if (res.status === 401) { handle401Error(); return; }
+          if (res.status === 401) { handle401Error(); throw new Error('Unauthorized'); }
           if (!res.ok) throw new Error(`Service update failed: ${res.status}`);
         } else {
           const res = await fetch(`${API_BASE}/customers/${cust.id}/services`, {
@@ -367,10 +367,10 @@ export default function CustomersPage({ showAddForm = false, onNavigate }) {
             headers: getAuthHeaders(),
             body: JSON.stringify({ service: serviceBody }),
           });
-          if (res.status === 401) { handle401Error(); return; }
+          if (res.status === 401) { handle401Error(); throw new Error('Unauthorized'); }
           if (!res.ok) throw new Error(`Add service failed: ${res.status}`);
         }
-      }
+      }));
       if (window.showToast) {
         window.showToast({ key: 'edit-customer', message: 'Customer updated successfully.', type: 'success', duration: 3000 });
       }

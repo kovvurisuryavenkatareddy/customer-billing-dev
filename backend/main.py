@@ -1,6 +1,7 @@
 #Main branch
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.middleware.gzip import GZipMiddleware
 import os
 from dotenv import load_dotenv
 import logging
@@ -24,6 +25,9 @@ except Exception:
 
 
 app = FastAPI(title='Services API')
+
+# Compress responses ≥ 1 KB — reduces JSON payload size by ~70 %
+app.add_middleware(GZipMiddleware, minimum_size=1000)
 
 # Configure detailed logging
 logging.basicConfig(

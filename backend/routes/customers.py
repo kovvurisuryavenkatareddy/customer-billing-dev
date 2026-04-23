@@ -1906,12 +1906,6 @@ def get_all_entries(
         for row in rows:
             entry = dict(row)
 
-            # If this row has legacy service data but no entry_id, migrate it once
-            if entry.get('entry_id') is None and entry.get('service_name'):
-                logger.info(f"Creating entry for customer {entry['id']} from legacy data (all entries view)")
-                entry_id = migrate_customer_service_to_entry(entry)
-                entry['entry_id'] = entry_id
-
             # Expose batch_id for batch-level edit; legacy rows get synthetic batch_id
             if entry.get('batch_id') is None or entry.get('batch_id') == '':
                 entry['batch_id'] = f"legacy-{entry.get('entry_id')}" if entry.get('entry_id') else None

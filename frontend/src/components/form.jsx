@@ -227,9 +227,7 @@ export default function CustomerForm({
           denialCodes: Array.isArray(service.denialCodes) ? service.denialCodes : (Array.isArray(service.denial_codes) ? service.denial_codes : (service.denial_codes ? [service.denial_codes] : [])),
           isAmountBilledManuallyEdited: false,
           isDaysManuallyEdited: String(service.days ?? service.numberOfDays ?? '') !== '',
-          // In Quick Entry / Add Services flows (hideCustomerFields), keep expanded for speed.
-          // In Edit Customer flow, collapse existing services by default.
-          isOpen: Boolean(hideCustomerFields),
+          isOpen: false,
         };
       });
       setServices(populatedServices);

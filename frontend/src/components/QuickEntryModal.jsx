@@ -69,10 +69,15 @@ export default function QuickEntryModal({
   const [baselineSigByCustomerId, setBaselineSigByCustomerId] = useState({});
   const [savingAll, setSavingAll] = useState(false);
   const baselineSigRef = useRef({});
+  const draftByCustomerIdRef = useRef({});
 
   useEffect(() => {
     baselineSigRef.current = baselineSigByCustomerId || {};
   }, [baselineSigByCustomerId]);
+
+  useEffect(() => {
+    draftByCustomerIdRef.current = draftByCustomerId;
+  }, [draftByCustomerId]);
  
   const draftSignature = (draft) => {
     if (!draft) return '';
@@ -108,7 +113,12 @@ export default function QuickEntryModal({
   }, [normalizedCustomers, activeCustomerId]);
  
   const activeEntries = entriesByCustomerId[activeCustomerId] || null;
-  const isLoadingActive = Boolean(activeCustomerId && loadingByCustomerId[activeCustomerId]);
+  const isLoadingActive = Boolean(
+    activeCustomerId && (
+      loadingByCustomerId[activeCustomerId] ||
+      entriesByCustomerId[activeCustomerId] == null
+    )
+  );
   const isSavingActive = Boolean(activeCustomerId && savingByCustomerId[activeCustomerId]);
   const dirtyCount = useMemo(
     () => Object.values(dirtyByCustomerId || {}).filter(Boolean).length,
@@ -153,7 +163,16 @@ export default function QuickEntryModal({
   }, [activeCustomerId, entriesByCustomerId]);
 
   // IMPORTANT: keep `initial` stable so CustomerForm doesn't reset on every keystroke.
+  // When switching back to a previously visited customer, restore from their saved draft
+  // so the user sees their in-progress edits. Falls back to server entries on first visit.
   const formInitial = useMemo(() => {
+    const existingDraft = draftByCustomerIdRef.current?.[activeCustomerId];
+    if (existingDraft) {
+      return {
+        customer: activeCustomer || {},
+        services: existingDraft.services,
+      };
+    }
     return {
       customer: activeCustomer || {},
       services: mapEntriesToForm(activeEntries || []),
@@ -175,22 +194,19 @@ export default function QuickEntryModal({
           .filter((id) => id && existingEntryIds.has(id))
       );
 
-      // Deletes: anything that existed before but is no longer present in the draft.
-      for (const entryId of existingEntryIds) {
-        if (!presentExistingIds.has(entryId)) {
+      // Deletes and upserts run in parallel for speed.
+      const deleteOps = [...existingEntryIds]
+        .filter((id) => !presentExistingIds.has(id))
+        .map(async (entryId) => {
           const delRes = await fetch(`${API_BASE}/customers/${custId}/services/${entryId}`, {
             method: 'DELETE',
             headers: getAuthHeaders(),
           });
-          if (delRes.status === 401) {
-            handle401Error();
-            throw new Error('Unauthorized');
-          }
+          if (delRes.status === 401) { handle401Error(); throw new Error('Unauthorized'); }
           if (!delRes.ok) throw new Error('Delete failed');
-        }
-      }
+        });
 
-      for (const s of servicesList) {
+      const upsertOps = servicesList.map(async (s) => {
         const entryId = s.id != null ? Number(s.id) : null;
         const isExisting = entryId && existingEntryIds.has(entryId);
         const serviceBody = {
@@ -206,17 +222,13 @@ export default function QuickEntryModal({
           dateSubmitted: s.dateSubmitted || null,
           denialCodes: s.denialCodes && s.denialCodes.length ? s.denialCodes : null,
         };
- 
         if (isExisting) {
           const res = await fetch(`${API_BASE}/customers/${custId}/services/${entryId}`, {
             method: 'PUT',
             headers: getAuthHeaders(),
             body: JSON.stringify({ service: serviceBody }),
           });
-          if (res.status === 401) {
-            handle401Error();
-            throw new Error('Unauthorized');
-          }
+          if (res.status === 401) { handle401Error(); throw new Error('Unauthorized'); }
           if (!res.ok) throw new Error('Service update failed');
         } else {
           const res = await fetch(`${API_BASE}/customers/${custId}/services`, {
@@ -224,13 +236,12 @@ export default function QuickEntryModal({
             headers: getAuthHeaders(),
             body: JSON.stringify({ service: serviceBody }),
           });
-          if (res.status === 401) {
-            handle401Error();
-            throw new Error('Unauthorized');
-          }
+          if (res.status === 401) { handle401Error(); throw new Error('Unauthorized'); }
           if (!res.ok) throw new Error('Add service failed');
         }
-      }
+      });
+
+      await Promise.all([...deleteOps, ...upsertOps]);
  
       const refreshRes = await fetch(`${API_BASE}/customers/${custId}/entries`, { headers: getAuthHeaders() });
       if (refreshRes.status === 401) {
@@ -246,8 +257,19 @@ export default function QuickEntryModal({
       }
  
       setDirtyByCustomerId((prev) => ({ ...prev, [custId]: false }));
-      // Once saved, update baseline signature to the saved draft so it no longer appears dirty.
-      setBaselineSigByCustomerId((prev) => ({ ...prev, [custId]: draftSignature(payload) }));
+      // Clear draft and baseline after save so that switching away and back re-loads fresh server
+      // data (with real IDs) rather than re-using stale draft with temp IDs.
+      delete baselineSigRef.current[custId];
+      setBaselineSigByCustomerId((prev) => {
+        const next = { ...prev };
+        delete next[custId];
+        return next;
+      });
+      setDraftByCustomerId((prev) => {
+        const next = { ...prev };
+        delete next[custId];
+        return next;
+      });
     } finally {
       setSavingByCustomerId((prev) => ({ ...prev, [custId]: false }));
     }
