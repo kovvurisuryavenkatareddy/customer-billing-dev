@@ -153,63 +153,64 @@ class BackfillBatchIdsPayload(BaseModel):
 
 def ensure_customers_table():
     conn = get_db_connection()
-    cur = conn.cursor()
-    cur.execute(
-        '''
-        CREATE TABLE IF NOT EXISTS customers (
-            id SERIAL PRIMARY KEY,
-            customer_code TEXT UNIQUE,
-            last_name TEXT,
-            first_name TEXT,
-            date_of_birth TEXT,
-            active_status TEXT DEFAULT 'active',
-            billing_comments TEXT,
-            id_number TEXT,
-            f_id_number TEXT,
-            total_amount_due DOUBLE PRECISION DEFAULT 0,
-            created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
-        )
-        '''
-    )
-    cur.execute(
-        '''
-        CREATE TABLE IF NOT EXISTS customer_entries (
-            id SERIAL PRIMARY KEY,
-            customer_id INTEGER REFERENCES customers(id) ON DELETE CASCADE,
-            customer_code TEXT,
-            service_name TEXT,
-            start_date TEXT,
-            end_date TEXT,
-            days INTEGER,
-            rate_per_day DOUBLE PRECISION,
-            amount_billed DOUBLE PRECISION,
-            amount_paid DOUBLE PRECISION DEFAULT 0,
-            date_of_payment TEXT,
-            date_submitted TEXT,
-            denial_codes TEXT,
-            is_resubmission BOOLEAN DEFAULT FALSE,
-            original_entry_id INTEGER REFERENCES customer_entries(id),
-            resubmission_date TEXT,
-            billing_comments TEXT,
-            batch_id TEXT,
-            created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-            updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
-        )
-        '''
-    )
-    # Indexes for fast lookups
-    cur.execute('CREATE INDEX IF NOT EXISTS idx_customer_entries_customer_id ON customer_entries(customer_id)')
-    cur.execute('CREATE INDEX IF NOT EXISTS idx_customer_entries_start_date ON customer_entries(start_date)')
-    cur.execute('CREATE INDEX IF NOT EXISTS idx_customers_active_status ON customers(active_status)')
-    cur.execute('CREATE INDEX IF NOT EXISTS idx_customers_last_name ON customers(lower(last_name))')
-    cur.execute('CREATE INDEX IF NOT EXISTS idx_customers_first_name ON customers(lower(first_name))')
-    # batch_id index only if column exists
     try:
-        cur.execute('CREATE INDEX IF NOT EXISTS idx_customer_entries_batch_id ON customer_entries(batch_id)')
-    except Exception:
-        pass
-    conn.commit()
-    conn.close()
+        cur = conn.cursor()
+        cur.execute(
+            '''
+            CREATE TABLE IF NOT EXISTS customers (
+                id SERIAL PRIMARY KEY,
+                customer_code TEXT UNIQUE,
+                last_name TEXT,
+                first_name TEXT,
+                date_of_birth TEXT,
+                active_status TEXT DEFAULT 'active',
+                billing_comments TEXT,
+                id_number TEXT,
+                f_id_number TEXT,
+                total_amount_due DOUBLE PRECISION DEFAULT 0,
+                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+            )
+            '''
+        )
+        cur.execute(
+            '''
+            CREATE TABLE IF NOT EXISTS customer_entries (
+                id SERIAL PRIMARY KEY,
+                customer_id INTEGER REFERENCES customers(id) ON DELETE CASCADE,
+                customer_code TEXT,
+                service_name TEXT,
+                start_date TEXT,
+                end_date TEXT,
+                days INTEGER,
+                rate_per_day DOUBLE PRECISION,
+                amount_billed DOUBLE PRECISION,
+                amount_paid DOUBLE PRECISION DEFAULT 0,
+                date_of_payment TEXT,
+                date_submitted TEXT,
+                denial_codes TEXT,
+                is_resubmission BOOLEAN DEFAULT FALSE,
+                original_entry_id INTEGER REFERENCES customer_entries(id),
+                resubmission_date TEXT,
+                billing_comments TEXT,
+                batch_id TEXT,
+                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+            )
+            '''
+        )
+        # Indexes for fast lookups
+        cur.execute('CREATE INDEX IF NOT EXISTS idx_customer_entries_customer_id ON customer_entries(customer_id)')
+        cur.execute('CREATE INDEX IF NOT EXISTS idx_customer_entries_start_date ON customer_entries(start_date)')
+        cur.execute('CREATE INDEX IF NOT EXISTS idx_customers_active_status ON customers(active_status)')
+        cur.execute('CREATE INDEX IF NOT EXISTS idx_customers_last_name ON customers(lower(last_name))')
+        cur.execute('CREATE INDEX IF NOT EXISTS idx_customers_first_name ON customers(lower(first_name))')
+        try:
+            cur.execute('CREATE INDEX IF NOT EXISTS idx_customer_entries_batch_id ON customer_entries(batch_id)')
+        except Exception:
+            pass
+        conn.commit()
+    finally:
+        conn.close()
 
 def ensure_customers_columns():
     """
@@ -243,27 +244,29 @@ def ensure_customers_columns():
 
 def ensure_customer_services_table():
     conn = get_db_connection()
-    cur = conn.cursor()
-    cur.execute(
-        '''
-        CREATE TABLE IF NOT EXISTS customer_services (
-            id SERIAL PRIMARY KEY,
-            customer_id INTEGER REFERENCES customers(id),
-            service_name TEXT,
-            days INTEGER,
-            rate_per_day DOUBLE PRECISION,
-            amount_billed DOUBLE PRECISION,
-            amount_paid DOUBLE PRECISION,
-            date_of_payment TEXT,
-            start_date TEXT,
-            end_date TEXT,
-            created_at TIMESTAMP
+    try:
+        cur = conn.cursor()
+        cur.execute(
+            '''
+            CREATE TABLE IF NOT EXISTS customer_services (
+                id SERIAL PRIMARY KEY,
+                customer_id INTEGER REFERENCES customers(id),
+                service_name TEXT,
+                days INTEGER,
+                rate_per_day DOUBLE PRECISION,
+                amount_billed DOUBLE PRECISION,
+                amount_paid DOUBLE PRECISION,
+                date_of_payment TEXT,
+                start_date TEXT,
+                end_date TEXT,
+                created_at TIMESTAMP
+            )
+            '''
         )
-        '''
-    )
-    cur.execute('CREATE INDEX IF NOT EXISTS idx_customer_services_customer_id ON customer_services(customer_id)')
-    conn.commit()
-    conn.close()
+        cur.execute('CREATE INDEX IF NOT EXISTS idx_customer_services_customer_id ON customer_services(customer_id)')
+        conn.commit()
+    finally:
+        conn.close()
 
 
 def ensure_customer_services_columns():
@@ -673,23 +676,23 @@ def list_customers(
 @router.get("/{customer_id}")
 def get_customer(customer_id: int, current_user: dict = Depends(get_current_user)):
     conn = get_db_connection()
-    cur = conn.cursor()
-    cur.execute('SELECT * FROM customers WHERE id = ?', (customer_id,))
-    r = cur.fetchone()
-    if not r:
+    try:
+        cur = conn.cursor()
+        cur.execute('SELECT * FROM customers WHERE id = ?', (customer_id,))
+        r = cur.fetchone()
+        if not r:
+            raise HTTPException(status_code=404, detail='not found')
+        customer = dict(r)
+        cur.execute('SELECT * FROM customer_services WHERE customer_id = ?', (customer_id,))
+        svc_rows = cur.fetchall()
+        svc = []
+        for s in svc_rows:
+            d = dict(s)
+            d['start_date'] = s.get('start_date') if isinstance(s, dict) else s['start_date']
+            d['end_date'] = s.get('end_date') if isinstance(s, dict) else s['end_date']
+            svc.append(d)
+    finally:
         conn.close()
-        raise HTTPException(status_code=404, detail='not found')
-    customer = dict(r)
-    cur.execute('SELECT * FROM customer_services WHERE customer_id = ?', (customer_id,))
-    svc_rows = cur.fetchall()
-    svc = []
-    for s in svc_rows:
-        d = dict(s)
-        # ensure start_date/end_date keys present
-        d['start_date'] = s.get('start_date') if isinstance(s, dict) else s['start_date']
-        d['end_date'] = s.get('end_date') if isinstance(s, dict) else s['end_date']
-        svc.append(d)
-    conn.close()
     customer['services'] = svc
     # normalize date_of_birth key for response if missing
     if 'date_of_birth' not in customer:
@@ -1818,13 +1821,15 @@ def get_all_entries(
     name: Optional[str] = Query(None),
     firstName: Optional[str] = Query(None),
     lastName: Optional[str] = Query(None),
-    start_date: Optional[str] = Query(None), 
+    start_date: Optional[str] = Query(None),
     end_date: Optional[str] = Query(None),
     dob: Optional[str] = Query(None),
     status: Optional[str] = Query('active', description="Filter by active_status: 'active', 'inactive', or 'all'"),
+    customer_id: Optional[int] = Query(None, description="Filter to a single customer by ID (no ID required in path)"),
     current_user: dict = Depends(get_current_user)
 ):
-    """Get **all** service entries for each customer (one row per entry)."""
+    """Get **all** service entries for each customer (one row per entry).
+    Pass customer_id as a query param to filter to a specific customer without putting the ID in the URL path."""
     conn = get_db_connection()
     cur = conn.cursor()
 
@@ -1853,8 +1858,13 @@ def get_all_entries(
         clauses = []
         params: list[Any] = []  # type: ignore[name-defined]
 
-        # Filter by customer status
-        if status != 'all':
+        # Filter to a single customer when customer_id is provided
+        if customer_id is not None:
+            clauses.append('c.id = ?')
+            params.append(customer_id)
+
+        # Filter by customer status (skip when fetching a specific customer)
+        if customer_id is None and status != 'all':
             clauses.append('c.active_status = ?')
             params.append(status)
 

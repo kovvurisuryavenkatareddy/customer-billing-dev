@@ -132,7 +132,7 @@ export default function QuickEntryModal({
  
     let mounted = true;
     setLoadingByCustomerId((prev) => ({ ...prev, [custId]: true }));
-    fetch(`${API_BASE}/customers/${custId}/entries`, { headers: getAuthHeaders() })
+    fetch(`${API_BASE}/customers/entries/all?customer_id=${custId}&status=all`, { headers: getAuthHeaders() })
       .then((res) => {
         if (res.status === 401) {
           handle401Error();
@@ -141,11 +141,14 @@ export default function QuickEntryModal({
         if (!res.ok) throw new Error('Failed to fetch entries');
         return res.json();
       })
-      .then((data) => {
+      .then((rows) => {
         if (!mounted) return;
+        const entries = Array.isArray(rows)
+          ? rows.filter(r => r.entry_id != null).map(r => ({ ...r, id: r.entry_id }))
+          : [];
         setEntriesByCustomerId((prev) => ({
           ...prev,
-          [custId]: Array.isArray(data?.entries) ? data.entries : [],
+          [custId]: entries,
         }));
       })
       .catch(() => {
@@ -243,16 +246,19 @@ export default function QuickEntryModal({
 
       await Promise.all([...deleteOps, ...upsertOps]);
  
-      const refreshRes = await fetch(`${API_BASE}/customers/${custId}/entries`, { headers: getAuthHeaders() });
+      const refreshRes = await fetch(`${API_BASE}/customers/entries/all?customer_id=${custId}&status=all`, { headers: getAuthHeaders() });
       if (refreshRes.status === 401) {
         handle401Error();
         throw new Error('Unauthorized');
       }
       if (refreshRes.ok) {
         const refreshed = await refreshRes.json();
+        const refreshedEntries = Array.isArray(refreshed)
+          ? refreshed.filter(r => r.entry_id != null).map(r => ({ ...r, id: r.entry_id }))
+          : [];
         setEntriesByCustomerId((prev) => ({
           ...prev,
-          [custId]: Array.isArray(refreshed?.entries) ? refreshed.entries : [],
+          [custId]: refreshedEntries,
         }));
       }
  

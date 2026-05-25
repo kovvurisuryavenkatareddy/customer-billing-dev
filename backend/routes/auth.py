@@ -53,25 +53,33 @@ class UserResponse(BaseModel):
     created_at: str
 
 
+_users_table_ensured = False
+
 def ensure_users_table():
-    """Create users table if it doesn't exist"""
+    """Create users table if it doesn't exist. Runs only once per process."""
+    global _users_table_ensured
+    if _users_table_ensured:
+        return
     conn = get_db_connection()
-    cur = conn.cursor()
-    cur.execute(
-        '''
-        CREATE TABLE IF NOT EXISTS users (
-            id SERIAL PRIMARY KEY,
-            email TEXT UNIQUE NOT NULL,
-            password_hash TEXT NOT NULL,
-            first_name TEXT NOT NULL,
-            last_name TEXT NOT NULL,
-            created_at TIMESTAMP NOT NULL,
-            last_login TIMESTAMP
+    try:
+        cur = conn.cursor()
+        cur.execute(
+            '''
+            CREATE TABLE IF NOT EXISTS users (
+                id SERIAL PRIMARY KEY,
+                email TEXT UNIQUE NOT NULL,
+                password_hash TEXT NOT NULL,
+                first_name TEXT NOT NULL,
+                last_name TEXT NOT NULL,
+                created_at TIMESTAMP NOT NULL,
+                last_login TIMESTAMP
+            )
+            '''
         )
-        '''
-    )
-    conn.commit()
-    conn.close()
+        conn.commit()
+        _users_table_ensured = True
+    finally:
+        conn.close()
 
 
 # NOTE: table creation is done at application startup to avoid attempting
@@ -137,17 +145,19 @@ def get_current_user(token: str = Depends(oauth2_scheme)):
     
     # Fetch user from database
     conn = get_db_connection()
-    cur = conn.cursor()
-    cur.execute("SELECT * FROM users WHERE id = ?", (user_id,))
-    user = cur.fetchone()
-    conn.close()
-    
+    try:
+        cur = conn.cursor()
+        cur.execute("SELECT * FROM users WHERE id = ?", (user_id,))
+        user = cur.fetchone()
+    finally:
+        conn.close()
+
     if user is None:
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
             detail="User not found"
         )
-    
+
     return dict(user)
 
 

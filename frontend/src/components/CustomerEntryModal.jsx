@@ -3,7 +3,7 @@ import { formatMMDDYYYY, toISO } from '../utils/dates';
 import { Button, Input, Select, Space, Spin, Alert, Divider } from 'antd';
 import { API_BASE, getAuthHeaders } from '../utils/api';
 
-export default function CustomerEntryModal({ customerId, batchId, customerCode, onClose, onUpdated }) {
+export default function CustomerEntryModal({ customerId, customerCode, onClose, onUpdated }) {
   const [customer, setCustomer] = useState(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
@@ -22,34 +22,45 @@ export default function CustomerEntryModal({ customerId, batchId, customerCode, 
     if (customerId) {
       fetchCustomer();
     }
-  }, [customerId, batchId]);
+  }, [customerId]);
 
   const fetchCustomer = async () => {
     try {
       setLoading(true);
       setError(null);
       const headers = getAuthHeaders();
-      let cust;
-      // When batchId is set (clicked from a row), show only that batch's services; otherwise all entries
-      if (batchId) {
-        const [custRes, batchRes] = await Promise.all([
-          fetch(`${API_BASE}/customers/${customerId}`, { headers }),
-          fetch(`${API_BASE}/customers/${customerId}/batches/${batchId}/entries`, { headers }),
-        ]);
-        if (!custRes.ok) throw new Error('Failed to fetch customer');
-        if (!batchRes.ok) throw new Error('Failed to fetch services');
-        cust = await custRes.json();
-        const batchData = await batchRes.json();
-        const batchEntries = Array.isArray(batchData.entries) ? batchData.entries : [];
-        setCustomer({ ...cust, services: batchEntries });
-      } else {
-        const res = await fetch(`${API_BASE}/customers/${customerId}/entries`, { headers });
-        if (!res.ok) throw new Error('Failed to fetch customer');
-        const data = await res.json();
-        cust = data.customer || data;
-        const allEntries = Array.isArray(data.entries) ? data.entries : [];
-        setCustomer({ ...cust, services: allEntries });
-      }
+      // Fetch entries without ID in path — use customer_id query param instead
+      const res = await fetch(`${API_BASE}/customers/entries/all?customer_id=${customerId}&status=all`, { headers });
+      if (!res.ok) throw new Error('Failed to fetch customer');
+      const rows = await res.json();
+      const flatRows = Array.isArray(rows) ? rows : [];
+      // Extract customer fields from first row; map entry rows (non-null entry_id) to entries list
+      const firstRow = flatRows[0] || null;
+      const cust = firstRow
+        ? {
+            id: firstRow.id,
+            first_name: firstRow.first_name,
+            last_name: firstRow.last_name,
+            date_of_birth: firstRow.date_of_birth,
+            id_number: firstRow.id_number,
+            f_id_number: firstRow.f_id_number,
+            active_status: firstRow.active_status,
+          }
+        : null;
+      const allEntries = flatRows
+        .filter(r => r.entry_id != null)
+        .map(r => ({
+          id: r.entry_id,
+          service_name: r.service_name,
+          start_date: r.start_date,
+          end_date: r.end_date,
+          days: r.days,
+          rate_per_day: r.rate_per_day,
+          amount_billed: r.amount_billed,
+          amount_paid: r.amount_paid,
+          denial_codes: r.denial_codes,
+        }));
+      setCustomer({ ...cust, services: allEntries });
       if (!isEditing && cust) {
         const ln = cust.last_name || cust.lastName || '';
         const fn = cust.first_name || cust.firstName || '';

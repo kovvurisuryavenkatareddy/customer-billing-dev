@@ -1,0 +1,28 @@
+- main [ref=e5]:
+  - generic [ref=e8]:
+    - img [ref=e10]
+    - heading "Misha House Billing" [level=1] [ref=e14]
+    - paragraph [ref=e15]: Please login to your account
+    - generic [ref=e16]:
+      - generic [ref=e18]:
+        - generic "Email Address" [ref=e20]
+        - generic [ref=e24]:
+          - img "mail" [ref=e26]:
+            - img [ref=e27]
+          - textbox "Email Address" [ref=e29]:
+            - /placeholder: Enter your email
+      - generic [ref=e31]:
+        - generic "Password" [ref=e33]
+        - generic [ref=e37]:
+          - img "lock" [ref=e39]:
+            - img [ref=e40]
+          - textbox "Password" [ref=e42]:
+            - /placeholder: Enter your password
+          - img "eye-invisible" [ref=e44] [cursor=pointer]:
+            - img [ref=e45]
+      - button "Login" [ref=e53] [cursor=pointer]:
+        - generic [ref=e54]: Login
+    - paragraph [ref=e56]:
+      - text: Don't have an account?
+      - link "Sign up here" [ref=e57] [cursor=pointer]:
+        - /url: /signup

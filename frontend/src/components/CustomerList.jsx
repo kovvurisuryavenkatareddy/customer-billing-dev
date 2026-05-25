@@ -20,7 +20,6 @@ export default function CustomerList({
   const [savingStatusFor, setSavingStatusFor] = useState(null);
   const [showEntryModal, setShowEntryModal] = useState(false);
   const [selectedCustomerId, setSelectedCustomerId] = useState(null);
-  const [selectedBatchId, setSelectedBatchId] = useState(null);
   const [selectedCustomerCode, setSelectedCustomerCode] = useState(null);
   const [isInitialLoad, setIsInitialLoad] = useState(true);
   const [selectedRowKeys, setSelectedRowKeys] = useState([]);
@@ -35,16 +34,15 @@ export default function CustomerList({
     return formatMMDDYYYY(d);
   }, []);
 
-  // Group entries by batch_id so we show one row per batch
+  // Group entries by customer_id — one row per customer regardless of batch
   const dataSource = useMemo(() => {
-    const batchKey = (c) => c.batch_id || (c.entry_id != null ? `legacy-${c.entry_id}` : `single-${c.id}-${c.entry_id}`);
     const groups = new Map();
     for (const c of customers) {
-      const key = batchKey(c);
+      const key = String(c.id);
       if (!groups.has(key)) groups.set(key, []);
       groups.get(key).push(c);
     }
-    return Array.from(groups.entries()).map(([batchKeyId, entries]) => {
+    return Array.from(groups.entries()).map(([customerId, entries]) => {
       const first = entries[0];
       const daysSum = entries.reduce((s, e) => s + (Number(e.days) || 0), 0);
       const billedSum = entries.reduce((s, e) => s + (Number(e.amount_billed) || 0), 0);
@@ -60,7 +58,7 @@ export default function CustomerList({
       const startDate = startDates.length ? startDates.sort()[0] : first.start_date;
       const endDate = endDates.length ? endDates.sort().reverse()[0] : first.end_date;
       return {
-        key: batchKeyId,
+        key: customerId,
         id: first.id,
         customerId: first.id,
         name: `${(first.first_name || '').trim()}${first.last_name ? ', ' + (first.last_name || '').trim() : ''}`.trim(),
@@ -83,7 +81,6 @@ export default function CustomerList({
         denialCodes: first.denial_codes || [],
         isResubmission: first.is_resubmission || false,
         entryId: first.entry_id,
-        batchId: first.batch_id || (first.entry_id != null ? `legacy-${first.entry_id}` : null),
         customer: first,
       };
     });
@@ -147,7 +144,6 @@ export default function CustomerList({
           className="customer-name font-semibold"
           onClick={() => {
             setSelectedCustomerId(record.customerId);
-            setSelectedBatchId(record.batchId ?? null);
             setShowEntryModal(true);
           }}
           title="Click to view customer details"
@@ -239,7 +235,6 @@ export default function CustomerList({
         const handleEdit = () => {
           onEdit({
             customer: record.customer,
-            batchId: record.batchId,
             service: {
               id: record.entryId,
               entryId: record.entryId,
@@ -421,12 +416,10 @@ export default function CustomerList({
       {showEntryModal && (
         <CustomerEntryModal
           customerId={selectedCustomerId}
-          batchId={selectedBatchId}
           onUpdated={onCustomerUpdated}
           onClose={() => {
             setShowEntryModal(false);
             setSelectedCustomerId(null);
-            setSelectedBatchId(null);
           }}
         />
       )}

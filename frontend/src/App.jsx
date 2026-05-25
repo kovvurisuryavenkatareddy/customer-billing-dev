@@ -127,7 +127,7 @@ function App() {
           />
         )}
         <Content
-          className={`min-h-screen transition-[margin-left] duration-300 bg-[#f4f7f9] overflow-x-hidden ${isAuthenticated && sidebarOpen ? 'md:ml-[260px]' : ''}`}
+          className={`min-h-screen transition-[margin-left] duration-300 bg-[#f4f7f9] ${isAuthenticated && sidebarOpen ? 'md:ml-[260px]' : ''}`}
           style={isAuthenticated ? { paddingTop: 16 } : {}}
         >
           <Routes>

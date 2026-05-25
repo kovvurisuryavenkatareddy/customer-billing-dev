@@ -25,8 +25,8 @@ def _get_pool() -> psycopg2.pool.ThreadedConnectionPool:
     with _pool_lock:
         if _pool is None:
             _pool = psycopg2.pool.ThreadedConnectionPool(
-                minconn=1,
-                maxconn=10,
+                minconn=2,
+                maxconn=20,
                 dsn=DATABASE_URL,
                 # TCP keepalives prevent Neon from closing idle connections
                 keepalives=1,
