@@ -24,6 +24,7 @@ except Exception:
     from .db.database import get_db_connection
 
 
+
 app = FastAPI(title='Services API')
 
 # Compress responses ≥ 1 KB — reduces JSON payload size by ~70 %
