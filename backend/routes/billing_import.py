@@ -491,7 +491,14 @@ def import_billing(
     errors          = []
     customer_logs   = []
 
-    for sheet_name in wb.sheetnames:
+    iop_sheets = [s for s in wb.sheetnames if 'IOP' in s.upper()]
+    if not iop_sheets:
+        raise HTTPException(
+            status_code=400,
+            detail=f"No sheet containing 'IOP' found. Available sheets: {', '.join(wb.sheetnames)}"
+        )
+
+    for sheet_name in iop_sheets:
         ws = wb[sheet_name]
 
         # Customer header rows = col A has a positive integer
@@ -694,7 +701,7 @@ def import_billing(
 
     return {
         'message':              msg,
-        'sheets_processed':     len(wb.sheetnames),
+        'sheets_processed':     len(iop_sheets),
         'customers_inserted':   total_customers,
         'entries_inserted':     total_entries,
         'entries_invalid_count': total_invalid,
