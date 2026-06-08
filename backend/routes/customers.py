@@ -1,11 +1,12 @@
 from fastapi import APIRouter, HTTPException, Query, Depends
-from typing import Optional, List
+from typing import Optional, List, Any
 from pydantic import BaseModel
 from datetime import datetime
 import logging
 import csv
 import os
 import json
+import uuid
 
 # module logger
 logger = logging.getLogger(__name__)
@@ -19,6 +20,28 @@ except Exception:
     from .auth import get_current_user
 
 router = APIRouter()
+
+def _get_or_create_canonical_batch_id(cur, customer_id: int) -> str:
+    """
+    Enforce a single batch_id per customer.
+    Canonical batch_id = the oldest non-empty batch_id for this customer (by created_at),
+    or a newly generated UUID if none exists yet.
+    """
+    cur.execute(
+        """
+        SELECT batch_id
+        FROM customer_entries
+        WHERE customer_id = ? AND batch_id IS NOT NULL AND batch_id != ''
+        ORDER BY created_at ASC, id ASC
+        LIMIT 1
+        """,
+        (customer_id,)
+    )
+    row = cur.fetchone()
+    existing = row.get('batch_id') if isinstance(row, dict) else (row[0] if row else None)
+    if existing:
+        return str(existing)
+    return str(uuid.uuid4())
 
 
 # Pydantic models for clearer OpenAPI schemas
@@ -109,54 +132,85 @@ class ResubmissionPayload(BaseModel):
     originalEntryId: int
     service: Optional[ServiceModel] = None
 
+
+class BatchCreatePayload(BaseModel):
+    """Create a new batch: N rows with same batch_id (UUID)."""
+    services: List[ServiceModel]
+
+
+class BatchUpdatePayload(BaseModel):
+    """Update only entries in this batch (by id)."""
+    services: List[dict]  # each may have id, serviceName, days, ratePerDay, etc.
+
+class BackfillBatchIdsPayload(BaseModel):
+    """
+    Backfill missing customer_entries.batch_id for existing data.
+    Groups consecutive NULL/empty batch rows per customer within a time window into one new UUID batch.
+    """
+    windowSeconds: int = 60
+    dryRun: bool = True
+
+
 def ensure_customers_table():
     conn = get_db_connection()
-    cur = conn.cursor()
-    # Main customers table for basic customer info
-    cur.execute(
-        '''
-        CREATE TABLE IF NOT EXISTS customers (
-            id SERIAL PRIMARY KEY,
-            customer_code TEXT UNIQUE,
-            last_name TEXT,
-            first_name TEXT,
-            date_of_birth TEXT,
-            active_status TEXT DEFAULT 'active',
-            billing_comments TEXT,
-            id_number TEXT,
-            f_id_number TEXT,
-            created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+    try:
+        cur = conn.cursor()
+        cur.execute(
+            '''
+            CREATE TABLE IF NOT EXISTS customers (
+                id SERIAL PRIMARY KEY,
+                customer_code TEXT UNIQUE,
+                last_name TEXT,
+                first_name TEXT,
+                date_of_birth TEXT,
+                active_status TEXT DEFAULT 'active',
+                billing_comments TEXT,
+                id_number TEXT,
+                f_id_number TEXT,
+                total_amount_due DOUBLE PRECISION DEFAULT 0,
+                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+            )
+            '''
         )
-        '''
-    )
-    # Customer entries/submissions table for service records
-    cur.execute(
-        '''
-        CREATE TABLE IF NOT EXISTS customer_entries (
-            id SERIAL PRIMARY KEY,
-            customer_id INTEGER REFERENCES customers(id) ON DELETE CASCADE,
-            customer_code TEXT,
-            service_name TEXT,
-            start_date TEXT,
-            end_date TEXT,
-            days INTEGER,
-            rate_per_day DOUBLE PRECISION,
-            amount_billed DOUBLE PRECISION,
-            amount_paid DOUBLE PRECISION DEFAULT 0,
-            date_of_payment TEXT,
-            date_submitted TEXT,
-            denial_codes TEXT,
-            is_resubmission BOOLEAN DEFAULT FALSE,
-            original_entry_id INTEGER REFERENCES customer_entries(id),
-            resubmission_date TEXT,
-            billing_comments TEXT,
-            created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-            updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+        cur.execute(
+            '''
+            CREATE TABLE IF NOT EXISTS customer_entries (
+                id SERIAL PRIMARY KEY,
+                customer_id INTEGER REFERENCES customers(id) ON DELETE CASCADE,
+                customer_code TEXT,
+                service_name TEXT,
+                start_date TEXT,
+                end_date TEXT,
+                days INTEGER,
+                rate_per_day DOUBLE PRECISION,
+                amount_billed DOUBLE PRECISION,
+                amount_paid DOUBLE PRECISION DEFAULT 0,
+                date_of_payment TEXT,
+                date_submitted TEXT,
+                denial_codes TEXT,
+                is_resubmission BOOLEAN DEFAULT FALSE,
+                original_entry_id INTEGER REFERENCES customer_entries(id),
+                resubmission_date TEXT,
+                billing_comments TEXT,
+                batch_id TEXT,
+                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+            )
+            '''
         )
-        '''
-    )
-    conn.commit()
-    conn.close()
+        # Indexes for fast lookups
+        cur.execute('CREATE INDEX IF NOT EXISTS idx_customer_entries_customer_id ON customer_entries(customer_id)')
+        cur.execute('CREATE INDEX IF NOT EXISTS idx_customer_entries_start_date ON customer_entries(start_date)')
+        cur.execute('CREATE INDEX IF NOT EXISTS idx_customers_active_status ON customers(active_status)')
+        cur.execute('CREATE INDEX IF NOT EXISTS idx_customers_last_name ON customers(lower(last_name))')
+        cur.execute('CREATE INDEX IF NOT EXISTS idx_customers_first_name ON customers(lower(first_name))')
+        try:
+            cur.execute('CREATE INDEX IF NOT EXISTS idx_customer_entries_batch_id ON customer_entries(batch_id)')
+        except Exception:
+            pass
+        conn.commit()
+    finally:
+        conn.close()
 
 def ensure_customers_columns():
     """
@@ -169,6 +223,7 @@ def ensure_customers_columns():
         'billing_comments': 'TEXT',
         'id_number': 'TEXT',
         'f_id_number': 'TEXT',
+        'total_amount_due': 'DOUBLE PRECISION DEFAULT 0',
     }
     conn = get_db_connection()
     cur = conn.cursor()
@@ -179,8 +234,8 @@ def ensure_customers_columns():
         for col, coltype in expected.items():
             if col not in existing:
                 try:
-                        cur.execute(f"ALTER TABLE customers ADD COLUMN {col} {coltype}")
-                        logger.info(f"Added missing column {col} to customers")
+                    cur.execute(f"ALTER TABLE customers ADD COLUMN {col} {coltype}")
+                    logger.info(f"Added missing column {col} to customers")
                 except Exception:
                     import traceback; traceback.print_exc()
         conn.commit()
@@ -189,26 +244,29 @@ def ensure_customers_columns():
 
 def ensure_customer_services_table():
     conn = get_db_connection()
-    cur = conn.cursor()
-    cur.execute(
-        '''
-        CREATE TABLE IF NOT EXISTS customer_services (
-            id SERIAL PRIMARY KEY,
-            customer_id INTEGER REFERENCES customers(id),
-            service_name TEXT,
-            days INTEGER,
-            rate_per_day DOUBLE PRECISION,
-            amount_billed DOUBLE PRECISION,
-            amount_paid DOUBLE PRECISION,
-            date_of_payment TEXT,
-            start_date TEXT,
-            end_date TEXT,
-            created_at TIMESTAMP
+    try:
+        cur = conn.cursor()
+        cur.execute(
+            '''
+            CREATE TABLE IF NOT EXISTS customer_services (
+                id SERIAL PRIMARY KEY,
+                customer_id INTEGER REFERENCES customers(id),
+                service_name TEXT,
+                days INTEGER,
+                rate_per_day DOUBLE PRECISION,
+                amount_billed DOUBLE PRECISION,
+                amount_paid DOUBLE PRECISION,
+                date_of_payment TEXT,
+                start_date TEXT,
+                end_date TEXT,
+                created_at TIMESTAMP
+            )
+            '''
         )
-        '''
-    )
-    conn.commit()
-    conn.close()
+        cur.execute('CREATE INDEX IF NOT EXISTS idx_customer_services_customer_id ON customer_services(customer_id)')
+        conn.commit()
+    finally:
+        conn.close()
 
 
 def ensure_customer_services_columns():
@@ -242,6 +300,23 @@ def ensure_customer_services_columns():
         conn.close()
 
 
+def ensure_customer_entries_columns():
+    """Add batch_id to customer_entries if missing (for batch-based add/edit)."""
+    conn = get_db_connection()
+    cur = conn.cursor()
+    try:
+        cur.execute("SELECT column_name FROM information_schema.columns WHERE table_name = 'customer_entries'")
+        existing = {row['column_name'] for row in cur.fetchall()}
+        if 'batch_id' not in existing:
+            cur.execute("ALTER TABLE customer_entries ADD COLUMN batch_id TEXT")
+            logger.info("Added batch_id to customer_entries")
+            conn.commit()
+    except Exception as e:
+        logger.debug("ensure_customer_entries_columns: %s", e)
+    finally:
+        conn.close()
+
+
 def ensure_all_tables():
     """
     Ensures all required tables exist. Call this before any database operation
@@ -252,6 +327,7 @@ def ensure_all_tables():
         ensure_customer_services_table()
         ensure_customer_services_columns()
         ensure_customers_columns()
+        ensure_customer_entries_columns()
     except Exception as e:
         logger.error(f"Error ensuring tables: {e}")
         import traceback; traceback.print_exc()
@@ -303,9 +379,6 @@ def append_activity_log(action: str, customer: dict, service: dict | None, custo
 
 @router.post("/", status_code=201)
 def create_customer(payload: CreateCustomerPayload, current_user: dict = Depends(get_current_user)):
-    # Ensure all tables exist before creating
-    ensure_all_tables()
-    
     # payload expected: { customer: {...}, services: [{...}] } or { customer: {...}, service: {...} }
     import traceback
     data = payload.dict() if hasattr(payload, 'dict') else (payload or {})
@@ -363,8 +436,10 @@ def create_customer(payload: CreateCustomerPayload, current_user: dict = Depends
             )
             customer_id = cur.fetchone()['id']
 
-        # Create entries for all services
+        # Create entries for all services.
+        # IMPORTANT: We enforce ONE batch_id per customer (canonical batch id).
         if services_list:
+            create_batch_id = _get_or_create_canonical_batch_id(cur, customer_id)
             for service in services_list:
                 # Convert denial codes to JSON string if it's a list
                 denial_codes = service.get('denialCodes')
@@ -376,8 +451,8 @@ def create_customer(payload: CreateCustomerPayload, current_user: dict = Depends
                 cur.execute(
                     '''INSERT INTO customer_entries 
                        (customer_id, customer_code, service_name, start_date, end_date, days, rate_per_day, 
-                        amount_billed, amount_paid, date_of_payment, date_submitted, denial_codes, billing_comments) 
-                       VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?) RETURNING id''',
+                        amount_billed, amount_paid, date_of_payment, date_submitted, denial_codes, billing_comments, batch_id) 
+                       VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?) RETURNING id''',
                     (
                         customer_id,
                         customer_code,
@@ -392,6 +467,7 @@ def create_customer(payload: CreateCustomerPayload, current_user: dict = Depends
                         service.get('dateSubmitted'),
                         denial_codes,
                         customer.get('comments'),
+                        create_batch_id,
                     )
                 )
                 entry_id = cur.fetchone()['id']
@@ -437,9 +513,6 @@ def list_customers(
     status: Optional[str] = Query('active', description="Filter by active_status: 'active', 'inactive', or 'all'"),
     current_user: dict = Depends(get_current_user)
 ):
-    # Ensure all tables exist before querying
-    ensure_all_tables()
-    
     conn = get_db_connection()
     cur = conn.cursor()
     
@@ -547,7 +620,7 @@ def list_customers(
             'first_name': r['first_name'],
             'date_of_birth': r['date_of_birth'] if 'date_of_birth' in r.keys() else None,
             'active_status': r['active_status'] if 'active_status' in r.keys() else 'active',
-            'total_amount_due': r['total_amount_due'],
+            'total_amount_due': (r.get('total_amount_due', 0) if isinstance(r, dict) else (r['total_amount_due'] if 'total_amount_due' in r.keys() else 0)),
             'id_number': r.get('id_number'),
             'f_id_number': r.get('f_id_number'),
         }
@@ -602,27 +675,24 @@ def list_customers(
 
 @router.get("/{customer_id}")
 def get_customer(customer_id: int, current_user: dict = Depends(get_current_user)):
-    # Ensure all tables exist
-    ensure_all_tables()
-    
     conn = get_db_connection()
-    cur = conn.cursor()
-    cur.execute('SELECT * FROM customers WHERE id = ?', (customer_id,))
-    r = cur.fetchone()
-    if not r:
+    try:
+        cur = conn.cursor()
+        cur.execute('SELECT * FROM customers WHERE id = ?', (customer_id,))
+        r = cur.fetchone()
+        if not r:
+            raise HTTPException(status_code=404, detail='not found')
+        customer = dict(r)
+        cur.execute('SELECT * FROM customer_services WHERE customer_id = ?', (customer_id,))
+        svc_rows = cur.fetchall()
+        svc = []
+        for s in svc_rows:
+            d = dict(s)
+            d['start_date'] = s.get('start_date') if isinstance(s, dict) else s['start_date']
+            d['end_date'] = s.get('end_date') if isinstance(s, dict) else s['end_date']
+            svc.append(d)
+    finally:
         conn.close()
-        raise HTTPException(status_code=404, detail='not found')
-    customer = dict(r)
-    cur.execute('SELECT * FROM customer_services WHERE customer_id = ?', (customer_id,))
-    svc_rows = cur.fetchall()
-    svc = []
-    for s in svc_rows:
-        d = dict(s)
-        # ensure start_date/end_date keys present
-        d['start_date'] = s.get('start_date') if isinstance(s, dict) else s['start_date']
-        d['end_date'] = s.get('end_date') if isinstance(s, dict) else s['end_date']
-        svc.append(d)
-    conn.close()
     customer['services'] = svc
     # normalize date_of_birth key for response if missing
     if 'date_of_birth' not in customer:
@@ -646,9 +716,6 @@ def update_customer(customer_id: int, payload: UpdateCustomerPayload, current_us
     logger.debug(f"=== UPDATE CUSTOMER {customer_id} ===")
     logger.debug(f"Payload: {payload}")
     
-    # Ensure all tables exist
-    ensure_all_tables()
-    
     data = payload.dict() if hasattr(payload, 'dict') else (payload or {})
     customer = data.get('customer') if isinstance(data, dict) else None
     service = data.get('service') if isinstance(data, dict) else None
@@ -670,62 +737,112 @@ def update_customer(customer_id: int, payload: UpdateCustomerPayload, current_us
         if not existing:
             raise HTTPException(status_code=404, detail='customer not found')
 
-        # Update customer basic info
-        # Accept dob updates from frontend under common keys
-        has_dob_key = 'dob' in customer or 'dateOfBirth' in customer or 'date_of_birth' in customer
-        dob_val = None
-        if has_dob_key:
-            dob_val = customer.get('dob') or customer.get('dateOfBirth') or customer.get('date_of_birth')
+        # Check if we should update customer fields at all
+        # If all customer fields are None, skip customer update (only updating service)
+        should_update_customer = any([
+            customer.get('lastName') is not None,
+            customer.get('firstName') is not None,
+            customer.get('dateOfBirth') is not None,
+            customer.get('dob') is not None,
+            customer.get('comments') is not None,
+            customer.get('idNumber') is not None,
+            customer.get('fIdNumber') is not None,
+            customer.get('customerCode') is not None,
+        ])
+        
+        logger.info(f"Should update customer: {should_update_customer}")
+        
+        if should_update_customer:
+            # Update customer basic info
+            # Accept dob updates from frontend under common keys
+            has_dob_key = 'dob' in customer or 'dateOfBirth' in customer or 'date_of_birth' in customer
+            dob_val = None
+            if has_dob_key:
+                dob_val = customer.get('dob') or customer.get('dateOfBirth') or customer.get('date_of_birth')
+            else:
+                dob_val = existing.get('date_of_birth') if isinstance(existing, dict) else existing['date_of_birth']
+
+            # Accept active_status updates
+            has_active_key = 'activeStatus' in customer or 'active_status' in customer
+            if has_active_key:
+                active_status_val = customer.get('activeStatus') or customer.get('active_status')
+            else:
+                active_status_val = existing.get('active_status') if isinstance(existing, dict) else existing['active_status']
+
+            # Only overwrite first/last name/billing_comments if keys provided in payload AND not None
+            if 'lastName' in customer and customer.get('lastName') is not None:
+                last_name_val = customer.get('lastName')
+            else:
+                last_name_val = existing.get('last_name') if isinstance(existing, dict) else existing['last_name']
+
+            if 'firstName' in customer and customer.get('firstName') is not None:
+                first_name_val = customer.get('firstName')
+            else:
+                first_name_val = existing.get('first_name') if isinstance(existing, dict) else existing['first_name']
+
+            if 'comments' in customer and customer.get('comments') is not None:
+                comments_val = customer.get('comments')
+            else:
+                # Some older databases may not have billing_comments column; handle that gracefully.
+                comments_val = existing.get('billing_comments') if isinstance(existing, dict) and 'billing_comments' in existing else None
+
+            has_id_number = 'idNumber' in customer or 'id_number' in customer
+            id_number_val = customer.get('idNumber') or customer.get('id_number') if has_id_number else (existing.get('id_number') if isinstance(existing, dict) else existing.get('id_number'))
+            has_f_id_number = 'fIdNumber' in customer or 'f_id_number' in customer
+            f_id_number_val = customer.get('fIdNumber') or customer.get('f_id_number') if has_f_id_number else (existing.get('f_id_number') if isinstance(existing, dict) else existing.get('f_id_number'))
+
+            # Update customer record. Some legacy databases may not yet have billing_comments;
+            # if the first UPDATE fails due to that column, retry without touching it.
+            try:
+                cur.execute(
+                    'UPDATE customers SET last_name = ?, first_name = ?, billing_comments = ?, date_of_birth = ?, active_status = ?, id_number = ?, f_id_number = ? WHERE id = ?',
+                    (
+                        last_name_val,
+                        first_name_val,
+                        comments_val,
+                        dob_val,
+                        active_status_val,
+                        id_number_val,
+                        f_id_number_val,
+                        customer_id,
+                    )
+                )
+                logger.info("Customer fields updated")
+            except Exception as e:
+                if 'billing_comments' in str(e):
+                    logger.warning("billing_comments column missing on customers; updating without it: %s", e)
+                    cur.execute(
+                        'UPDATE customers SET last_name = ?, first_name = ?, date_of_birth = ?, active_status = ?, id_number = ?, f_id_number = ? WHERE id = ?',
+                        (
+                            last_name_val,
+                            first_name_val,
+                            dob_val,
+                            active_status_val,
+                            id_number_val,
+                            f_id_number_val,
+                            customer_id,
+                        )
+                    )
+                else:
+                    raise
         else:
-            dob_val = existing.get('date_of_birth') if isinstance(existing, dict) else existing['date_of_birth']
-
-        # Accept active_status updates
-        has_active_key = 'activeStatus' in customer or 'active_status' in customer
-        if has_active_key:
-            active_status_val = customer.get('activeStatus') or customer.get('active_status')
-        else:
-            active_status_val = existing.get('active_status') if isinstance(existing, dict) else existing['active_status']
-
-        # Only overwrite first/last name/billing_comments if keys provided in payload
-        if 'lastName' in customer:
-            last_name_val = customer.get('lastName')
-        else:
-            last_name_val = existing.get('last_name') if isinstance(existing, dict) else existing['last_name']
-
-        if 'firstName' in customer:
-            first_name_val = customer.get('firstName')
-        else:
-            first_name_val = existing.get('first_name') if isinstance(existing, dict) else existing['first_name']
-
-        if 'comments' in customer:
-            comments_val = customer.get('comments')
-        else:
-            comments_val = existing.get('billing_comments') if isinstance(existing, dict) else existing['billing_comments']
-
-        has_id_number = 'idNumber' in customer or 'id_number' in customer
-        id_number_val = customer.get('idNumber') or customer.get('id_number') if has_id_number else (existing.get('id_number') if isinstance(existing, dict) else existing.get('id_number'))
-        has_f_id_number = 'fIdNumber' in customer or 'f_id_number' in customer
-        f_id_number_val = customer.get('fIdNumber') or customer.get('f_id_number') if has_f_id_number else (existing.get('f_id_number') if isinstance(existing, dict) else existing.get('f_id_number'))
-
-        # Update customer record
-        cur.execute(
-            'UPDATE customers SET last_name = ?, first_name = ?, billing_comments = ?, date_of_birth = ?, active_status = ?, id_number = ?, f_id_number = ? WHERE id = ?',
-            (
-                last_name_val,
-                first_name_val,
-                comments_val,
-                dob_val,
-                active_status_val,
-                id_number_val,
-                f_id_number_val,
-                customer_id,
-            )
-        )
+            logger.info("Skipping customer update - only updating service")
 
         entry_id = None
         if service:
             # Get customer_code
             customer_code = existing.get('customer_code') if isinstance(existing, dict) else existing['customer_code']
+
+            # If the caller provides an entry id, update that specific entry instead of creating new.
+            # This is important for the "Edit service" action in the table, where each row represents a specific entry.
+            target_entry_id = (
+                service.get('id')
+                or service.get('entryId')
+                or service.get('entry_id')
+            )
+            
+            logger.info(f"Service payload: {service}")
+            logger.info(f"Target entry ID: {target_entry_id}")
             
             # Convert denial codes to string
             denial_codes = service.get('denialCodes')
@@ -741,8 +858,8 @@ def update_customer(customer_id: int, payload: UpdateCustomerPayload, current_us
                     '''INSERT INTO customer_entries 
                        (customer_id, customer_code, service_name, start_date, end_date, days, rate_per_day, 
                         amount_billed, amount_paid, date_of_payment, date_submitted, denial_codes, 
-                        is_resubmission, billing_comments) 
-                       VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?) RETURNING id''',
+                        is_resubmission, original_entry_id, resubmission_date, billing_comments) 
+                       VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?) RETURNING id''',
                     (
                         customer_id,
                         customer_code,
@@ -757,21 +874,60 @@ def update_customer(customer_id: int, payload: UpdateCustomerPayload, current_us
                         service.get('dateSubmitted'),
                         denial_codes,
                         True,  # is_resubmission
+                        target_entry_id,
+                        datetime.utcnow().isoformat(),
                         service.get('comments', ''),
                     )
                 )
                 entry_id = cur.fetchone()['id']
                 logger.info(f"Created new entry with ID: {entry_id}")
             else:
-                # Update existing latest entry
-                # Get the latest entry for this customer
-                cur.execute(
-                    'SELECT id FROM customer_entries WHERE customer_id = ? ORDER BY created_at DESC LIMIT 1',
-                    (customer_id,)
-                )
-                latest_entry = cur.fetchone()
-                if latest_entry:
+                # Update an explicitly targeted entry if possible, otherwise CREATE NEW entry.
+                entry_to_update = None
+                if target_entry_id:
+                    logger.info(f"Looking for entry ID: {target_entry_id}")
+                    cur.execute(
+                        'SELECT id FROM customer_entries WHERE id = ? AND customer_id = ?',
+                        (target_entry_id, customer_id)
+                    )
+                    found = cur.fetchone()
+                    if found:
+                        entry_to_update = found['id']
+                        logger.info(f"Found entry to update: {entry_to_update}")
+                    else:
+                        logger.warning(f"Entry ID {target_entry_id} not found")
+
+                # If no specific entry ID provided, this is a NEW service being added
+                if not target_entry_id:
+                    logger.info("No entry ID provided - creating NEW entry...")
+                    cur.execute(
+                        '''INSERT INTO customer_entries 
+                           (customer_id, customer_code, service_name, start_date, end_date, days, rate_per_day, 
+                            amount_billed, amount_paid, date_of_payment, date_submitted, denial_codes, 
+                            is_resubmission, billing_comments) 
+                           VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?) RETURNING id''',
+                        (
+                            customer_id,
+                            customer_code,
+                            service.get('serviceName'),
+                            service.get('startDate') or service.get('start_date'),
+                            service.get('endDate') or service.get('end_date'),
+                            service.get('days'),
+                            service.get('ratePerDay'),
+                            service.get('amountBilled'),
+                            service.get('amountPaid', 0),
+                            service.get('dateOfPayment'),
+                            service.get('dateSubmitted'),
+                            denial_codes,
+                            False,
+                            service.get('comments', ''),
+                        )
+                    )
+                    entry_id = cur.fetchone()['id']
+                    logger.info(f"Created NEW entry with ID: {entry_id}")
+                elif entry_to_update:
                     # Update existing entry
+                    logger.info(f"Updating existing entry ID: {entry_to_update}")
                     cur.execute(
                         '''UPDATE customer_entries 
                            SET service_name = ?, start_date = ?, end_date = ?, days = ?, rate_per_day = ?, 
@@ -791,13 +947,14 @@ def update_customer(customer_id: int, payload: UpdateCustomerPayload, current_us
                             denial_codes,
                             False,  # is_resubmission
                             service.get('comments', ''),
-                            latest_entry['id']
+                            entry_to_update,
                         )
                     )
-                    entry_id = latest_entry['id']
+                    entry_id = entry_to_update
+                    logger.info(f"Updated entry ID: {entry_id}")
                 else:
-                    # No existing entry, create new one
-                    logger.info("Creating new entry (first entry for customer)...")
+                    # Entry ID was provided but not found - create new one
+                    logger.warning(f"Entry ID {target_entry_id} not found - creating new entry...")
                     cur.execute(
                         '''INSERT INTO customer_entries 
                            (customer_id, customer_code, service_name, start_date, end_date, days, rate_per_day, 
@@ -840,9 +997,6 @@ def update_customer(customer_id: int, payload: UpdateCustomerPayload, current_us
 def update_customer_service(customer_id: int, service_id: int, payload: ServiceWrapper, current_user: dict = Depends(get_current_user)):
     """Update a service line for a customer. Payload: { service: { serviceName, days, ratePerDay, amountBilled, amountPaid, dateOfPayment } }
     """
-    # Ensure all tables exist
-    ensure_all_tables()
-    
     data = payload.dict() if hasattr(payload, 'dict') else (payload or {})
     service = data.get('service') if isinstance(data, dict) else None
     if not service:
@@ -851,36 +1005,127 @@ def update_customer_service(customer_id: int, service_id: int, payload: ServiceW
     conn = get_db_connection()
     cur = conn.cursor()
     try:
-        cur.execute('SELECT id FROM customer_services WHERE id = ? AND customer_id = ?', (service_id, customer_id))
-        if not cur.fetchone():
-            raise HTTPException(status_code=404, detail='service line not found')
+        # Prefer updating the new `customer_entries` table when the id exists there.
+        # Fall back to legacy `customer_services` for older records / older UIs.
+        cur.execute('SELECT id FROM customer_entries WHERE id = ? AND customer_id = ?', (service_id, customer_id))
+        entry_row = cur.fetchone()
+        if entry_row:
+            # Preserve existing optional fields when not provided
+            cur.execute('SELECT denial_codes, date_submitted FROM customer_entries WHERE id = ? AND customer_id = ?', (service_id, customer_id))
+            existing_entry = cur.fetchone() or {}
 
-        cur.execute(
-            'UPDATE customer_services SET service_name = ?, days = ?, rate_per_day = ?, amount_billed = ?, amount_paid = ?, date_of_payment = ?, start_date = ?, end_date = ? WHERE id = ?',
-            (
-                service.get('serviceName'),
-                service.get('days'),
-                service.get('ratePerDay'),
-                service.get('amountBilled'),
-                service.get('amountPaid'),
-                service.get('dateOfPayment'),
-                service.get('startDate') or service.get('start_date'),
-                service.get('endDate') or service.get('end_date'),
-                service_id,
+            denial_codes_val = None
+            if isinstance(service, dict) and 'denialCodes' in service:
+                denial_codes_val = service.get('denialCodes')
+                if isinstance(denial_codes_val, list):
+                    denial_codes_val = ','.join(denial_codes_val) if denial_codes_val else None
+                elif denial_codes_val == 'null' or denial_codes_val == '':
+                    denial_codes_val = None
+            else:
+                denial_codes_val = existing_entry.get('denial_codes') if isinstance(existing_entry, dict) else None
+
+            date_submitted_val = service.get('dateSubmitted') if (isinstance(service, dict) and 'dateSubmitted' in service) else (
+                existing_entry.get('date_submitted') if isinstance(existing_entry, dict) else None
             )
-        )
-        # recompute customer's total_amount_due after update
-        cur.execute('SELECT customer_id FROM customer_services WHERE id = ?', (service_id,))
-        row = cur.fetchone()
-        cid = row['customer_id'] if row else customer_id
-        cur.execute('SELECT COALESCE(SUM(amount_billed),0) as total FROM customer_services WHERE customer_id = ?', (cid,))
-        total = cur.fetchone()['total']
-        cur.execute('UPDATE customers SET total_amount_due = ? WHERE id = ?', (total, cid))
+
+            cur.execute(
+                '''UPDATE customer_entries
+                   SET service_name = ?, start_date = ?, end_date = ?, days = ?, rate_per_day = ?,
+                       amount_billed = ?, amount_paid = ?, date_of_payment = ?, date_submitted = ?,
+                       denial_codes = ?, updated_at = CURRENT_TIMESTAMP
+                   WHERE id = ?''',
+                (
+                    service.get('serviceName'),
+                    service.get('startDate') or service.get('start_date'),
+                    service.get('endDate') or service.get('end_date'),
+                    service.get('days'),
+                    service.get('ratePerDay'),
+                    service.get('amountBilled'),
+                    service.get('amountPaid'),
+                    service.get('dateOfPayment'),
+                    date_submitted_val,
+                    denial_codes_val,
+                    service_id,
+                )
+            )
+        else:
+            cur.execute('SELECT id FROM customer_services WHERE id = ? AND customer_id = ?', (service_id, customer_id))
+            if not cur.fetchone():
+                raise HTTPException(status_code=404, detail='service line not found')
+
+            cur.execute(
+                'UPDATE customer_services SET service_name = ?, days = ?, rate_per_day = ?, amount_billed = ?, amount_paid = ?, date_of_payment = ?, start_date = ?, end_date = ? WHERE id = ?',
+                (
+                    service.get('serviceName'),
+                    service.get('days'),
+                    service.get('ratePerDay'),
+                    service.get('amountBilled'),
+                    service.get('amountPaid'),
+                    service.get('dateOfPayment'),
+                    service.get('startDate') or service.get('start_date'),
+                    service.get('endDate') or service.get('end_date'),
+                    service_id,
+                )
+            )
+            # recompute customer's total_amount_due after update (if column exists)
+            cur.execute('SELECT customer_id FROM customer_services WHERE id = ?', (service_id,))
+            row = cur.fetchone()
+            cid = row['customer_id'] if row else customer_id
+            cur.execute('SELECT COALESCE(SUM(amount_billed),0) as total FROM customer_services WHERE customer_id = ?', (cid,))
+            total = cur.fetchone()['total']
+            try:
+                cur.execute('UPDATE customers SET total_amount_due = ? WHERE id = ?', (total, cid))
+            except Exception as e:
+                if 'total_amount_due' in str(e) or 'UndefinedColumn' in type(e).__name__:
+                    logger.debug("Skipping total_amount_due update (column may not exist): %s", e)
+                else:
+                    raise
         conn.commit()
     finally:
         conn.close()
 
     return { 'id': service_id, 'updated': True }
+
+
+@router.delete("/{customer_id}/services/{service_id}", status_code=200)
+def delete_customer_service(customer_id: int, service_id: int, current_user: dict = Depends(get_current_user)):
+    """Delete a specific service entry for a customer."""
+    conn = get_db_connection()
+    cur = conn.cursor()
+    try:
+        # Try customer_entries first (primary table)
+        cur.execute('SELECT id FROM customer_entries WHERE id = ? AND customer_id = ?', (service_id, customer_id))
+        entry_row = cur.fetchone()
+        if entry_row:
+            cur.execute('DELETE FROM customer_entries WHERE id = ? AND customer_id = ?', (service_id, customer_id))
+            logger.info(f"Deleted customer_entries row {service_id} for customer {customer_id}")
+        else:
+            # Fall back to legacy customer_services table
+            cur.execute('SELECT id FROM customer_services WHERE id = ? AND customer_id = ?', (service_id, customer_id))
+            if not cur.fetchone():
+                raise HTTPException(status_code=404, detail='service not found')
+            cur.execute('DELETE FROM customer_services WHERE id = ? AND customer_id = ?', (service_id, customer_id))
+            logger.info(f"Deleted customer_services row {service_id} for customer {customer_id}")
+
+        # Update total_amount_due
+        try:
+            cur.execute('SELECT COALESCE(SUM(amount_billed),0) as total FROM customer_entries WHERE customer_id = %s', (customer_id,))
+            total = cur.fetchone()['total']
+            cur.execute('UPDATE customers SET total_amount_due = %s WHERE id = %s', (total, customer_id))
+        except Exception as e:
+            logger.debug(f"Skipping total_amount_due update: {e}")
+
+        conn.commit()
+    except HTTPException:
+        raise
+    except Exception as exc:
+        conn.rollback()
+        logger.error(f"Failed to delete service {service_id}: {exc}")
+        raise HTTPException(status_code=500, detail=str(exc))
+    finally:
+        conn.close()
+
+    return {'id': service_id, 'deleted': True}
 
 
 @router.post("/{customer_id}/services", status_code=201)
@@ -889,50 +1134,157 @@ def add_customer_service(customer_id: int, payload: ServiceWrapper, current_user
     Payload: { service: { serviceName, days, ratePerDay, amountBilled, amountPaid, dateOfPayment } }
     Returns the created service row.
     """
-    # Ensure all tables exist
-    ensure_all_tables()
+    logger.info(f"=== ADD SERVICE for customer {customer_id} ===")
+    logger.debug(f"Payload received: {payload}")
     
     data = payload.dict() if hasattr(payload, 'dict') else (payload or {})
     service = data.get('service') if isinstance(data, dict) else None
     if not service:
+        logger.error("Missing service payload")
         raise HTTPException(status_code=400, detail='missing service payload')
+
+    logger.debug(f"Service data: {service}")
 
     conn = get_db_connection()
     cur = conn.cursor()
     created_at = datetime.utcnow().isoformat()
     try:
-        # ensure customer exists
-        cur.execute('SELECT id FROM customers WHERE id = ?', (customer_id,))
-        if not cur.fetchone():
+        # ensure customer exists + get customer_code for entry rows
+        cur.execute('SELECT id, customer_code FROM customers WHERE id = ?', (customer_id,))
+        cust_row = cur.fetchone()
+        if not cust_row:
+            logger.error(f"Customer {customer_id} not found")
             raise HTTPException(status_code=404, detail='customer not found')
+        customer_code = cust_row.get('customer_code') if isinstance(cust_row, dict) else cust_row['customer_code']
+        logger.info(f"Found customer: {customer_code}")
 
+        # Determine batch_id to use.
+        # We enforce ONE canonical batch_id per customer.
+        batch_id_to_use = None
+        try:
+            incoming_batch_id = None
+            if isinstance(service, dict):
+                incoming_batch_id = service.get('batchId') or service.get('batch_id')
+            if incoming_batch_id and isinstance(incoming_batch_id, str) and incoming_batch_id.startswith('legacy-'):
+                legacy_id_str = incoming_batch_id.replace('legacy-', '', 1)
+                legacy_entry_id = int(legacy_id_str)
+                cur.execute(
+                    'SELECT batch_id FROM customer_entries WHERE id = ? AND customer_id = ?',
+                    (legacy_entry_id, customer_id)
+                )
+                legacy_row = cur.fetchone()
+                existing_batch = legacy_row.get('batch_id') if isinstance(legacy_row, dict) else (legacy_row['batch_id'] if legacy_row else None)
+                # Upgrade legacy entry to canonical batch id (single batch per customer).
+                canonical = _get_or_create_canonical_batch_id(cur, customer_id)
+                if not existing_batch or str(existing_batch) != str(canonical):
+                    cur.execute(
+                        'UPDATE customer_entries SET batch_id = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ? AND customer_id = ?',
+                        (canonical, legacy_entry_id, customer_id)
+                    )
+                batch_id_to_use = canonical
+            else:
+                # Ignore differing incoming batch ids; always use canonical.
+                batch_id_to_use = _get_or_create_canonical_batch_id(cur, customer_id)
+        except Exception as e:
+            logger.debug("add_customer_service: failed to determine batch_id: %s", e)
+            batch_id_to_use = None
+
+        if not batch_id_to_use:
+            batch_id_to_use = _get_or_create_canonical_batch_id(cur, customer_id)
+
+        denial_codes_val = service.get('denialCodes')
+        if isinstance(denial_codes_val, list):
+            denial_codes_val = ','.join(denial_codes_val) if denial_codes_val else None
+        elif denial_codes_val == 'null' or denial_codes_val == '':
+            denial_codes_val = None
+
+        logger.info(f"Inserting entry into customer_entries table...")
+        # Insert into the primary `customer_entries` table so the main table view (entries/all)
+        # immediately reflects the new service line.
         cur.execute(
-            'INSERT INTO customer_services (customer_id, service_name, days, rate_per_day, amount_billed, amount_paid, date_of_payment, start_date, end_date, created_at) VALUES (?,?,?,?,?,?,?,?,?,?) RETURNING id',
+            '''INSERT INTO customer_entries
+               (customer_id, customer_code, service_name, start_date, end_date, days, rate_per_day,
+                amount_billed, amount_paid, date_of_payment, date_submitted, denial_codes, is_resubmission, billing_comments, batch_id)
+               VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?) RETURNING id''',
             (
                 customer_id,
+                customer_code,
                 service.get('serviceName'),
+                service.get('startDate') or service.get('start_date') or None,
+                service.get('endDate') or service.get('end_date') or None,
                 service.get('days'),
                 service.get('ratePerDay'),
                 service.get('amountBilled'),
-                service.get('amountPaid'),
+                service.get('amountPaid', 0),
                 service.get('dateOfPayment'),
-                service.get('startDate') or service.get('start_date') or None,
-                service.get('endDate') or service.get('end_date') or None,
-                created_at,
+                service.get('dateSubmitted'),
+                denial_codes_val,
+                False,
+                service.get('comments') if isinstance(service, dict) else '',
+                batch_id_to_use,
             )
         )
-        service_id = cur.fetchone()['id']
+        entry_id = cur.fetchone()['id']
+        logger.info(f"Entry created with id: {entry_id}")
 
-        # recompute customer's total_amount_due (sum of amount_billed)
-        cur.execute('SELECT COALESCE(SUM(amount_billed),0) as total FROM customer_services WHERE customer_id = ?', (customer_id,))
-        total = cur.fetchone()['total']
-        cur.execute('UPDATE customers SET total_amount_due = ? WHERE id = ?', (total, customer_id))
+        # Also insert into legacy `customer_services` for backward compatibility with older endpoints.
+        legacy_service_id = None
+        try:
+            cur.execute(
+                'INSERT INTO customer_services (customer_id, service_name, days, rate_per_day, amount_billed, amount_paid, date_of_payment, start_date, end_date, created_at) VALUES (?,?,?,?,?,?,?,?,?,?) RETURNING id',
+                (
+                    customer_id,
+                    service.get('serviceName'),
+                    service.get('days'),
+                    service.get('ratePerDay'),
+                    service.get('amountBilled'),
+                    service.get('amountPaid'),
+                    service.get('dateOfPayment'),
+                    service.get('startDate') or service.get('start_date') or None,
+                    service.get('endDate') or service.get('end_date') or None,
+                    created_at,
+                )
+            )
+            legacy_service_id = cur.fetchone()['id']
+            logger.debug(f"Legacy service created with id: {legacy_service_id}")
+        except Exception as e:
+            logger.debug("Skipping legacy customer_services insert: %s", e)
 
+        # Legacy: recompute customer's total_amount_due if column exists
+        # Note: This column may not exist in all database schemas
+        # Skipping this update is non-critical - it's just a cached sum
+        try:
+            cur.execute('SELECT COALESCE(SUM(amount_billed),0) as total FROM customer_services WHERE customer_id = %s', (customer_id,))
+            total_result = cur.fetchone()
+            if total_result:
+                total = total_result['total']
+                cur.execute('UPDATE customers SET total_amount_due = %s WHERE id = %s', (total, customer_id))
+                logger.debug(f"Updated total_amount_due to {total}")
+        except Exception as e:
+            # Column might not exist or be in different schema - this is non-critical
+            logger.debug(f"Skipping total_amount_due update: {e}")
+
+        logger.info("Committing transaction...")
         conn.commit()
+        logger.info("Transaction committed successfully!")
+    except Exception as exc:
+        conn.rollback()
+        logger.error(f"Failed to add service: {exc}")
+        import traceback
+        traceback.print_exc()
+        raise HTTPException(status_code=500, detail=str(exc))
     finally:
         conn.close()
 
-    return { 'id': service_id, 'customer_id': customer_id, 'service_name': service.get('serviceName'), 'amount_billed': service.get('amountBilled') }
+    return {
+        # Keep `id` for backwards compatibility (now points to the entry id used by the main table)
+        'id': entry_id,
+        'entry_id': entry_id,
+        'legacy_service_id': legacy_service_id,
+        'customer_id': customer_id,
+        'service_name': service.get('serviceName'),
+        'amount_billed': service.get('amountBilled'),
+    }
 
 
 @router.delete("/", status_code=200)
@@ -942,8 +1294,6 @@ def delete_all_customers(current_user: dict = Depends(get_current_user)):
     Returns counts of rows deleted for customers and customer_services.
     """
     # Ensure tables exist so the operation is safe even on a fresh DB
-    ensure_all_tables()
-
     conn = get_db_connection()
     cur = conn.cursor()
     try:
@@ -972,7 +1322,6 @@ def delete_all_customers(current_user: dict = Depends(get_current_user)):
 @router.get("/{customer_id}/entries")
 def get_customer_entries(customer_id: int, current_user: dict = Depends(get_current_user)):
     """Get all entries/submissions for a specific customer"""
-    ensure_all_tables()
     conn = get_db_connection()
     cur = conn.cursor()
     
@@ -1011,13 +1360,344 @@ def get_customer_entries(customer_id: int, current_user: dict = Depends(get_curr
         conn.close()
 
 
+# ---------- Batch-based Add/Edit (customer_entries.batch_id) ----------
+
+@router.get("/{customer_id}/batches")
+def list_customer_batches(customer_id: int, current_user: dict = Depends(get_current_user)):
+    """List batches for a customer. Each batch has one batch_id and N entries. Legacy rows (no batch_id) appear as one batch per row."""
+    conn = get_db_connection()
+    cur = conn.cursor()
+    try:
+        cur.execute('SELECT id FROM customers WHERE id = ?', (customer_id,))
+        if not cur.fetchone():
+            raise HTTPException(status_code=404, detail='customer not found')
+        cur.execute(
+            'SELECT id, batch_id, created_at FROM customer_entries WHERE customer_id = ? ORDER BY created_at',
+            (customer_id,)
+        )
+        rows = cur.fetchall()
+        # Group by batch_id; NULL batch_id => one batch per row (legacy) with synthetic id
+        batches_map = {}
+        for r in rows:
+            bid = r.get('batch_id') if isinstance(r, dict) else r['batch_id']
+            if bid is None or bid == '':
+                bid = f"legacy-{r.get('id') if isinstance(r, dict) else r['id']}"
+            created = r.get('created_at') if isinstance(r, dict) else r['created_at']
+            entry_id = r.get('id') if isinstance(r, dict) else r['id']
+            if bid not in batches_map:
+                batches_map[bid] = {'batch_id': bid, 'entry_count': 0, 'created_at': created, 'entry_ids': []}
+            batches_map[bid]['entry_count'] += 1
+            batches_map[bid]['entry_ids'].append(entry_id)
+        return {'batches': list(batches_map.values())}
+    finally:
+        conn.close()
+
+
+@router.get("/{customer_id}/batches/{batch_id}/entries")
+def get_batch_entries(customer_id: int, batch_id: str, current_user: dict = Depends(get_current_user)):
+    """Fetch only entries for this batch. Edit form uses this (do not fetch all services)."""
+    conn = get_db_connection()
+    cur = conn.cursor()
+    try:
+        cur.execute('SELECT id FROM customers WHERE id = ?', (customer_id,))
+        if not cur.fetchone():
+            raise HTTPException(status_code=404, detail='customer not found')
+        if batch_id.startswith('legacy-'):
+            try:
+                entry_id = int(batch_id.replace('legacy-', '', 1))
+            except ValueError:
+                raise HTTPException(status_code=404, detail='invalid batch_id')
+            cur.execute('SELECT * FROM customer_entries WHERE id = ? AND customer_id = ?', (entry_id, customer_id))
+        else:
+            cur.execute(
+                'SELECT * FROM customer_entries WHERE customer_id = ? AND batch_id = ? ORDER BY id',
+                (customer_id, batch_id)
+            )
+        rows = cur.fetchall()
+        entries_list = []
+        for entry in rows:
+            d = dict(entry)
+            if d.get('denial_codes'):
+                d['denial_codes'] = d['denial_codes'].split(',')
+            else:
+                d['denial_codes'] = []
+            entries_list.append(d)
+        return {'batch_id': batch_id, 'customer_id': customer_id, 'entries': entries_list}
+    finally:
+        conn.close()
+
+
+@router.post("/{customer_id}/batches", status_code=201)
+def create_batch(customer_id: int, payload: BatchCreatePayload, current_user: dict = Depends(get_current_user)):
+    """Add N services as one batch: one batch_id (UUID), N rows. Never combine with other batches."""
+    data = payload.dict() if hasattr(payload, 'dict') else (payload or {})
+    services_list = data.get('services') or []
+    if not services_list:
+        raise HTTPException(status_code=400, detail='at least one service required')
+    batch_id = str(uuid.uuid4())
+    conn = get_db_connection()
+    cur = conn.cursor()
+    try:
+        cur.execute('SELECT id, customer_code FROM customers WHERE id = ?', (customer_id,))
+        row = cur.fetchone()
+        if not row:
+            raise HTTPException(status_code=404, detail='customer not found')
+        customer_code = row.get('customer_code') if isinstance(row, dict) else row['customer_code'] or ''
+        entry_ids = []
+        for svc in services_list:
+            denial_codes_val = svc.get('denialCodes') if isinstance(svc, dict) else None
+            if isinstance(denial_codes_val, list):
+                denial_codes_val = ','.join(denial_codes_val) if denial_codes_val else None
+            elif denial_codes_val in ('null', '', None):
+                denial_codes_val = None
+            cur.execute(
+                '''INSERT INTO customer_entries
+                   (customer_id, customer_code, service_name, start_date, end_date, days, rate_per_day,
+                    amount_billed, amount_paid, date_of_payment, date_submitted, denial_codes, batch_id)
+                   VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?) RETURNING id''',
+                (
+                    customer_id,
+                    customer_code,
+                    svc.get('serviceName'),
+                    svc.get('startDate') or svc.get('start_date'),
+                    svc.get('endDate') or svc.get('end_date'),
+                    svc.get('days'),
+                    svc.get('ratePerDay'),
+                    svc.get('amountBilled'),
+                    svc.get('amountPaid', 0),
+                    svc.get('dateOfPayment'),
+                    svc.get('dateSubmitted'),
+                    denial_codes_val,
+                    batch_id,
+                )
+            )
+            entry_ids.append(cur.fetchone()['id'])
+        conn.commit()
+        return {'batch_id': batch_id, 'customer_id': customer_id, 'entry_ids': entry_ids, 'entry_count': len(entry_ids)}
+    except HTTPException:
+        raise
+    except Exception as e:
+        conn.rollback()
+        logger.exception("create_batch failed")
+        raise HTTPException(status_code=500, detail=str(e))
+    finally:
+        conn.close()
+
+
+@router.put("/{customer_id}/batches/{batch_id}")
+def update_batch(customer_id: int, batch_id: str, payload: BatchUpdatePayload, current_user: dict = Depends(get_current_user)):
+    """Update only entries in this batch (by id). Do not touch other batches."""
+    data = payload.dict() if hasattr(payload, 'dict') else (payload or {})
+    services_list = data.get('services') or []
+    if not services_list:
+        raise HTTPException(status_code=400, detail='at least one service required')
+    conn = get_db_connection()
+    cur = conn.cursor()
+    try:
+        cur.execute('SELECT id FROM customers WHERE id = ?', (customer_id,))
+        if not cur.fetchone():
+            raise HTTPException(status_code=404, detail='customer not found')
+        if batch_id.startswith('legacy-'):
+            try:
+                entry_id = int(batch_id.replace('legacy-', '', 1))
+            except ValueError:
+                raise HTTPException(status_code=404, detail='invalid batch_id')
+            allowed_ids = [entry_id]
+            cur.execute('SELECT id FROM customer_entries WHERE id = ? AND customer_id = ?', (entry_id, customer_id))
+            if not cur.fetchone():
+                raise HTTPException(status_code=404, detail='batch not found')
+        else:
+            cur.execute(
+                'SELECT id FROM customer_entries WHERE customer_id = ? AND batch_id = ? ORDER BY id',
+                (customer_id, batch_id)
+            )
+            allowed_ids = [r['id'] for r in cur.fetchall()]
+            if not allowed_ids:
+                raise HTTPException(status_code=404, detail='batch not found')
+        # Map payload services by id; update only allowed ids
+        for svc in services_list:
+            sid = svc.get('id') or svc.get('entryId') or svc.get('entry_id')
+            if sid is None:
+                continue
+            sid = int(sid)
+            if sid not in allowed_ids:
+                logger.warning("update_batch: skipping id %s not in batch", sid)
+                continue
+            denial_codes_val = svc.get('denialCodes')
+            if isinstance(denial_codes_val, list):
+                denial_codes_val = ','.join(denial_codes_val) if denial_codes_val else None
+            elif denial_codes_val in ('null', '', None):
+                denial_codes_val = None
+            cur.execute(
+                '''UPDATE customer_entries SET
+                   service_name = ?, start_date = ?, end_date = ?, days = ?, rate_per_day = ?,
+                   amount_billed = ?, amount_paid = ?, date_of_payment = ?, date_submitted = ?, denial_codes = ?,
+                   updated_at = CURRENT_TIMESTAMP
+                   WHERE id = ? AND customer_id = ?''',
+                (
+                    svc.get('serviceName'),
+                    svc.get('startDate') or svc.get('start_date'),
+                    svc.get('endDate') or svc.get('end_date'),
+                    svc.get('days'),
+                    svc.get('ratePerDay'),
+                    svc.get('amountBilled'),
+                    svc.get('amountPaid', 0),
+                    svc.get('dateOfPayment'),
+                    svc.get('dateSubmitted'),
+                    denial_codes_val,
+                    sid,
+                    customer_id,
+                )
+            )
+        conn.commit()
+        return {'batch_id': batch_id, 'customer_id': customer_id, 'updated': True}
+    except HTTPException:
+        raise
+    except Exception as e:
+        conn.rollback()
+        logger.exception("update_batch failed")
+        raise HTTPException(status_code=500, detail=str(e))
+    finally:
+        conn.close()
+
+
+@router.post("/{customer_id}/entries", status_code=201)
+def add_customer_entry(customer_id: int, payload: ServiceWrapper, current_user: dict = Depends(get_current_user)):
+    """Add a new entry/service for an existing customer.
+    Payload: { service: { serviceName, days, ratePerDay, amountBilled, amountPaid, dateOfPayment, startDate, endDate, dateSubmitted, denialCodes, comments } }
+    Returns the created entry.
+    """
+    logger.info(f"=== ADD ENTRY for customer {customer_id} ===")
+    logger.debug(f"Payload received: {payload}")
+    
+    data = payload.dict() if hasattr(payload, 'dict') else (payload or {})
+    service = data.get('service') if isinstance(data, dict) else None
+    if not service:
+        logger.error("Missing service payload")
+        raise HTTPException(status_code=400, detail='missing service payload')
+
+    logger.debug(f"Service data: {service}")
+
+    conn = get_db_connection()
+    cur = conn.cursor()
+    
+    try:
+        # Ensure customer exists and get customer_code
+        cur.execute('SELECT id, customer_code FROM customers WHERE id = ?', (customer_id,))
+        cust_row = cur.fetchone()
+        if not cust_row:
+            logger.error(f"Customer {customer_id} not found")
+            raise HTTPException(status_code=404, detail='customer not found')
+        customer_code = cust_row.get('customer_code') if isinstance(cust_row, dict) else cust_row['customer_code']
+        logger.info(f"Found customer: {customer_code}")
+
+        # Handle denial codes
+        denial_codes_val = service.get('denialCodes')
+        if isinstance(denial_codes_val, list):
+            denial_codes_val = ','.join(denial_codes_val) if denial_codes_val else None
+        elif denial_codes_val == 'null' or denial_codes_val == '':
+            denial_codes_val = None
+
+        logger.info(f"Inserting entry into customer_entries table...")
+        # Insert into customer_entries table
+        cur.execute(
+            '''INSERT INTO customer_entries
+               (customer_id, customer_code, service_name, start_date, end_date, days, rate_per_day,
+                amount_billed, amount_paid, date_of_payment, date_submitted, denial_codes, is_resubmission, billing_comments)
+               VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?) RETURNING id''',
+            (
+                customer_id,
+                customer_code,
+                service.get('serviceName'),
+                service.get('startDate') or service.get('start_date'),
+                service.get('endDate') or service.get('end_date'),
+                service.get('days'),
+                service.get('ratePerDay'),
+                service.get('amountBilled'),
+                service.get('amountPaid', 0),
+                service.get('dateOfPayment'),
+                service.get('dateSubmitted'),
+                denial_codes_val,
+                False,
+                service.get('comments', ''),
+            )
+        )
+        entry_id = cur.fetchone()['id']
+        logger.info(f"Entry created with id: {entry_id}")
+
+        # Also insert into legacy customer_services for backward compatibility
+        try:
+            cur.execute(
+                '''INSERT INTO customer_services 
+                   (customer_id, service_name, days, rate_per_day, amount_billed, amount_paid, 
+                    date_of_payment, start_date, end_date, created_at) 
+                   VALUES (?,?,?,?,?,?,?,?,?,?) RETURNING id''',
+                (
+                    customer_id,
+                    service.get('serviceName'),
+                    service.get('days'),
+                    service.get('ratePerDay'),
+                    service.get('amountBilled'),
+                    service.get('amountPaid'),
+                    service.get('dateOfPayment'),
+                    service.get('startDate') or service.get('start_date'),
+                    service.get('endDate') or service.get('end_date'),
+                    datetime.utcnow().isoformat(),
+                )
+            )
+            logger.debug("Legacy customer_services entry created")
+        except Exception as e:
+            logger.debug("Skipping legacy customer_services insert: %s", e)
+
+        # Commit the transaction
+        logger.info("Committing transaction...")
+        conn.commit()
+        logger.info("Transaction committed successfully!")
+        
+        # Log activity
+        try:
+            append_activity_log(
+                'add_entry', 
+                {'customerCode': customer_code}, 
+                service, 
+                customer_id, 
+                entry_id, 
+                note='added via /entries endpoint'
+            )
+        except Exception:
+            logger.exception('Failed to append activity log')
+        
+        return {
+            'id': entry_id,
+            'customer_id': customer_id,
+            'customer_code': customer_code,
+            'service_name': service.get('serviceName'),
+            'start_date': service.get('startDate') or service.get('start_date'),
+            'end_date': service.get('endDate') or service.get('end_date'),
+            'days': service.get('days'),
+            'rate_per_day': service.get('ratePerDay'),
+            'amount_billed': service.get('amountBilled'),
+            'amount_paid': service.get('amountPaid', 0),
+            'date_of_payment': service.get('dateOfPayment'),
+            'date_submitted': service.get('dateSubmitted'),
+            'denial_codes': denial_codes_val.split(',') if denial_codes_val else [],
+            'billing_comments': service.get('comments', ''),
+        }
+    except Exception as exc:
+        conn.rollback()
+        logger.error(f"Failed to add entry: {exc}")
+        import traceback
+        traceback.print_exc()
+        raise HTTPException(status_code=500, detail=str(exc))
+    finally:
+        conn.close()
+
+
 @router.post("/{customer_id}/resubmit")
 def create_resubmission(customer_id: int, payload: ResubmissionPayload, current_user: dict = Depends(get_current_user)):
     """Create a resubmission for an existing customer entry"""
     logger.info(f"Creating resubmission for customer {customer_id}")
     logger.debug(f"Received payload: {payload}")
-    
-    ensure_all_tables()
     
     data = payload.dict() if hasattr(payload, 'dict') else (payload or {})
     original_entry_id = data.get('originalEntryId')
@@ -1141,15 +1821,15 @@ def get_all_entries(
     name: Optional[str] = Query(None),
     firstName: Optional[str] = Query(None),
     lastName: Optional[str] = Query(None),
-    start_date: Optional[str] = Query(None), 
+    start_date: Optional[str] = Query(None),
     end_date: Optional[str] = Query(None),
     dob: Optional[str] = Query(None),
     status: Optional[str] = Query('active', description="Filter by active_status: 'active', 'inactive', or 'all'"),
+    customer_id: Optional[int] = Query(None, description="Filter to a single customer by ID (no ID required in path)"),
     current_user: dict = Depends(get_current_user)
 ):
-    """Get **all** service entries for each customer (one row per entry)."""
-    ensure_all_tables()
-
+    """Get **all** service entries for each customer (one row per entry).
+    Pass customer_id as a query param to filter to a specific customer without putting the ID in the URL path."""
     conn = get_db_connection()
     cur = conn.cursor()
 
@@ -1158,6 +1838,7 @@ def get_all_entries(
         query = '''
             SELECT c.*,
                    e.id as entry_id,
+                   e.batch_id,
                    e.service_name,
                    e.start_date,
                    e.end_date,
@@ -1177,8 +1858,13 @@ def get_all_entries(
         clauses = []
         params: list[Any] = []  # type: ignore[name-defined]
 
-        # Filter by customer status
-        if status != 'all':
+        # Filter to a single customer when customer_id is provided
+        if customer_id is not None:
+            clauses.append('c.id = ?')
+            params.append(customer_id)
+
+        # Filter by customer status (skip when fetching a specific customer)
+        if customer_id is None and status != 'all':
             clauses.append('c.active_status = ?')
             params.append(status)
 
@@ -1230,11 +1916,9 @@ def get_all_entries(
         for row in rows:
             entry = dict(row)
 
-            # If this row has legacy service data but no entry_id, migrate it once
-            if entry.get('entry_id') is None and entry.get('service_name'):
-                logger.info(f"Creating entry for customer {entry['id']} from legacy data (all entries view)")
-                entry_id = migrate_customer_service_to_entry(entry)
-                entry['entry_id'] = entry_id
+            # Expose batch_id for batch-level edit; legacy rows get synthetic batch_id
+            if entry.get('batch_id') is None or entry.get('batch_id') == '':
+                entry['batch_id'] = f"legacy-{entry.get('entry_id')}" if entry.get('entry_id') else None
 
             # Parse denial codes
             if entry.get('denial_codes'):
@@ -1267,8 +1951,6 @@ def get_latest_entries(
     current_user: dict = Depends(get_current_user)
 ):
     """Get the latest entry for each customer (for main table display)"""
-    ensure_all_tables()
-    
     conn = get_db_connection()
     cur = conn.cursor()
     
@@ -1384,12 +2066,194 @@ def get_latest_entries(
     finally:
         conn.close()
 
+@router.post("/admin/backfill-batch-ids")
+def backfill_batch_ids(payload: BackfillBatchIdsPayload, current_user: dict = Depends(get_current_user)):
+    """
+    One-time repair for legacy data where `customer_entries.batch_id` is NULL.
+    Strategy: for each customer, group consecutive NULL/empty rows created within `windowSeconds`
+    into a single new UUID batch_id.
+    """
+    data = payload.dict() if hasattr(payload, "dict") else (payload or {})
+    window_seconds = int(data.get("windowSeconds") or 10)
+    dry_run = bool(data.get("dryRun", True))
+
+    if window_seconds < 0 or window_seconds > 3600:
+        raise HTTPException(status_code=400, detail="windowSeconds must be between 0 and 3600")
+
+    conn = get_db_connection()
+    cur = conn.cursor()
+    try:
+        cur.execute(
+            """
+            SELECT id, customer_id, created_at
+            FROM customer_entries
+            WHERE batch_id IS NULL OR batch_id = ''
+            ORDER BY customer_id, created_at, id
+            """
+        )
+        rows = cur.fetchall() or []
+
+        updated_rows = 0
+        created_batches = 0
+        batches_preview = []
+
+        def parse_ts(v):
+            if not v:
+                return None
+            if isinstance(v, datetime):
+                return v
+            s = str(v)
+            # Try common formats: 'YYYY-MM-DD HH:MM:SS' or ISO
+            for fmt in ("%Y-%m-%d %H:%M:%S", "%Y-%m-%dT%H:%M:%S", "%Y-%m-%dT%H:%M:%S.%f"):
+                try:
+                    return datetime.strptime(s.split("+")[0].replace("Z", ""), fmt)
+                except Exception:
+                    pass
+            try:
+                return datetime.fromisoformat(s.replace("Z", ""))
+            except Exception:
+                return None
+
+        current_customer = None
+        current_batch_id = None
+        current_group_ids = []
+        last_ts = None
+
+        def flush_group():
+            nonlocal updated_rows, created_batches, current_batch_id, current_group_ids
+            if not current_group_ids:
+                return
+            bid = current_batch_id or str(uuid.uuid4())
+            if not dry_run:
+                placeholder = ",".join(["?"] * len(current_group_ids))
+                cur.execute(
+                    f"UPDATE customer_entries SET batch_id = ?, updated_at = CURRENT_TIMESTAMP WHERE id IN ({placeholder})",
+                    [bid, *current_group_ids],
+                )
+            updated_rows += len(current_group_ids)
+            created_batches += 1
+            if len(batches_preview) < 25:
+                batches_preview.append({"batch_id": bid, "entry_ids": list(current_group_ids)})
+            current_batch_id = None
+            current_group_ids = []
+
+        for r in rows:
+            rid = r["id"] if isinstance(r, dict) else r[0]
+            cid = r["customer_id"] if isinstance(r, dict) else r[1]
+            ts_raw = r["created_at"] if isinstance(r, dict) else r[2]
+            ts = parse_ts(ts_raw)
+
+            if current_customer is None or cid != current_customer:
+                flush_group()
+                current_customer = cid
+                last_ts = ts
+                current_batch_id = str(uuid.uuid4())
+                current_group_ids = [rid]
+                continue
+
+            # If we cannot parse timestamps, treat each row as separate group.
+            if ts is None or last_ts is None:
+                flush_group()
+                current_batch_id = str(uuid.uuid4())
+                current_group_ids = [rid]
+                last_ts = ts
+                continue
+
+            delta = abs((ts - last_ts).total_seconds())
+            if delta <= window_seconds:
+                current_group_ids.append(rid)
+                last_ts = ts
+            else:
+                flush_group()
+                current_batch_id = str(uuid.uuid4())
+                current_group_ids = [rid]
+                last_ts = ts
+
+        flush_group()
+
+        if not dry_run:
+            conn.commit()
+
+        return {
+            "dryRun": dry_run,
+            "windowSeconds": window_seconds,
+            "batchesCreated": created_batches,
+            "rowsUpdated": updated_rows,
+            "preview": batches_preview,
+            "note": "Re-run with dryRun=false to apply. This only affects rows where batch_id is NULL/empty.",
+        }
+    except Exception as e:
+        conn.rollback()
+        logger.exception("backfill_batch_ids failed")
+        raise HTTPException(status_code=500, detail=str(e))
+    finally:
+        conn.close()
+
+
+@router.post("/admin/consolidate-customer-batch-ids")
+def consolidate_customer_batch_ids(dryRun: bool = True, current_user: dict = Depends(get_current_user)):
+    """
+    Repair endpoint: if a customer already has multiple different batch_ids, consolidate them into ONE.
+    Canonical batch_id = oldest non-empty batch_id for that customer (by created_at).
+    Also fills NULL/empty batch_id rows with the canonical.
+    """
+    conn = get_db_connection()
+    cur = conn.cursor()
+    try:
+        cur.execute("SELECT DISTINCT customer_id FROM customer_entries")
+        customer_ids = [r['customer_id'] if isinstance(r, dict) else r[0] for r in (cur.fetchall() or [])]
+        total_customers = 0
+        customers_changed = 0
+        rows_updated = 0
+        preview = []
+        for cid in customer_ids:
+            total_customers += 1
+            canonical = _get_or_create_canonical_batch_id(cur, int(cid))
+            # Count distinct batch ids excluding null/empty
+            cur.execute(
+                "SELECT DISTINCT batch_id FROM customer_entries WHERE customer_id = ? AND batch_id IS NOT NULL AND batch_id != ''",
+                (cid,)
+            )
+            bids = [r['batch_id'] if isinstance(r, dict) else r[0] for r in (cur.fetchall() or [])]
+            distinct = sorted({str(b) for b in bids if b})
+            # If there are multiple or there are null/empty rows, we consolidate.
+            cur.execute(
+                "SELECT COUNT(*) as cnt FROM customer_entries WHERE customer_id = ? AND (batch_id IS NULL OR batch_id = '' OR batch_id != ?)",
+                (cid, canonical)
+            )
+            cnt_row = cur.fetchone()
+            needs = (cnt_row.get('cnt') if isinstance(cnt_row, dict) else cnt_row[0]) or 0
+            if needs > 0 and canonical:
+                customers_changed += 1
+                rows_updated += int(needs)
+                if len(preview) < 25:
+                    preview.append({"customer_id": int(cid), "canonical": canonical, "existing": distinct})
+                if not dryRun:
+                    cur.execute(
+                        "UPDATE customer_entries SET batch_id = ?, updated_at = CURRENT_TIMESTAMP WHERE customer_id = ?",
+                        (canonical, cid)
+                    )
+        if not dryRun:
+            conn.commit()
+        return {
+            "dryRun": bool(dryRun),
+            "customersScanned": total_customers,
+            "customersChanged": customers_changed,
+            "rowsUpdated": rows_updated,
+            "preview": preview,
+            "note": "Run with dryRun=false to apply. This will force ONE batch_id per customer across ALL their entries.",
+        }
+    except Exception as e:
+        conn.rollback()
+        logger.exception("consolidate_customer_batch_ids failed")
+        raise HTTPException(status_code=500, detail=str(e))
+    finally:
+        conn.close()
+
 
 @router.delete("/clear-all-data")
 def clear_all_data(current_user: dict = Depends(get_current_user)):
     """Clear all customer and customer_entries data (development only)"""
-    ensure_all_tables()
-    
     conn = get_db_connection()
     cur = conn.cursor()
     

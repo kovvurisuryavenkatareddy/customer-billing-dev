@@ -1,0 +1,276 @@
+- generic [ref=e3]:
+  - banner [ref=e4]:
+    - generic [ref=e5]:
+      - button "Toggle sidebar" [ref=e6] [cursor=pointer]:
+        - img "menu" [ref=e8]:
+          - img [ref=e9]
+      - img "Logo" [ref=e11]
+      - generic [ref=e12]:
+        - heading "Misha House Billing" [level=1] [ref=e13]
+        - paragraph [ref=e14]: Manage services, invoices & customers
+    - button "User menu" [ref=e16] [cursor=pointer]:
+      - generic [ref=e18]: SR
+      - generic [ref=e19]:
+        - generic [ref=e20]: surya reddy
+        - generic [ref=e21]: surya@evanke.com
+  - generic [ref=e22]:
+    - navigation "Main navigation":
+      - generic:
+        - generic:
+          - generic:
+            - strong: Menu
+        - menu:
+          - menuitem "home Home":
+            - img "home":
+              - img
+            - generic: Home
+          - menuitem "user-add Add Customer":
+            - img "user-add":
+              - img
+            - generic: Add Customer
+          - menuitem "import Data Import":
+            - img "import":
+              - img
+            - generic: Data Import
+          - menuitem "file-text Reports":
+            - img "file-text":
+              - img
+            - generic: Reports
+          - menuitem "setting Services":
+            - img "setting":
+              - img
+            - generic: Services
+        - generic: Misha House Billing · v1.0
+    - main [ref=e23]:
+      - generic [ref=e24]:
+        - generic [ref=e33]:
+          - generic [ref=e34]:
+            - generic [ref=e35]:
+              - img "filter" [ref=e37]:
+                - img [ref=e38]
+              - generic [ref=e40]: Filter Participants
+            - button "clear Clear filters" [ref=e41] [cursor=pointer]:
+              - img "clear" [ref=e43]:
+                - img [ref=e44]
+              - generic [ref=e46]: Clear filters
+          - generic [ref=e48]:
+            - generic [ref=e51]:
+              - generic [ref=e54]: Status
+              - generic [ref=e58] [cursor=pointer]:
+                - generic [ref=e60]:
+                  - combobox "Status" [ref=e62]
+                  - generic "Active" [ref=e63]
+                - generic:
+                  - img:
+                    - img
+            - generic [ref=e66]:
+              - generic [ref=e69]: First Name
+              - textbox "First Name" [ref=e74]:
+                - /placeholder: First name
+            - generic [ref=e78]:
+              - generic [ref=e81]: Last Name
+              - textbox "Last Name" [ref=e86]:
+                - /placeholder: Last name
+            - generic [ref=e90]:
+              - generic [ref=e93]: Date of Birth
+              - generic [ref=e98]:
+                - textbox "Date of Birth" [ref=e99]:
+                  - /placeholder: MM/DD/YYYY
+                - generic:
+                  - img "calendar":
+                    - img
+            - generic [ref=e102]:
+              - generic [ref=e105]: From Date
+              - generic [ref=e110]:
+                - textbox "From Date" [ref=e111]:
+                  - /placeholder: MM/DD/YYYY
+                - generic:
+                  - img "calendar":
+                    - img
+            - generic [ref=e114]:
+              - generic [ref=e117]: To Date
+              - generic [ref=e122]:
+                - textbox "To Date" [ref=e123]:
+                  - /placeholder: MM/DD/YYYY
+                - generic:
+                  - img "calendar":
+                    - img
+        - generic [ref=e125]:
+          - generic [ref=e127]:
+            - generic [ref=e129]: Active Participant Records
+            - generic [ref=e131]:
+              - button "Quick Entry" [disabled] [ref=e132]:
+                - generic: Quick Entry
+              - generic [ref=e134]:
+                - generic [ref=e135]:
+                  - searchbox "Search by name, ID, or service" [active] [ref=e136]: MDTEST20260519
+                  - button "close-circle" [ref=e598] [cursor=pointer]:
+                    - img "close-circle" [ref=e599]:
+                      - img [ref=e600]
+                - button "search" [ref=e139] [cursor=pointer]:
+                  - img "search" [ref=e141]:
+                    - img [ref=e142]
+          - generic [ref=e149]:
+            - generic [ref=e151]:
+              - table [ref=e153]:
+                - rowgroup [ref=e165]:
+                  - 'row "Select all S.No Name DOB ID # F ID # Amount Billed Amount Paid Due Actions" [ref=e166]':
+                    - columnheader "Select all" [ref=e167]:
+                      - checkbox "Select all" [ref=e171] [cursor=pointer]
+                    - columnheader "S.No" [ref=e173]
+                    - columnheader "Name" [ref=e174] [cursor=pointer]:
+                      - generic [ref=e175]:
+                        - generic [ref=e176]: Name
+                        - generic [ref=e178]:
+                          - img [ref=e179]:
+                            - img [ref=e180]
+                          - img [ref=e182]:
+                            - img [ref=e183]
+                    - columnheader "DOB" [ref=e185] [cursor=pointer]:
+                      - generic [ref=e186]:
+                        - generic [ref=e187]: DOB
+                        - generic [ref=e189]:
+                          - img [ref=e190]:
+                            - img [ref=e191]
+                          - img [ref=e193]:
+                            - img [ref=e194]
+                    - 'columnheader "ID #" [ref=e196]'
+                    - 'columnheader "F ID #" [ref=e197]'
+                    - columnheader "Amount Billed" [ref=e198] [cursor=pointer]:
+                      - generic [ref=e199]:
+                        - generic [ref=e200]: Amount Billed
+                        - generic [ref=e202]:
+                          - img [ref=e203]:
+                            - img [ref=e204]
+                          - img [ref=e206]:
+                            - img [ref=e207]
+                    - columnheader "Amount Paid" [ref=e209] [cursor=pointer]:
+                      - generic [ref=e210]:
+                        - generic [ref=e211]: Amount Paid
+                        - generic [ref=e213]:
+                          - img [ref=e214]:
+                            - img [ref=e215]
+                          - img [ref=e217]:
+                            - img [ref=e218]
+                    - columnheader "Due" [ref=e220] [cursor=pointer]:
+                      - generic [ref=e221]:
+                        - generic [ref=e222]: Due
+                        - generic [ref=e224]:
+                          - img [ref=e225]:
+                            - img [ref=e226]
+                          - img [ref=e228]:
+                            - img [ref=e229]
+                    - columnheader "Actions" [ref=e231]
+              - table [ref=e233]:
+                - rowgroup [ref=e245]:
+                  - generic:
+                    - generic:
+                      - generic:
+                        - checkbox
+                  - generic:
+                    - generic: Name
+                    - generic:
+                      - generic:
+                        - img:
+                          - img
+                        - img:
+                          - img
+                  - generic:
+                    - generic: DOB
+                    - generic:
+                      - generic:
+                        - img:
+                          - img
+                        - img:
+                          - img
+                  - generic:
+                    - generic: Amount Billed
+                    - generic:
+                      - generic:
+                        - img:
+                          - img
+                        - img:
+                          - img
+                  - generic:
+                    - generic: Amount Paid
+                    - generic:
+                      - generic:
+                        - img:
+                          - img
+                        - img:
+                          - img
+                  - generic:
+                    - generic: Due
+                    - generic:
+                      - generic:
+                        - img:
+                          - img
+                        - img:
+                          - img
+                  - row "1 Test, File 01/15/1990 MDTEST20260519 F11.20 $0.00 $0.00 $0.00 edit Edit" [ref=e602]:
+                    - cell [ref=e603]:
+                      - checkbox [ref=e606] [cursor=pointer]
+                    - cell "1" [ref=e608]
+                    - cell "Test, File" [ref=e609]
+                    - cell "01/15/1990" [ref=e610]
+                    - cell "MDTEST20260519" [ref=e611]
+                    - cell "F11.20" [ref=e612]
+                    - cell "$0.00" [ref=e613]:
+                      - generic [ref=e614]: $0.00
+                    - cell "$0.00" [ref=e615]:
+                      - generic [ref=e616]: $0.00
+                    - cell "$0.00" [ref=e617]:
+                      - generic [ref=e618]: $0.00
+                    - cell "edit Edit" [ref=e619]:
+                      - button "edit Edit" [ref=e623] [cursor=pointer]:
+                        - img "edit" [ref=e625]:
+                          - img [ref=e626]
+                        - generic [ref=e628]: Edit
+              - table [ref=e517]:
+                - rowgroup [ref=e529]:
+                  - row "Current Page Totals Billed $0.00 Paid $0.00 Due $0.00" [ref=e629]:
+                    - cell "Current Page Totals Billed $0.00 Paid $0.00 Due $0.00" [ref=e630]:
+                      - generic [ref=e631]:
+                        - generic [ref=e632]: Current Page Totals
+                        - generic [ref=e633]:
+                          - generic [ref=e634]: Billed
+                          - generic [ref=e635]: $0.00
+                        - generic [ref=e636]:
+                          - generic [ref=e637]: Paid
+                          - generic [ref=e638]: $0.00
+                        - generic [ref=e639]:
+                          - generic [ref=e640]: Due
+                          - generic [ref=e641]: $0.00
+                  - row "All Pages Totals Billed $0.00 Paid $0.00 Due $0.00" [ref=e642]:
+                    - cell "All Pages Totals Billed $0.00 Paid $0.00 Due $0.00" [ref=e643]:
+                      - generic [ref=e644]:
+                        - generic [ref=e645]: All Pages Totals
+                        - generic [ref=e646]:
+                          - generic [ref=e647]: Billed
+                          - generic [ref=e648]: $0.00
+                        - generic [ref=e649]:
+                          - generic [ref=e650]: Paid
+                          - generic [ref=e651]: $0.00
+                        - generic [ref=e652]:
+                          - generic [ref=e653]: Due
+                          - generic [ref=e654]: $0.00
+            - list [ref=e558]:
+              - listitem [ref=e559]: 1-1 of 1 records
+              - listitem "Previous Page" [ref=e560]:
+                - button "left" [disabled] [ref=e561]:
+                  - img "left" [ref=e562]:
+                    - img [ref=e563]
+              - listitem "1" [ref=e565] [cursor=pointer]:
+                - generic [ref=e566]: "1"
+              - listitem "Next Page" [ref=e584]:
+                - button "right" [disabled] [ref=e585]:
+                  - img "right" [ref=e586]:
+                    - img [ref=e587]
+              - listitem [ref=e589]:
+                - generic "Page Size" [ref=e590] [cursor=pointer]:
+                  - generic [ref=e592]:
+                    - combobox "Page Size" [ref=e594]
+                    - generic "10 / page" [ref=e595]
+                  - generic:
+                    - img:
+                      - img

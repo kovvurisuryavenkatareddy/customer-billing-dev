@@ -9,6 +9,7 @@ import {
   UserAddOutlined,
   ImportOutlined,
   SettingOutlined,
+  FileTextOutlined,
   CloseOutlined,
 } from '@ant-design/icons';
 
@@ -16,6 +17,7 @@ const items = [
   { key: 'home', icon: <HomeOutlined />, label: 'Home' },
   { key: 'add-customer', icon: <UserAddOutlined />, label: 'Add Customer' },
   { key: 'data-import', icon: <ImportOutlined />, label: 'Data Import' },
+  { key: 'reports', icon: <FileTextOutlined />, label: 'Reports' },
   { key: 'services', icon: <SettingOutlined />, label: 'Services' },
 ];
 
@@ -39,6 +41,7 @@ export default function Sidebar({ currentPage, onNavigate, open = false, onClose
     '/': 'home',
     '/add-customer': 'add-customer',
     '/data-import': 'data-import',
+    '/reports': 'reports',
     '/services': 'services',
   };
   const selectedKey = pathToKey[location.pathname] || currentPage || 'home';

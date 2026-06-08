@@ -23,6 +23,9 @@ export default function LoginPage({ onLoginSuccess }) {
       });
       const data = await response.json();
       if (!response.ok) throw new Error(data.detail || 'Login failed');
+      if (!data?.access_token || typeof data.access_token !== 'string') {
+        throw new Error('Login succeeded but token was missing. Please contact admin.');
+      }
       localStorage.setItem('token', data.access_token);
       localStorage.setItem('user', JSON.stringify(data.user));
       onLoginSuccess?.(data.user);

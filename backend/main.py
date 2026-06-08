@@ -1,6 +1,7 @@
 #Main branch
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.middleware.gzip import GZipMiddleware
 import os
 from dotenv import load_dotenv
 import logging
@@ -23,10 +24,17 @@ except Exception:
     from .db.database import get_db_connection
 
 
+
 app = FastAPI(title='Services API')
 
-# Configure simple logging
-logging.basicConfig(level=logging.INFO)
+# Compress responses ≥ 1 KB — reduces JSON payload size by ~70 %
+app.add_middleware(GZipMiddleware, minimum_size=1000)
+
+# Configure detailed logging
+logging.basicConfig(
+    level=logging.DEBUG,
+    format='%(asctime)s - %(name)s - %(levelname)s - %(message)s'
+)
 logger = logging.getLogger(__name__)
 
 # Allow CORS from the frontend dev server

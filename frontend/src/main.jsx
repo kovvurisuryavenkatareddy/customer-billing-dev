@@ -4,6 +4,7 @@
 import React from 'react';
 import ReactDOM from 'react-dom/client';
 import { ConfigProvider } from 'antd';
+import 'antd/dist/reset.css';
 import './index.css';
 import './ant-overrides.css';
 import App from './App';

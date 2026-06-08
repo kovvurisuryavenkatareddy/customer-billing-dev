@@ -1,27 +1,62 @@
 import os
 import traceback
+import threading
 import psycopg2
 import psycopg2.extras
+import psycopg2.pool
 
+DATABASE_URL = os.getenv('DATABASE_URL')
 # Optional schema to use for all connections. If set, we will ensure the schema
 # exists and set the session search_path so unqualified table names resolve
 # into this schema first.
 DATABASE_SCHEMA = os.getenv('DATABASE_SCHEMA') or 'public'
+if not DATABASE_URL:
+    raise RuntimeError('DATABASE_URL environment variable must be set for PostgreSQL connection.')
 
-def _get_database_url():
-    """Get DATABASE_URL from environment, raising error if not set."""
-    url = os.getenv('DATABASE_URL')
-    if not url:
-        raise RuntimeError(
-            'DATABASE_URL environment variable must be set for PostgreSQL connection. '
-            'Please create a .env file in the backend directory with: DATABASE_URL=postgresql://user:password@host:port/database'
-        )
-    return url
+_pool: 'psycopg2.pool.ThreadedConnectionPool | None' = None
+_pool_lock = threading.Lock()
+
+
+def _get_pool() -> psycopg2.pool.ThreadedConnectionPool:
+    """Return the singleton connection pool, creating it on first call."""
+    global _pool
+    if _pool is not None:
+        return _pool
+    with _pool_lock:
+        if _pool is None:
+            _pool = psycopg2.pool.ThreadedConnectionPool(
+                minconn=2,
+                maxconn=20,
+                dsn=DATABASE_URL,
+                # TCP keepalives prevent Neon from closing idle connections
+                keepalives=1,
+                keepalives_idle=30,
+                keepalives_interval=10,
+                keepalives_count=5,
+            )
+    return _pool
+
+
+def _apply_schema(conn) -> None:
+    """Set the search_path on a freshly acquired connection."""
+    if DATABASE_SCHEMA and DATABASE_SCHEMA.lower() != 'public':
+        try:
+            cur = conn.cursor()
+            cur.execute(f'SET search_path TO "{DATABASE_SCHEMA}", public')
+            cur.close()
+            conn.commit()
+        except Exception:
+            traceback.print_exc()
+
 
 class _PGConnWrapper:
-    """Wrap a psycopg2 connection to provide a .cursor() returning a RealDictCursor
-    so code that expects dict-like rows (r['id']) continues to work.
+    """Wraps a pooled psycopg2 connection.
+    - cursor() returns RealDictCursor so rows behave like dicts.
+    - close() rolls back any open transaction, then returns the connection to
+      the pool instead of closing it.
+    - Translates SQLite-style ? placeholders to %s automatically.
     """
+
     def __init__(self, conn):
         self._conn = conn
 
@@ -30,7 +65,6 @@ class _PGConnWrapper:
             self._cur = cur
 
         def execute(self, sql, params=None):
-            # translate sqlite-style ? placeholders to psycopg2 %s placeholders
             if params is not None and '?' in sql:
                 sql = sql.replace('?', '%s')
             return self._cur.execute(sql, params or None)
@@ -63,37 +97,33 @@ class _PGConnWrapper:
         return self._conn.rollback()
 
     def close(self):
-        return self._conn.close()
+        """Rollback any open transaction, then return the connection to the pool."""
+        try:
+            if self._conn.status == psycopg2.extensions.STATUS_IN_TRANSACTION:
+                self._conn.rollback()
+            _get_pool().putconn(self._conn)
+        except Exception:
+            try:
+                self._conn.close()
+            except Exception:
+                pass
 
-    # expose execute/fetch helpers optionally
     def __getattr__(self, name):
         return getattr(self._conn, name)
 
-def get_db_connection():
-    """Return a psycopg2 connection wrapper using `DATABASE_URL`.
-    The wrapper's cursor() will return RealDictCursor so route code can keep
-    treating rows like dictionaries.
+
+def get_db_connection() -> _PGConnWrapper:
+    """Get a connection from the pool. Always call conn.close() when done
+    (it returns the connection to the pool rather than closing it).
     """
     try:
-        database_url = _get_database_url()
-        conn = psycopg2.connect(database_url)
+        conn = _get_pool().getconn()
 
-        # If a non-public schema is configured, try to ensure it exists and
-        # set the search_path so unqualified table names use it.
-        if DATABASE_SCHEMA and DATABASE_SCHEMA.lower() != 'public':
-            try:
-                cur = conn.cursor()
-                # Create schema if it doesn't exist. If permission is missing,
-                # this will raise and we'll continue without aborting the connection.
-                cur.execute(f'CREATE SCHEMA IF NOT EXISTS "{DATABASE_SCHEMA}"')
-                cur.execute(f'SET search_path TO "{DATABASE_SCHEMA}", public')
-                cur.close()
-                conn.commit()
-            except Exception:
-                # don't fail the whole connection when schema creation isn't allowed;
-                # log the traceback and continue so callers can decide how to proceed.
-                traceback.print_exc()
+        # Reset any aborted transaction state before handing the connection out
+        if conn.status == psycopg2.extensions.STATUS_IN_TRANSACTION:
+            conn.rollback()
 
+        _apply_schema(conn)
         return _PGConnWrapper(conn)
     except Exception:
         traceback.print_exc()

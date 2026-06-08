@@ -1,0 +1,55 @@
+- generic [ref=e3]:
+  - banner [ref=e4]:
+    - generic [ref=e5]:
+      - button "Toggle sidebar" [ref=e6] [cursor=pointer]:
+        - img "menu" [ref=e8]:
+          - img [ref=e9]
+      - img "Logo" [ref=e11]
+      - generic [ref=e12]:
+        - heading "Misha House Billing" [level=1] [ref=e13]
+        - paragraph [ref=e14]: Manage services, invoices & customers
+    - button "User menu" [ref=e16] [cursor=pointer]:
+      - generic [ref=e18]: SR
+      - generic [ref=e19]:
+        - generic [ref=e20]: surya reddy
+        - generic [ref=e21]: surya@evanke.com
+  - generic [ref=e22]:
+    - navigation "Main navigation":
+      - generic:
+        - generic:
+          - generic:
+            - strong: Menu
+        - menu:
+          - menuitem "home Home":
+            - img "home":
+              - img
+            - generic: Home
+          - menuitem "user-add Add Customer":
+            - img "user-add":
+              - img
+            - generic: Add Customer
+          - menuitem "import Data Import":
+            - img "import":
+              - img
+            - generic: Data Import
+          - menuitem "file-text Reports":
+            - img "file-text":
+              - img
+            - generic: Reports
+          - menuitem "setting Services":
+            - img "setting":
+              - img
+            - generic: Services
+        - generic: Misha House Billing · v1.0
+    - main [ref=e23]:
+      - generic [ref=e24]:
+        - button "arrow-left Back" [ref=e26] [cursor=pointer]:
+          - img "arrow-left" [ref=e28]:
+            - img [ref=e29]
+          - generic [ref=e31]: Back
+        - generic [ref=e32]:
+          - generic [ref=e36]:
+            - img "user-add" [ref=e37]:
+              - img [ref=e38]
+            - generic [ref=e40]: Add Customer
+          - paragraph [ref=e42]: Add a new participant with customer details and service information.
