@@ -29,9 +29,9 @@ SERVICE_COLS = {
     12: ('H2036',   32.38, 'date'),   # L: PHP GROUP DATES
     13: ('UA',     326.27, 'date'),   # M: URINALYSIS
     15: ('H0024',   10.22, 'date'),   # O: PEER GROUP DATES
-    16: ('H0038',   18.77, 'date'),   # P: Peer Ind. Units
+    17: ('H0038',   18.77, 'units'),  # Q: PEER INDIVIDUAL SESSION 15MINUTES PER UNIT
     # I(9)=IOP AUTH UNITS, K(11)=PHP AUTH UNITS, N(14)=Peer Group Units,
-    # Q(17)=Peer Ind. Session — not mapped, data ignored
+    # P(16)=Peer Ind. Units, — not mapped, data ignored
 }
 
 
@@ -463,9 +463,9 @@ def import_billing(
 
     Service columns (mapped):
       G(7)=H0005  H(8)=H0004  J(10)=H0015  L(12)=H2036
-      M(13)=UA  O(15)=H0024  P(16)=H0038
+      M(13)=UA  O(15)=H0024  Q(17)=H0038 (units M/D-N, 15min per unit)
     Unmapped (data ignored):
-      I(9)=IOP AUTH UNITS  K(11)=PHP AUTH UNITS  N(14)=Peer Group Units  Q(17)=Peer Ind. Session
+      I(9)=IOP AUTH UNITS  K(11)=PHP AUTH UNITS  N(14)=Peer Group Units  P(16)=Peer Ind. Units
 
     Cleaning applied before inserting:
       - Year added to bare M/D dates/ranges
