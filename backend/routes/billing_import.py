@@ -16,6 +16,7 @@ import os
 router = APIRouter()
 security = HTTPBearer()
 
+
 # ---------------------------------------------------------------------------
 # Service column mapping  (1-based col index -> (service_code, rate, col_type))
 # col_type 'date'  -> dates collected across all rows, consecutive merged
