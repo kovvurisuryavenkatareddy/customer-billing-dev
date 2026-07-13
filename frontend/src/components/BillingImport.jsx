@@ -10,7 +10,7 @@ import {
 import {
   UploadOutlined, FileExcelOutlined, InboxOutlined,
   ReloadOutlined, HistoryOutlined, AppstoreOutlined, BarsOutlined,
-  EditOutlined,
+  EditOutlined, SyncOutlined, GoogleOutlined,
 } from '@ant-design/icons';
 import { API_BASE, getAuthHeaders, handle401Error } from '../utils/api';
 
@@ -265,7 +265,59 @@ export default function BillingImport() {
   const [editSaving, setEditSaving] = useState(false);
   const [editContext, setEditContext] = useState(null);
 
-  useEffect(() => { loadHistory(); }, []);
+  // Google Sheets / Drive sync
+  const [syncUrl, setSyncUrl] = useState('');
+  const [syncing, setSyncing] = useState(false);
+  const [syncResult, setSyncResult] = useState(null);
+
+  useEffect(() => { loadHistory(); loadSyncConfig(); }, []);
+
+  async function loadSyncConfig() {
+    try {
+      const res = await fetch(`${API_BASE}/billing/sync/config`, { headers: getAuthHeaders() });
+      if (res.ok) {
+        const data = await res.json();
+        if (data?.sync_url) setSyncUrl(data.sync_url);
+      }
+    } catch (e) {
+      console.warn('Could not load sync config', e);
+    }
+  }
+
+  async function handleSync() {
+    const url = syncUrl.trim();
+    if (!url) { message.warning('Paste a Google Sheets or Drive link first.'); return; }
+    setSyncing(true);
+    setSyncResult(null);
+    setError('');
+    try {
+      const res = await fetch(`${API_BASE}/billing/sync`, {
+        method: 'POST',
+        headers: { ...getAuthHeaders(), 'Content-Type': 'application/json' },
+        body: JSON.stringify({ sync_url: url }),
+      });
+      if (res.status === 401) { handle401Error(); return; }
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) {
+        setSyncResult({ status: 'error', message: data.detail || 'Sync failed.' });
+        return;
+      }
+      const invalidCount = data.entries_invalid_count ?? 0;
+      setSyncResult({
+        status: invalidCount > 0 ? 'warning' : 'success',
+        message: data.message || 'Sync complete.',
+        data,
+      });
+      const newHistory = await loadHistory();
+      if (newHistory.length > 0) {
+        setExpandedHistoryKeys([String(newHistory[0].id)]);
+      }
+    } catch (e) {
+      setSyncResult({ status: 'error', message: 'Sync failed — check the link and try again.' });
+    } finally {
+      setSyncing(false);
+    }
+  }
 
   async function loadHistory() {
     setHistoryLoading(true);
@@ -612,6 +664,72 @@ export default function BillingImport() {
           </Button>
         </Button.Group>
       </div>
+
+      {/* ── Google Sheets / Drive Sync Card ──────────────────────────────── */}
+      {activeView === 'import' && <Card
+        title={
+          <span className="flex items-center gap-2 text-lg font-semibold">
+            <GoogleOutlined style={{ color: '#0f9d58' }} />Sync from Google Sheets / Drive
+          </span>
+        }
+        className="shadow-sm mb-6"
+        styles={{ body: { padding: 24 } }}
+      >
+        <p className="text-gray-500 mb-3 mt-0">
+          Paste a public Google&nbsp;Sheets or Drive file link. Click <b>Sync</b> to pull the
+          latest data — only new or changed rows are added, so you can sync again any time you
+          update the sheet.
+        </p>
+
+        <Space.Compact style={{ width: '100%' }} className="mb-3">
+          <Input
+            allowClear
+            value={syncUrl}
+            onChange={(e) => setSyncUrl(e.target.value)}
+            onPressEnter={handleSync}
+            disabled={syncing}
+            placeholder="https://docs.google.com/spreadsheets/d/…  or  https://drive.google.com/file/d/…"
+            prefix={<GoogleOutlined style={{ color: '#94a3b8' }} />}
+          />
+          <Button
+            type="primary"
+            icon={<SyncOutlined spin={syncing} />}
+            onClick={handleSync}
+            loading={syncing}
+          >
+            {syncing ? 'Syncing…' : 'Sync'}
+          </Button>
+        </Space.Compact>
+
+        {syncResult && (
+          <Alert
+            type={syncResult.status}
+            showIcon
+            className="mb-1"
+            closable
+            onClose={() => setSyncResult(null)}
+            message={syncResult.message}
+            description={
+              syncResult.data && (
+                <div className="text-xs text-gray-500 mt-1">
+                  New customers: {syncResult.data.customers_inserted ?? 0}
+                  {' · '}Entries added: {syncResult.data.entries_inserted ?? 0}
+                  {(syncResult.data.entries_invalid_count ?? 0) > 0 && (
+                    <span style={{ color: '#d97706', fontWeight: 600 }}>
+                      {' · '}Invalid cells: {syncResult.data.entries_invalid_count}
+                    </span>
+                  )}
+                </div>
+              )
+            }
+          />
+        )}
+
+        <p className="text-xs text-gray-400 mt-2 mb-0">
+          The sheet must be shared as “Anyone with the link” (Viewer). The link is saved
+          automatically for next time.
+        </p>
+      </Card>}
 
       {/* ── Upload Card ──────────────────────────────────────────────────── */}
       {activeView === 'import' && <Card

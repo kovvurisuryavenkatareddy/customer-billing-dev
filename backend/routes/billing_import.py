@@ -6,6 +6,8 @@ import random
 import string
 import warnings
 import json
+import io
+import requests
 from datetime import datetime, date, timedelta
 from typing import Optional, List, Tuple, Dict, Any
 
@@ -485,6 +487,16 @@ def import_billing(
         raise HTTPException(status_code=400,
                             detail=f"Failed to parse Excel file: {str(e)}")
 
+    return _process_workbook(wb, file.filename)
+
+
+def _process_workbook(wb, filename: str) -> Dict[str, Any]:
+    """Run the IOP import over an already-loaded workbook and persist results.
+
+    Shared by the file-upload endpoint and the Google Sheets/Drive sync endpoint.
+    Because service entries are de-duplicated on (customer, service, start_date),
+    re-running this over an updated sheet only adds newly-changed rows.
+    """
     conn = get_db_connection()
     cur  = conn.cursor()
     total_customers = 0
@@ -679,7 +691,7 @@ def import_billing(
                 entries_invalid)
                VALUES (?,?,?,?,?,?,?,?,?) RETURNING id""",
             (
-                file.filename, total_entries, total_skipped, total_billed_sum,
+                filename, total_entries, total_skipped, total_billed_sum,
                 customers_new_count, customers_existing_count,
                 json.dumps(customer_logs), len(errors), total_invalid,
             )
@@ -996,3 +1008,196 @@ def fix_invalid_import_entries(
         raise HTTPException(status_code=500, detail=str(exc))
     finally:
         conn.close()
+
+
+# ---------------------------------------------------------------------------
+# Google Sheets / Google Drive sync
+# ---------------------------------------------------------------------------
+# A public Google Sheet or Drive-hosted .xlsx can be fetched directly:
+#   Sheets  https://docs.google.com/spreadsheets/d/<ID>/edit#gid=0
+#           -> https://docs.google.com/spreadsheets/d/<ID>/export?format=xlsx
+#   Drive   https://drive.google.com/file/d/<ID>/view
+#           -> https://drive.google.com/uc?export=download&id=<ID>
+# The sheet/file must be shared as "Anyone with the link" for this to work.
+# ---------------------------------------------------------------------------
+
+_DL_TIMEOUT = 30            # seconds
+_MAX_DL_BYTES = 25 * 1024 * 1024   # 25 MB safety cap
+
+
+def _google_download_url(url: str) -> str:
+    """Convert a Google Sheets/Drive share link into a direct .xlsx download URL.
+
+    Passes through non-Google URLs unchanged (must point at a downloadable file).
+    Raises HTTPException(400) if a Google link is recognised but has no file id.
+    """
+    u = (url or '').strip()
+    if not u:
+        raise HTTPException(status_code=400, detail='Sync URL is empty.')
+
+    # Google Sheets — export the whole workbook as xlsx
+    m = re.search(r'docs\.google\.com/spreadsheets/d/([a-zA-Z0-9_-]+)', u)
+    if m:
+        return f'https://docs.google.com/spreadsheets/d/{m.group(1)}/export?format=xlsx'
+
+    # Google Drive file — /file/d/<ID>/ or ?id=<ID> or open?id=<ID>
+    if 'drive.google.com' in u or 'docs.google.com' in u:
+        m = re.search(r'/file/d/([a-zA-Z0-9_-]+)', u)
+        if not m:
+            m = re.search(r'[?&]id=([a-zA-Z0-9_-]+)', u)
+        if m:
+            return f'https://drive.google.com/uc?export=download&id={m.group(1)}'
+        raise HTTPException(
+            status_code=400,
+            detail='Could not find a file id in that Google link. '
+                   'Use a Google Sheets link or a Drive "share" link.'
+        )
+
+    # Not a Google URL — use as-is (must return xlsx bytes)
+    return u
+
+
+def _fetch_workbook_from_url(url: str):
+    """Download the sheet/file at `url` and return an openpyxl workbook."""
+    dl_url = _google_download_url(url)
+    try:
+        resp = requests.get(dl_url, timeout=_DL_TIMEOUT, allow_redirects=True)
+    except requests.RequestException as e:
+        raise HTTPException(status_code=502,
+                            detail=f'Failed to reach the sync URL: {e}')
+
+    if resp.status_code != 200:
+        raise HTTPException(
+            status_code=502,
+            detail=f'Sync URL returned HTTP {resp.status_code}. '
+                   'Make sure the sheet is shared as "Anyone with the link".'
+        )
+
+    content = resp.content
+    if len(content) > _MAX_DL_BYTES:
+        raise HTTPException(status_code=413, detail='Sync file is too large.')
+
+    # A shared-but-restricted sheet returns an HTML sign-in page, not xlsx.
+    ctype = (resp.headers.get('Content-Type') or '').lower()
+    if content[:15].lstrip().lower().startswith(b'<!doctype html') or 'text/html' in ctype:
+        raise HTTPException(
+            status_code=400,
+            detail='The link did not return a spreadsheet. Confirm sharing is set '
+                   'to "Anyone with the link" (Viewer) and the link is correct.'
+        )
+
+    try:
+        with warnings.catch_warnings():
+            warnings.simplefilter('ignore')
+            return openpyxl.load_workbook(io.BytesIO(content), data_only=True)
+    except Exception as e:
+        raise HTTPException(status_code=400,
+                            detail=f'Failed to parse the synced spreadsheet: {e}')
+
+
+def _ensure_sync_settings_table(cur, conn):
+    cur.execute("""
+        CREATE TABLE IF NOT EXISTS billing_sync_settings (
+            id INTEGER PRIMARY KEY DEFAULT 1,
+            sync_url TEXT,
+            updated_at TIMESTAMP DEFAULT NOW()
+        )
+    """)
+    conn.commit()
+
+
+def _get_saved_sync_url(cur) -> Optional[str]:
+    cur.execute("SELECT sync_url FROM billing_sync_settings WHERE id = 1")
+    row = cur.fetchone()
+    return (row['sync_url'] if row else None) or None
+
+
+class SyncConfigPayload(BaseModel):
+    sync_url: str = Field(..., min_length=1)
+
+
+@router.get("/sync/config")
+def get_sync_config(
+    credentials: HTTPAuthorizationCredentials = Depends(security),
+):
+    """Return the saved Google Sheets/Drive sync URL (shared across users)."""
+    conn = get_db_connection()
+    cur = conn.cursor()
+    try:
+        _ensure_sync_settings_table(cur, conn)
+        return {'sync_url': _get_saved_sync_url(cur)}
+    finally:
+        conn.close()
+
+
+@router.put("/sync/config")
+def save_sync_config(
+    payload: SyncConfigPayload = Body(...),
+    credentials: HTTPAuthorizationCredentials = Depends(security),
+):
+    """Persist the Google Sheets/Drive sync URL for later one-click syncs."""
+    url = payload.sync_url.strip()
+    # Validate it resolves to a downloadable link before saving.
+    _google_download_url(url)
+    conn = get_db_connection()
+    cur = conn.cursor()
+    try:
+        _ensure_sync_settings_table(cur, conn)
+        cur.execute(
+            """INSERT INTO billing_sync_settings (id, sync_url, updated_at)
+               VALUES (1, ?, NOW())
+               ON CONFLICT (id) DO UPDATE SET sync_url = EXCLUDED.sync_url,
+                                              updated_at = NOW()""",
+            (url,)
+        )
+        conn.commit()
+        return {'sync_url': url}
+    finally:
+        conn.close()
+
+
+class SyncNowPayload(BaseModel):
+    sync_url: Optional[str] = None
+
+
+@router.post("/sync", status_code=status.HTTP_201_CREATED)
+def sync_from_url(
+    payload: SyncNowPayload = Body(default=None),
+    credentials: HTTPAuthorizationCredentials = Depends(security),
+):
+    """Download the linked Google Sheet/Drive file and import it.
+
+    Uses `payload.sync_url` when provided (and saves it), otherwise falls back
+    to the previously-saved URL. Re-running only adds newly-changed rows.
+    """
+    conn = get_db_connection()
+    cur = conn.cursor()
+    try:
+        _ensure_sync_settings_table(cur, conn)
+        url = (payload.sync_url.strip() if payload and payload.sync_url else None)
+        if url:
+            # Validate then persist so the next sync needs no URL.
+            _google_download_url(url)
+            cur.execute(
+                """INSERT INTO billing_sync_settings (id, sync_url, updated_at)
+                   VALUES (1, ?, NOW())
+                   ON CONFLICT (id) DO UPDATE SET sync_url = EXCLUDED.sync_url,
+                                                  updated_at = NOW()""",
+                (url,)
+            )
+            conn.commit()
+        else:
+            url = _get_saved_sync_url(cur)
+        if not url:
+            raise HTTPException(
+                status_code=400,
+                detail='No sync URL configured. Paste a Google Sheets/Drive link first.'
+            )
+    finally:
+        conn.close()
+
+    wb = _fetch_workbook_from_url(url)
+    filename = f'Google Sync — {datetime.utcnow().strftime("%Y-%m-%d %H:%M")}'
+    result = _process_workbook(wb, filename)
+    result['synced_from'] = url
+    return result
