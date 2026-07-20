@@ -64,11 +64,11 @@ function fmtDateTime(iso) {
   if (!iso) return '—';
   const d = new Date(iso);
   if (isNaN(d.getTime())) return iso;
+  // No timeZoneName — the column header already states the zone.
   return d.toLocaleString('en-US', {
     timeZone: EST_TZ,
     month: 'short', day: 'numeric', year: 'numeric',
     hour: 'numeric', minute: '2-digit', hour12: true,
-    timeZoneName: 'short',
   });
 }
 
@@ -212,7 +212,7 @@ function buildCustomerColumns(onEditInvalid) {
 const historyColumns = [
   {
     title: 'Date & Time (EST)', dataIndex: 'imported_at', key: 'imported_at',
-    width: 190, ellipsis: true, render: fmtDateTime,
+    width: 160, ellipsis: true, render: fmtDateTime,
   },
   {
     // Source is shown inline rather than in its own column: Google syncs get a
@@ -961,7 +961,7 @@ export default function BillingImport() {
                     dataSource={group.items.map((r) => ({ ...r, key: String(r.id) }))}
                     columns={historyColumns}
                     pagination={false}
-                    scroll={{ x: 900 }}
+                    scroll={{ x: 870 }}
                     expandable={{
                       expandedRowKeys: expandedHistoryKeys,
                       onExpandedRowsChange: (keys) => setExpandedHistoryKeys(keys),
@@ -985,7 +985,7 @@ export default function BillingImport() {
               showSizeChanger: false,
               showTotal: (t) => `${t} import${t !== 1 ? 's' : ''}`,
             }}
-            scroll={{ x: 900 }}
+            scroll={{ x: 870 }}
             expandable={{
               expandedRowKeys: expandedHistoryKeys,
               onExpandedRowsChange: (keys) => setExpandedHistoryKeys(keys),
