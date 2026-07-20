@@ -5,7 +5,7 @@ import React, { useState, useEffect } from 'react';
 import axios from 'axios';
 import {
   Card, Button, Progress, Alert, List, Collapse, InputNumber,
-  Table, Spin, Space, Tag, Empty, Modal, Input, Form, message,
+  Table, Spin, Space, Tag, Empty, Modal, Input, Form, message, Tooltip,
 } from 'antd';
 import {
   UploadOutlined, FileExcelOutlined, InboxOutlined,
@@ -28,7 +28,7 @@ function fmtGroupDate(dateKey) {
 function groupHistoryByDate(history) {
   const groups = new Map();
   for (const item of history) {
-    const dateKey = item.imported_at ? item.imported_at.split('T')[0] : 'Unknown';
+    const dateKey = estDateKey(item.imported_at);
     if (!groups.has(dateKey)) groups.set(dateKey, []);
     groups.get(dateKey).push(item);
   }
@@ -56,14 +56,29 @@ function fmtMoney(v) {
   })}`;
 }
 
+// All import timestamps are displayed in US Eastern time, regardless of the
+// viewer's own timezone. The backend sends imported_at as UTC-marked ISO.
+const EST_TZ = 'America/New_York';
+
 function fmtDateTime(iso) {
   if (!iso) return '—';
   const d = new Date(iso);
   if (isNaN(d.getTime())) return iso;
   return d.toLocaleString('en-US', {
+    timeZone: EST_TZ,
     month: 'short', day: 'numeric', year: 'numeric',
     hour: 'numeric', minute: '2-digit', hour12: true,
+    timeZoneName: 'short',
   });
+}
+
+/** YYYY-MM-DD for the given instant, in Eastern time (used for date grouping). */
+function estDateKey(iso) {
+  if (!iso) return 'Unknown';
+  const d = new Date(iso);
+  if (isNaN(d.getTime())) return 'Unknown';
+  // en-CA gives ISO-style YYYY-MM-DD
+  return d.toLocaleDateString('en-CA', { timeZone: EST_TZ });
 }
 
 function hasInvalidEntries(cust) {
@@ -196,12 +211,35 @@ function buildCustomerColumns(onEditInvalid) {
 // Level 1 — one row per import session
 const historyColumns = [
   {
-    title: 'Date & Time', dataIndex: 'imported_at', key: 'imported_at',
-    width: 155, ellipsis: true, render: fmtDateTime,
+    title: 'Date & Time (EST)', dataIndex: 'imported_at', key: 'imported_at',
+    width: 190, ellipsis: true, render: fmtDateTime,
   },
   {
+    // Source is shown inline rather than in its own column: Google syncs get a
+    // green icon + "Google Sync" tag, uploads just get the Excel icon.
     title: 'File', dataIndex: 'filename', key: 'filename',
-    ellipsis: true, width: 160,
+    width: 260,
+    render: (v, r) => {
+      const isGoogle = r.source_type === 'google';
+      const name = v || 'Untitled';
+      return (
+        <Tooltip title={`${isGoogle ? 'Google Sync' : 'Excel upload'} — ${name}`}>
+          <span style={{ display: 'flex', alignItems: 'center', gap: 6, minWidth: 0 }}>
+            {isGoogle
+              ? <GoogleOutlined style={{ color: '#0f9d58', flexShrink: 0 }} />
+              : <FileExcelOutlined style={{ color: '#1d6f42', flexShrink: 0 }} />}
+            {isGoogle && (
+              <Tag color="green" style={{ margin: 0, flexShrink: 0, fontSize: 10, lineHeight: '16px', padding: '0 5px' }}>
+                Google Sync
+              </Tag>
+            )}
+            <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+              {name}
+            </span>
+          </span>
+        </Tooltip>
+      );
+    },
   },
   {
     title: 'New', dataIndex: 'customers_new', key: 'customers_new',
@@ -712,6 +750,12 @@ export default function BillingImport() {
             description={
               syncResult.data && (
                 <div className="text-xs text-gray-500 mt-1">
+                  {syncResult.data.filename && (
+                    <div className="mb-1">
+                      <FileExcelOutlined className="mr-1" />
+                      <b>{syncResult.data.filename}</b>
+                    </div>
+                  )}
                   New customers: {syncResult.data.customers_inserted ?? 0}
                   {' · '}Entries added: {syncResult.data.entries_inserted ?? 0}
                   {(syncResult.data.entries_invalid_count ?? 0) > 0 && (
@@ -917,7 +961,7 @@ export default function BillingImport() {
                     dataSource={group.items.map((r) => ({ ...r, key: String(r.id) }))}
                     columns={historyColumns}
                     pagination={false}
-                    scroll={{ x: 760 }}
+                    scroll={{ x: 900 }}
                     expandable={{
                       expandedRowKeys: expandedHistoryKeys,
                       onExpandedRowsChange: (keys) => setExpandedHistoryKeys(keys),
@@ -941,7 +985,7 @@ export default function BillingImport() {
               showSizeChanger: false,
               showTotal: (t) => `${t} import${t !== 1 ? 's' : ''}`,
             }}
-            scroll={{ x: 760 }}
+            scroll={{ x: 900 }}
             expandable={{
               expandedRowKeys: expandedHistoryKeys,
               onExpandedRowsChange: (keys) => setExpandedHistoryKeys(keys),

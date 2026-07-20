@@ -8,7 +8,8 @@ import warnings
 import json
 import io
 import requests
-from datetime import datetime, date, timedelta
+from urllib.parse import unquote
+from datetime import datetime, date, timedelta, timezone
 from typing import Optional, List, Tuple, Dict, Any
 
 from db.database import get_db_connection
@@ -490,8 +491,11 @@ def import_billing(
     return _process_workbook(wb, file.filename)
 
 
-def _process_workbook(wb, filename: str) -> Dict[str, Any]:
+def _process_workbook(wb, filename: str, source_type: str = 'excel') -> Dict[str, Any]:
     """Run the IOP import over an already-loaded workbook and persist results.
+
+    `source_type` is 'excel' for an uploaded file or 'google' for a Sheets/Drive
+    sync — surfaced as the File Type column in import history.
 
     Shared by the file-upload endpoint and the Google Sheets/Drive sync endpoint.
     Because service entries are de-duplicated on (customer, service, start_date),
@@ -667,11 +671,15 @@ def _process_workbook(wb, filename: str) -> Dict[str, Any]:
                 customers_existing INTEGER DEFAULT 0,
                 customer_logs TEXT DEFAULT '[]',
                 error_count INTEGER DEFAULT 0,
-                entries_invalid INTEGER DEFAULT 0
+                entries_invalid INTEGER DEFAULT 0,
+                source_type TEXT DEFAULT 'excel'
             )
         """)
         cur.execute(
             "ALTER TABLE import_logs ADD COLUMN IF NOT EXISTS entries_invalid INTEGER DEFAULT 0"
+        )
+        cur.execute(
+            "ALTER TABLE import_logs ADD COLUMN IF NOT EXISTS source_type TEXT DEFAULT 'excel'"
         )
         total_billed_sum = round(sum(
             sum(e.get('amount_billed', 0) for e in log.get('entries_added', []))
@@ -688,12 +696,13 @@ def _process_workbook(wb, filename: str) -> Dict[str, Any]:
             """INSERT INTO import_logs
                (filename, entries_added, entries_skipped, total_billed,
                 customers_new, customers_existing, customer_logs, error_count,
-                entries_invalid)
-               VALUES (?,?,?,?,?,?,?,?,?) RETURNING id""",
+                entries_invalid, source_type)
+               VALUES (?,?,?,?,?,?,?,?,?,?) RETURNING id""",
             (
                 filename, total_entries, total_skipped, total_billed_sum,
                 customers_new_count, customers_existing_count,
                 json.dumps(customer_logs), len(errors), total_invalid,
+                source_type,
             )
         )
         log_id = cur.fetchone()['id']
@@ -736,11 +745,15 @@ def _ensure_import_logs_table(cur, conn):
             customers_existing INTEGER DEFAULT 0,
             customer_logs TEXT DEFAULT '[]',
             error_count INTEGER DEFAULT 0,
-            entries_invalid INTEGER DEFAULT 0
+            entries_invalid INTEGER DEFAULT 0,
+            source_type TEXT DEFAULT 'excel'
         )
     """)
     cur.execute(
         "ALTER TABLE import_logs ADD COLUMN IF NOT EXISTS entries_invalid INTEGER DEFAULT 0"
+    )
+    cur.execute(
+        "ALTER TABLE import_logs ADD COLUMN IF NOT EXISTS source_type TEXT DEFAULT 'excel'"
     )
     conn.commit()
 
@@ -758,7 +771,8 @@ def get_import_logs(
         cur.execute(
             """SELECT id, filename, imported_at, entries_added, entries_skipped,
                       total_billed, customers_new, customers_existing, customer_logs, error_count,
-                      COALESCE(entries_invalid, 0) AS entries_invalid
+                      COALESCE(entries_invalid, 0) AS entries_invalid,
+                      COALESCE(source_type, 'excel') AS source_type
                FROM import_logs
                ORDER BY imported_at DESC
                LIMIT ?""",
@@ -776,8 +790,14 @@ def get_import_logs(
                     r['customer_logs'] = []
             elif cl is None:
                 r['customer_logs'] = []
-            if hasattr(r.get('imported_at'), 'isoformat'):
-                r['imported_at'] = r['imported_at'].isoformat()
+            # imported_at is a naive TIMESTAMP written by NOW() (UTC on the DB
+            # server). Tag it as UTC so the browser converts to EST correctly
+            # instead of treating it as local time.
+            ia = r.get('imported_at')
+            if hasattr(ia, 'isoformat'):
+                if ia.tzinfo is None:
+                    ia = ia.replace(tzinfo=timezone.utc)
+                r['imported_at'] = ia.isoformat()
             # Cast Decimal to float for JSON serialisation
             if r.get('total_billed') is not None:
                 r['total_billed'] = float(r['total_billed'])
@@ -1057,8 +1077,39 @@ def _google_download_url(url: str) -> str:
     return u
 
 
+def _filename_from_response(resp, fallback: str) -> str:
+    """Pull the real sheet/file name out of the Content-Disposition header.
+
+    Google returns e.g.  attachment; filename="Billing Sheet.xlsx"
+    or the RFC 5987 form  filename*=UTF-8''Billing%20Sheet.xlsx
+    """
+    cd = resp.headers.get('Content-Disposition') or ''
+    if cd:
+        # RFC 5987 form takes precedence — it carries the correct encoding
+        m = re.search(r"filename\*\s*=\s*[^']*'[^']*'([^;]+)", cd, re.IGNORECASE)
+        if m:
+            try:
+                name = unquote(m.group(1).strip().strip('"'))
+                if name:
+                    return name
+            except Exception:
+                pass
+        m = re.search(r'filename\s*=\s*"([^"]+)"', cd, re.IGNORECASE)
+        if not m:
+            m = re.search(r'filename\s*=\s*([^;]+)', cd, re.IGNORECASE)
+        if m:
+            name = m.group(1).strip().strip('"')
+            if name:
+                return name
+    return fallback
+
+
 def _fetch_workbook_from_url(url: str):
-    """Download the sheet/file at `url` and return an openpyxl workbook."""
+    """Download the sheet/file at `url`.
+
+    Returns (workbook, filename) where filename is the real Google Sheets /
+    Drive document name when the response advertises one.
+    """
     dl_url = _google_download_url(url)
     try:
         resp = requests.get(dl_url, timeout=_DL_TIMEOUT, allow_redirects=True)
@@ -1089,10 +1140,13 @@ def _fetch_workbook_from_url(url: str):
     try:
         with warnings.catch_warnings():
             warnings.simplefilter('ignore')
-            return openpyxl.load_workbook(io.BytesIO(content), data_only=True)
+            wb = openpyxl.load_workbook(io.BytesIO(content), data_only=True)
     except Exception as e:
         raise HTTPException(status_code=400,
                             detail=f'Failed to parse the synced spreadsheet: {e}')
+
+    fallback = f'Google Sync {datetime.utcnow().strftime("%Y-%m-%d %H:%M")}'
+    return wb, _filename_from_response(resp, fallback)
 
 
 def _ensure_sync_settings_table(cur, conn):
@@ -1196,8 +1250,8 @@ def sync_from_url(
     finally:
         conn.close()
 
-    wb = _fetch_workbook_from_url(url)
-    filename = f'Google Sync — {datetime.utcnow().strftime("%Y-%m-%d %H:%M")}'
-    result = _process_workbook(wb, filename)
+    wb, filename = _fetch_workbook_from_url(url)
+    result = _process_workbook(wb, filename, source_type='google')
     result['synced_from'] = url
+    result['filename'] = filename
     return result
