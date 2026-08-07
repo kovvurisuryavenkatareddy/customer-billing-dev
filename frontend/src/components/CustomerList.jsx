@@ -1,10 +1,110 @@
 import React, { useMemo, useCallback, useState, useEffect } from 'react';
-import { Table, Button, Dropdown, Typography, Space } from 'antd';
-import { EditOutlined, EllipsisOutlined } from '@ant-design/icons';
+import {
+  Table, TableBody, TableCell, TableContainer, TableHead, TableRow,
+  TablePagination, Checkbox, Button, IconButton, Menu, MenuItem,
+  TableSortLabel, Link as MuiLink, Box, Paper,
+} from '@mui/material';
+import EditIcon from '@mui/icons-material/Edit';
+import MoreVertIcon from '@mui/icons-material/MoreVert';
 import { formatMMDDYYYY } from '../utils/dates';
 import CustomerEntryModal from './CustomerEntryModal';
 
-const { Link: TypographyLink } = Typography;
+function formatCurrency(value) {
+  return (value || 0).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+}
+
+const SORT_VALUE_GETTERS = {
+  name: (r) => r.name || '',
+  dateOfBirth: (r) => (r.dateOfBirth ? new Date(r.dateOfBirth).getTime() : -Infinity),
+  amountBilled: (r) => r.amountBilled,
+  amountPaid: (r) => r.amountPaid,
+  due: (r) => r.amountBilled - r.amountPaid,
+};
+
+function makeComparator(order, orderBy) {
+  const getVal = SORT_VALUE_GETTERS[orderBy];
+  return (a, b) => {
+    if (!getVal) return 0;
+    const av = getVal(a);
+    const bv = getVal(b);
+    const cmp = typeof av === 'string' ? av.localeCompare(bv) : (av < bv ? -1 : av > bv ? 1 : 0);
+    return order === 'asc' ? cmp : -cmp;
+  };
+}
+
+const TotalsBar = ({ label, billed, paid, due, isAllPages }) => (
+  <Box
+    sx={{
+      display: 'flex', alignItems: 'center', gap: 4, flexWrap: 'wrap',
+      px: 2, py: 1.25,
+      background: isAllPages ? 'linear-gradient(to right, #f1f5f9, #e2e8f0)' : '#f8fafc',
+      borderTop: '1px solid #e2e8f0', fontSize: 13,
+    }}
+  >
+    <Box component="span" sx={{ color: '#475569', minWidth: 140, fontWeight: 600 }}>{label}</Box>
+    <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
+      <Box component="span" sx={{ color: '#64748b' }}>Billed</Box>
+      <Box component="span" sx={{ fontFamily: 'monospace', fontWeight: 600, color: '#1e293b' }}>${formatCurrency(billed)}</Box>
+    </Box>
+    <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, pl: 2, borderLeft: '1px solid #e2e8f0' }}>
+      <Box component="span" sx={{ color: '#64748b' }}>Paid</Box>
+      <Box component="span" sx={{ fontFamily: 'monospace', fontWeight: 600, color: '#1e293b' }}>${formatCurrency(paid)}</Box>
+    </Box>
+    <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, pl: 2, borderLeft: '1px solid #e2e8f0' }}>
+      <Box component="span" sx={{ color: '#64748b' }}>Due</Box>
+      <Box component="span" sx={{ fontFamily: 'monospace', fontWeight: 600, color: due > 0 ? '#dc2626' : due < 0 ? '#d97706' : '#64748b' }}>
+        ${formatCurrency(due)}
+      </Box>
+    </Box>
+  </Box>
+);
+
+function RowActionsMenu({ record, onEdit }) {
+  const [anchorEl, setAnchorEl] = useState(null);
+
+  const handleEdit = () => {
+    setAnchorEl(null);
+    onEdit({
+      customer: record.customer,
+      service: {
+        id: record.entryId,
+        entryId: record.entryId,
+        entry_id: record.entryId,
+        serviceName: record.serviceName,
+        days: record.days,
+        ratePerDay: record.ratePerDay,
+        amountBilled: record.amountBilled,
+        amountPaid: record.amountPaid,
+        dateOfPayment: record.paymentDate,
+        startDate: record.startDate,
+        endDate: record.endDate,
+        denialCodes: record.denialCodes,
+      },
+    });
+  };
+
+  return (
+    <Box sx={{ display: 'flex', justifyContent: 'center' }}>
+      <Button
+        variant="contained" size="small" startIcon={<EditIcon fontSize="small" />}
+        onClick={handleEdit}
+        sx={{ display: { xs: 'none', md: 'inline-flex' }, px: 1.5, py: 0.25, fontSize: 12, minWidth: 'auto' }}
+      >
+        Edit
+      </Button>
+      <Box sx={{ display: { xs: 'block', md: 'none' } }}>
+        <IconButton size="small" aria-label="Actions" onClick={(e) => setAnchorEl(e.currentTarget)}>
+          <MoreVertIcon fontSize="small" />
+        </IconButton>
+        <Menu anchorEl={anchorEl} open={Boolean(anchorEl)} onClose={() => setAnchorEl(null)}>
+          <MenuItem onClick={handleEdit}>
+            <EditIcon fontSize="small" sx={{ mr: 1 }} /> Edit
+          </MenuItem>
+        </Menu>
+      </Box>
+    </Box>
+  );
+}
 
 export default function CustomerList({
   customers = [],
@@ -15,24 +115,15 @@ export default function CustomerList({
   searchText = '',
   onSelectionChange,
 }) {
-  const [pagination, setPagination] = useState({ current: 1, pageSize: 10 });
-  const [editingStatusFor, setEditingStatusFor] = useState(null);
-  const [savingStatusFor, setSavingStatusFor] = useState(null);
+  const [page, setPage] = useState(0);
+  const [rowsPerPage, setRowsPerPage] = useState(10);
+  const [orderBy, setOrderBy] = useState(null);
+  const [order, setOrder] = useState('asc');
   const [showEntryModal, setShowEntryModal] = useState(false);
   const [selectedCustomerId, setSelectedCustomerId] = useState(null);
-  const [selectedCustomerCode, setSelectedCustomerCode] = useState(null);
-  const [isInitialLoad, setIsInitialLoad] = useState(true);
   const [selectedRowKeys, setSelectedRowKeys] = useState([]);
 
-  useEffect(() => {
-    if (customers.length > 0 && isInitialLoad) {
-      setIsInitialLoad(false);
-    }
-  }, [customers, isInitialLoad]);
-
-  const formatDate = useCallback((d) => {
-    return formatMMDDYYYY(d);
-  }, []);
+  const formatDate = useCallback((d) => formatMMDDYYYY(d), []);
 
   // Group entries by customer_id — one row per customer regardless of batch
   const dataSource = useMemo(() => {
@@ -102,6 +193,19 @@ export default function CustomerList({
     );
   }, [dataSource, searchText, formatDate]);
 
+  const sortedData = useMemo(() => {
+    if (!orderBy) return filteredData;
+    return [...filteredData].sort(makeComparator(order, orderBy));
+  }, [filteredData, orderBy, order]);
+
+  // Reset to first page when the underlying data set changes.
+  useEffect(() => { setPage(0); }, [searchText, customers.length]);
+
+  const pageData = useMemo(() => {
+    const start = page * rowsPerPage;
+    return sortedData.slice(start, start + rowsPerPage);
+  }, [sortedData, page, rowsPerPage]);
+
   // compute totals across all service lines (all pages)
   const allPagesTotals = useMemo(() => {
     const computed = filteredData.reduce((acc, row) => {
@@ -113,305 +217,181 @@ export default function CustomerList({
     return computed;
   }, [filteredData]);
 
-  // Get unique values for filters
-  const uniqueFirstNames = useMemo(() =>
-    [...new Set(dataSource.map(item => item.firstName))].filter(Boolean).map(text => ({ text, value: text })),
-    [dataSource]
-  );
+  const pageTotals = useMemo(() => {
+    const computed = pageData.reduce((acc, row) => {
+      acc.amountBilled += row.amountBilled || 0;
+      acc.amountPaid += row.amountPaid || 0;
+      return acc;
+    }, { amountBilled: 0, amountPaid: 0 });
+    computed.totalDue = computed.amountBilled - computed.amountPaid;
+    return computed;
+  }, [pageData]);
 
-  const uniqueLastNames = useMemo(() =>
-    [...new Set(dataSource.map(item => item.lastName))].filter(Boolean).map(text => ({ text, value: text })),
-    [dataSource]
-  );
+  const handleSort = (key) => {
+    if (orderBy === key) {
+      setOrder((o) => (o === 'asc' ? 'desc' : 'asc'));
+    } else {
+      setOrderBy(key);
+      setOrder('asc');
+    }
+  };
 
-  // Define columns for Ant Design Table with sorting and filtering
+  const notifySelection = useCallback((keys) => {
+    const map = new Map();
+    for (const row of filteredData) {
+      if (keys.includes(row.key) && !map.has(row.customerId)) map.set(row.customerId, row.customer);
+    }
+    onSelectionChange?.(Array.from(map.values()));
+  }, [filteredData, onSelectionChange]);
+
+  const toggleRow = (key) => {
+    setSelectedRowKeys((prev) => {
+      const next = prev.includes(key) ? prev.filter((k) => k !== key) : [...prev, key];
+      notifySelection(next);
+      return next;
+    });
+  };
+
+  const toggleAllOnPage = () => {
+    const pageKeys = pageData.map((r) => r.key);
+    const allSelected = pageKeys.every((k) => selectedRowKeys.includes(k));
+    setSelectedRowKeys((prev) => {
+      const next = allSelected
+        ? prev.filter((k) => !pageKeys.includes(k))
+        : [...new Set([...prev, ...pageKeys])];
+      notifySelection(next);
+      return next;
+    });
+  };
+
+  const pageKeys = pageData.map((r) => r.key);
+  const allPageSelected = pageKeys.length > 0 && pageKeys.every((k) => selectedRowKeys.includes(k));
+  const somePageSelected = pageKeys.some((k) => selectedRowKeys.includes(k));
+
   const columns = [
-    {
-      title: 'S.No',
-      key: 'sno',
-      width: 50,
-      align: 'center',
-      render: (_, __, index) => index + 1,
-    },
-    {
-      title: 'Name',
-      dataIndex: 'name',
-      key: 'name',
-      width: 170,
-      sorter: (a, b) => (a.name || '').localeCompare(b.name || ''),
-      render: (text, record) => (
-        <TypographyLink
-          className="customer-name font-semibold"
-          onClick={() => {
-            setSelectedCustomerId(record.customerId);
-            setShowEntryModal(true);
-          }}
-          title="Click to view customer details"
-        >
-          {text || 'N/A'}
-        </TypographyLink>
-      ),
-    },
-    {
-      title: 'DOB',
-      dataIndex: 'dateOfBirth',
-      key: 'dateOfBirth',
-      width: 100,
-      sorter: (a, b) => {
-        if (!a.dateOfBirth) return 1;
-        if (!b.dateOfBirth) return -1;
-        return new Date(a.dateOfBirth) - new Date(b.dateOfBirth);
-      },
-      render: (date) => formatDate(date),
-    },
-    {
-      title: 'ID #',
-      dataIndex: 'idNumber',
-      key: 'idNumber',
-      width: 100,
-      ellipsis: true,
-      render: (text) => text || '—',
-    },
-    {
-      title: 'F ID #',
-      dataIndex: 'fIdNumber',
-      key: 'fIdNumber',
-      width: 100,
-      ellipsis: true,
-      render: (text) => text || '—',
-    },
-    {
-      title: 'Amount Billed',
-      dataIndex: 'amountBilled',
-      key: 'amountBilled',
-      width: 120,
-      align: 'right',
-      sorter: (a, b) => a.amountBilled - b.amountBilled,
-      render: (value) => (
-        <span style={{ fontWeight: '600', fontFamily: 'monospace' }}>
-          ${value.toFixed(2)}
-        </span>
-      ),
-    },
-    {
-      title: 'Amount Paid',
-      dataIndex: 'amountPaid',
-      key: 'amountPaid',
-      width: 120,
-      align: 'right',
-      sorter: (a, b) => a.amountPaid - b.amountPaid,
-      render: (value) => (
-        <span style={{ fontWeight: '600', fontFamily: 'monospace' }}>
-          ${value.toFixed(2)}
-        </span>
-      ),
-    },
-    {
-      title: 'Due',
-      key: 'due',
-      width: 90,
-      align: 'right',
-      sorter: (a, b) => (a.amountBilled - a.amountPaid) - (b.amountBilled - b.amountPaid),
-      render: (_, record) => {
-        const due = record.amountBilled - record.amountPaid;
-        return (
-          <span style={{
-            color: due > 0 ? '#e74c3c' : '#95a5a6',
-            fontWeight: '600',
-            fontFamily: 'monospace'
-          }}>
-            ${due.toFixed(2)}
-          </span>
-        );
-      },
-    },
-    {
-      title: 'Actions',
-      key: 'actions',
-      width: 90,
-      fixed: 'right',
-      align: 'center',
-      render: (_, record) => {
-        const handleEdit = () => {
-          onEdit({
-            customer: record.customer,
-            service: {
-              id: record.entryId,
-              entryId: record.entryId,
-              entry_id: record.entryId,
-              serviceName: record.serviceName,
-              days: record.days,
-              ratePerDay: record.ratePerDay,
-              amountBilled: record.amountBilled,
-              amountPaid: record.amountPaid,
-              dateOfPayment: record.paymentDate,
-              startDate: record.startDate,
-              endDate: record.endDate,
-              denialCodes: record.denialCodes,
-            },
-          });
-        };
-
-        const items = [{ key: 'edit', label: 'Edit', icon: <EditOutlined /> }];
-
-        return (
-          <div className="flex items-center justify-center">
-            <Space size={4} className="hidden md:inline-flex">
-              <Button
-                type="primary"
-                size="small"
-                icon={<EditOutlined />}
-                onClick={handleEdit}
-                style={{ padding: '2px 8px', fontSize: '12px', minWidth: 'auto', height: 26 }}
-              >
-                Edit
-              </Button>
-            </Space>
-
-            <div className="md:hidden">
-              <Dropdown
-                trigger={['click']}
-                menu={{
-                  items,
-                  onClick: ({ key }) => {
-                    if (key === 'edit') handleEdit();
-                  },
-                }}
-                placement="bottomRight"
-              >
-                <Button size="small" type="text" aria-label="Actions" icon={<EllipsisOutlined />} />
-              </Dropdown>
-            </div>
-          </div>
-        );
-      },
-    },
+    { key: 'name', label: 'Name', sortable: true, minWidth: 170 },
+    { key: 'dateOfBirth', label: 'DOB', sortable: true, minWidth: 100 },
+    { key: 'idNumber', label: 'ID #', sortable: false, minWidth: 100 },
+    { key: 'fIdNumber', label: 'F ID #', sortable: false, minWidth: 100 },
+    { key: 'amountBilled', label: 'Amount Billed', sortable: true, minWidth: 120, align: 'right' },
+    { key: 'amountPaid', label: 'Amount Paid', sortable: true, minWidth: 120, align: 'right' },
+    { key: 'due', label: 'Due', sortable: true, minWidth: 90, align: 'right' },
+    { key: 'actions', label: 'Actions', sortable: false, minWidth: 90, align: 'center' },
   ];
 
-  const rowSelection = useMemo(() => {
-    return {
-      selectedRowKeys,
-      onChange: (nextKeys, selectedRows) => {
-        setSelectedRowKeys(nextKeys);
-
-        // IMPORTANT: table rows are grouped by batch, so dedupe customers by customerId.
-        const map = new Map();
-        for (const row of selectedRows || []) {
-          const cid = row?.customerId;
-          if (cid != null && !map.has(cid)) map.set(cid, row.customer);
-        }
-        onSelectionChange?.(Array.from(map.values()));
-      },
-    };
-  }, [selectedRowKeys, onSelectionChange]);
-
   return (
-    <div>
-      <Table
-        className="customer-ledger-table"
-        dataSource={filteredData}
-        columns={columns}
-        rowSelection={rowSelection}
-        size="small"
-        bordered
-        sticky
-        pagination={{
-          ...pagination,
-          showSizeChanger: window.innerWidth >= 576,
-          showTotal: (total, range) => `${range[0]}-${range[1]} of ${total} records`,
-          pageSizeOptions: ['10', '20', '50', '100'],
-          responsive: true,
-          simple: window.innerWidth < 576,
-          showQuickJumper: window.innerWidth >= 768,
-          onChange: (page, pageSize) => {
-            setPagination({ current: page, pageSize: pageSize || 10 });
-          },
-          onShowSizeChange: (current, size) => {
-            setPagination({ current: 1, pageSize: size });
-          },
-        }}
-        scroll={{ x: 1200 }}
-        tableLayout="fixed"
-        summary={(pageData) => {
-          const pageTotals = pageData.reduce((acc, row) => {
-            acc.amountBilled += row.amountBilled || 0;
-            acc.amountPaid += row.amountPaid || 0;
-            return acc;
-          }, { amountBilled: 0, amountPaid: 0 });
-          pageTotals.totalDue = pageTotals.amountBilled - pageTotals.amountPaid;
-
-          const formatCurrency = (value) =>
-            value.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
-
-          const TotalsBar = ({ label, billed, paid, due, isAllPages }) => (
-            <div
-              style={{
-                display: 'flex',
-                alignItems: 'center',
-                gap: '2rem',
-                padding: '10px 16px',
-                background: isAllPages ? 'linear-gradient(to right, #f1f5f9, #e2e8f0)' : '#f8fafc',
-                borderTop: '1px solid #e2e8f0',
-                fontSize: '13px',
-                fontWeight: 500,
-              }}
-            >
-              <span style={{ color: '#475569', minWidth: '140px', fontWeight: 600 }}>{label}</span>
-              <span style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
-                <span style={{ color: '#64748b' }}>Billed</span>
-                <span style={{ fontFamily: 'monospace', fontWeight: 600, color: '#1e293b' }}>
-                  ${formatCurrency(billed)}
-                </span>
-              </span>
-              <span style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', paddingLeft: '1rem', borderLeft: '1px solid #e2e8f0' }}>
-                <span style={{ color: '#64748b' }}>Paid</span>
-                <span style={{ fontFamily: 'monospace', fontWeight: 600, color: '#1e293b' }}>
-                  ${formatCurrency(paid)}
-                </span>
-              </span>
-              <span style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', paddingLeft: '1rem', borderLeft: '1px solid #e2e8f0' }}>
-                <span style={{ color: '#64748b' }}>Due</span>
-                <span
-                  style={{
-                    fontFamily: 'monospace',
-                    fontWeight: 600,
-                    color: due > 0 ? '#dc2626' : due < 0 ? '#d97706' : '#64748b',
-                  }}
-                >
-                  ${formatCurrency(due)}
-                </span>
-              </span>
-            </div>
-          );
-
-          return (
-            <Table.Summary fixed>
-              <Table.Summary.Row>
-                <Table.Summary.Cell index={0} colSpan={columns.length} style={{ padding: 0, borderBottom: 'none' }}>
-                  <TotalsBar
-                    label="Current Page Totals"
-                    billed={pageTotals.amountBilled}
-                    paid={pageTotals.amountPaid}
-                    due={pageTotals.totalDue}
-                    isAllPages={false}
+    <Box>
+      <Paper variant="outlined" sx={{ overflow: 'hidden' }}>
+        <TableContainer sx={{ maxWidth: '100%', overflowX: 'auto' }}>
+          <Table size="small" sx={{ minWidth: 1100 }} stickyHeader>
+            <TableHead>
+              <TableRow>
+                <TableCell padding="checkbox">
+                  <Checkbox
+                    size="small"
+                    indeterminate={somePageSelected && !allPageSelected}
+                    checked={allPageSelected}
+                    onChange={toggleAllOnPage}
+                    sx={{
+                      color: '#fff',
+                      '&.Mui-checked': { color: '#fff' },
+                      '&.MuiCheckbox-indeterminate': { color: '#fff' },
+                    }}
                   />
-                </Table.Summary.Cell>
-              </Table.Summary.Row>
-              <Table.Summary.Row>
-                <Table.Summary.Cell index={0} colSpan={columns.length} style={{ padding: 0, borderBottom: 'none' }}>
-                  <TotalsBar
-                    label="All Pages Totals"
-                    billed={allPagesTotals.amountBilled}
-                    paid={allPagesTotals.amountPaid}
-                    due={allPagesTotals.totalDue}
-                    isAllPages
-                  />
-                </Table.Summary.Cell>
-              </Table.Summary.Row>
-            </Table.Summary>
-          );
-        }}
-      />
+                </TableCell>
+                <TableCell align="center" sx={{ width: 50 }}>S.No</TableCell>
+                {columns.map((col) => (
+                  <TableCell key={col.key} align={col.align || 'left'} sx={{ minWidth: col.minWidth }}>
+                    {col.sortable ? (
+                      <TableSortLabel
+                        active={orderBy === col.key}
+                        direction={orderBy === col.key ? order : 'asc'}
+                        onClick={() => handleSort(col.key)}
+                      >
+                        {col.label}
+                      </TableSortLabel>
+                    ) : col.label}
+                  </TableCell>
+                ))}
+              </TableRow>
+            </TableHead>
+            <TableBody>
+              {pageData.map((record, idx) => (
+                <TableRow key={record.key} hover selected={selectedRowKeys.includes(record.key)}>
+                  <TableCell padding="checkbox">
+                    <Checkbox
+                      size="small"
+                      checked={selectedRowKeys.includes(record.key)}
+                      onChange={() => toggleRow(record.key)}
+                    />
+                  </TableCell>
+                  <TableCell align="center">{page * rowsPerPage + idx + 1}</TableCell>
+                  <TableCell>
+                    <MuiLink
+                      component="button"
+                      underline="hover"
+                      sx={{ fontWeight: 600, textAlign: 'left' }}
+                      onClick={() => { setSelectedCustomerId(record.customerId); setShowEntryModal(true); }}
+                      title="Click to view customer details"
+                    >
+                      {record.name || 'N/A'}
+                    </MuiLink>
+                  </TableCell>
+                  <TableCell>{formatDate(record.dateOfBirth)}</TableCell>
+                  <TableCell sx={{ maxWidth: 100, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                    {record.idNumber || '—'}
+                  </TableCell>
+                  <TableCell sx={{ maxWidth: 100, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                    {record.fIdNumber || '—'}
+                  </TableCell>
+                  <TableCell align="right">
+                    <Box component="span" sx={{ fontWeight: 600, fontFamily: 'monospace' }}>
+                      ${record.amountBilled.toFixed(2)}
+                    </Box>
+                  </TableCell>
+                  <TableCell align="right">
+                    <Box component="span" sx={{ fontWeight: 600, fontFamily: 'monospace' }}>
+                      ${record.amountPaid.toFixed(2)}
+                    </Box>
+                  </TableCell>
+                  <TableCell align="right">
+                    <Box component="span" sx={{
+                      color: (record.amountBilled - record.amountPaid) > 0 ? '#e74c3c' : '#95a5a6',
+                      fontWeight: 600, fontFamily: 'monospace',
+                    }}>
+                      ${(record.amountBilled - record.amountPaid).toFixed(2)}
+                    </Box>
+                  </TableCell>
+                  <TableCell align="center">
+                    <RowActionsMenu record={record} onEdit={onEdit} />
+                  </TableCell>
+                </TableRow>
+              ))}
+              {pageData.length === 0 && (
+                <TableRow>
+                  <TableCell colSpan={columns.length + 2} align="center" sx={{ color: 'text.secondary', py: 4 }}>
+                    No records found.
+                  </TableCell>
+                </TableRow>
+              )}
+            </TableBody>
+          </Table>
+        </TableContainer>
+
+        <TotalsBar label="Current Page Totals" billed={pageTotals.amountBilled} paid={pageTotals.amountPaid} due={pageTotals.totalDue} />
+        <TotalsBar label="All Pages Totals" billed={allPagesTotals.amountBilled} paid={allPagesTotals.amountPaid} due={allPagesTotals.totalDue} isAllPages />
+
+        <TablePagination
+          component="div"
+          count={sortedData.length}
+          page={page}
+          onPageChange={(_, newPage) => setPage(newPage)}
+          rowsPerPage={rowsPerPage}
+          onRowsPerPageChange={(e) => { setRowsPerPage(parseInt(e.target.value, 10)); setPage(0); }}
+          rowsPerPageOptions={[10, 20, 50, 100]}
+          labelDisplayedRows={({ from, to, count }) => `${from}-${to} of ${count} records`}
+        />
+      </Paper>
 
       {showEntryModal && (
         <CustomerEntryModal
@@ -423,6 +403,6 @@ export default function CustomerList({
           }}
         />
       )}
-    </div>
+    </Box>
   );
 }

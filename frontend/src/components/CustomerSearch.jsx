@@ -1,9 +1,14 @@
 /**
- * Filter Participants panel using Ant Design Card, Form, Input, Select, DatePicker, Button.
+ * Filter Participants panel using Material-UI Paper, TextField, Select, DatePicker, Autocomplete.
  */
-import React, { useEffect } from 'react';
-import { Card, Form, Input, Select, DatePicker, Button, Row, Col, Space } from 'antd';
-import { FilterOutlined, ClearOutlined, SearchOutlined } from '@ant-design/icons';
+import React, { useEffect, useState, useCallback } from 'react';
+import {
+  Paper, Grid, TextField, MenuItem, Button, Typography, Box, Autocomplete,
+} from '@mui/material';
+import { DatePicker } from '@mui/x-date-pickers/DatePicker';
+import FilterListIcon from '@mui/icons-material/FilterList';
+import ClearIcon from '@mui/icons-material/Clear';
+import dayjs from 'dayjs';
 import { toISO } from '../utils/dates';
 
 function normalizeForSearch(v) {
@@ -20,6 +25,15 @@ function fuzzyIncludes(haystack, needle) {
   return h.includes(n);
 }
 
+const EMPTY_FILTERS = {
+  status: 'active',
+  firstName: '',
+  lastName: '',
+  dateOfBirth: null,
+  startDate: null,
+  endDate: null,
+};
+
 export default function CustomerSearch({
   onSearch,
   status = 'active',
@@ -30,184 +44,152 @@ export default function CustomerSearch({
   selectedCustomerIds = [],
   onSelectedCustomerIdsChange,
 }) {
-  const [form] = Form.useForm();
+  const [filters, setFilters] = useState({ ...EMPTY_FILTERS, status });
 
   useEffect(() => {
-    form.setFieldValue('status', status);
-  }, [status, form]);
+    setFilters((f) => ({ ...f, status }));
+  }, [status]);
 
   const dateToISO = (d) => {
     if (!d) return '';
-    const str = typeof d === 'string' ? d : (d.format ? d.format('YYYY-MM-DD') : '');
+    const str = d?.isValid?.() ? d.format('YYYY-MM-DD') : '';
     return toISO(str);
   };
 
-  const triggerSearch = (values = {}) => {
-    const v = form.getFieldsValue();
-    const firstName = (values.firstName ?? v.firstName ?? '').trim();
-    const lastName = (values.lastName ?? v.lastName ?? '').trim();
-    const st = values.status ?? v.status ?? status;
-    const dob = values.dateOfBirth ?? v.dateOfBirth;
-    const startDate = values.startDate ?? v.startDate;
-    const endDate = values.endDate ?? v.endDate;
+  const triggerSearch = useCallback((next) => {
     onSearch({
-      firstName,
-      lastName,
-      dateOfBirth: dateToISO(dob),
-      status: st,
-      startDate: dateToISO(startDate),
-      endDate: dateToISO(endDate),
-      _rawStart: startDate?.format?.('YYYY-MM-DD') ?? '',
-      _rawEnd: endDate?.format?.('YYYY-MM-DD') ?? '',
-      _rawDOB: dob?.format?.('YYYY-MM-DD') ?? '',
+      firstName: (next.firstName || '').trim(),
+      lastName: (next.lastName || '').trim(),
+      dateOfBirth: dateToISO(next.dateOfBirth),
+      status: next.status,
+      startDate: dateToISO(next.startDate),
+      endDate: dateToISO(next.endDate),
+      _rawStart: next.startDate?.isValid?.() ? next.startDate.format('YYYY-MM-DD') : '',
+      _rawEnd: next.endDate?.isValid?.() ? next.endDate.format('YYYY-MM-DD') : '',
+      _rawDOB: next.dateOfBirth?.isValid?.() ? next.dateOfBirth.format('YYYY-MM-DD') : '',
     });
+  }, [onSearch]);
+
+  const updateField = (field, value) => {
+    setFilters((prev) => {
+      const next = { ...prev, [field]: value };
+      triggerSearch(next);
+      return next;
+    });
+    if (field === 'status') onStatusChange?.(value);
   };
 
   const clearFilters = () => {
-    form.resetFields();
+    setFilters({ ...EMPTY_FILTERS });
     onStatusChange?.('active');
     if (onServiceNameChange) onServiceNameChange('');
     if (onSelectedCustomerIdsChange) onSelectedCustomerIdsChange([]);
-    onSearch({
-      firstName: '',
-      lastName: '',
-      dateOfBirth: '',
-      status: 'active',
-      startDate: '',
-      endDate: '',
-    });
+    onSearch({ firstName: '', lastName: '', dateOfBirth: '', status: 'active', startDate: '', endDate: '' });
   };
 
-  const labelStyle = { fontSize: 12, fontWeight: 600, color: '#475569' };
+  const labelSx = { fontSize: 12, fontWeight: 600, color: '#475569', mb: 0.5, display: 'block' };
 
   return (
-    <Card
-      className="mb-4 shadow-sm border border-slate-200"
-      styles={{ body: { padding: '14px 16px' } }}
-    >
-      <div className="flex flex-wrap items-center justify-between gap-3 mb-3">
-        <Space align="center">
-          <FilterOutlined className="text-slate-500" />
-          <span className="text-sm font-semibold text-slate-800">Filter Participants</span>
-        </Space>
-        <Button size="small" icon={<ClearOutlined />} onClick={clearFilters}>
+    <Paper variant="outlined" sx={{ p: 2, mb: 2.5, borderColor: '#e2e8f0' }}>
+      <Box sx={{ display: 'flex', flexWrap: 'wrap', alignItems: 'center', justifyContent: 'space-between', gap: 1.5, mb: 1.5 }}>
+        <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
+          <FilterListIcon fontSize="small" sx={{ color: '#64748b' }} />
+          <Typography variant="body2" fontWeight={600} color="#1e293b">Filter Participants</Typography>
+        </Box>
+        <Button size="small" startIcon={<ClearIcon fontSize="small" />} onClick={clearFilters}>
           Clear filters
         </Button>
-      </div>
+      </Box>
 
-      <Form
-        form={form}
-        layout="vertical"
-        size="small"
-        initialValues={{
-          status: status,
-          firstName: '',
-          lastName: '',
-          dateOfBirth: null,
-          startDate: null,
-          endDate: null,
-        }}
-        onValuesChange={(_, all) => triggerSearch(all)}
-      >
-        <Row gutter={[12, 8]}>
-          <Col xs={24} sm={12} md={8} lg={4}>
-            <Form.Item name="status" label={<span style={labelStyle}>Status</span>}>
-              <Select
-                size="small"
-                options={[
-                  { value: 'active', label: 'Active' },
-                  { value: 'inactive', label: 'Inactive' },
-                  { value: 'all', label: 'All' },
-                ]}
-                onChange={(val) => {
-                  onStatusChange?.(val);
-                  triggerSearch({ ...form.getFieldsValue(), status: val });
-                }}
-                allowClear={false}
+      <Grid container spacing={1.5}>
+        <Grid size={{ xs: 12, sm: 6, md: 4, lg: 2 }}>
+          <Box component="span" sx={labelSx}>Status</Box>
+          <TextField
+            select fullWidth size="small" value={filters.status}
+            onChange={(e) => updateField('status', e.target.value)}
+          >
+            <MenuItem value="active">Active</MenuItem>
+            <MenuItem value="inactive">Inactive</MenuItem>
+            <MenuItem value="all">All</MenuItem>
+          </TextField>
+        </Grid>
+        <Grid size={{ xs: 12, sm: 6, md: 4, lg: 2 }}>
+          <Box component="span" sx={labelSx}>First Name</Box>
+          <TextField
+            fullWidth size="small" placeholder="First name" value={filters.firstName}
+            onChange={(e) => updateField('firstName', e.target.value)}
+          />
+        </Grid>
+        <Grid size={{ xs: 12, sm: 6, md: 4, lg: 2 }}>
+          <Box component="span" sx={labelSx}>Last Name</Box>
+          <TextField
+            fullWidth size="small" placeholder="Last name" value={filters.lastName}
+            onChange={(e) => updateField('lastName', e.target.value)}
+          />
+        </Grid>
+        <Grid size={{ xs: 12, sm: 6, md: 4, lg: 2 }}>
+          <Box component="span" sx={labelSx}>Date of Birth</Box>
+          <DatePicker
+            format="MM/DD/YYYY"
+            value={filters.dateOfBirth}
+            onChange={(val) => updateField('dateOfBirth', val)}
+            slotProps={{ textField: { size: 'small', fullWidth: true, placeholder: 'MM/DD/YYYY' } }}
+          />
+        </Grid>
+        <Grid size={{ xs: 12, sm: 6, md: 4, lg: 2 }}>
+          <Box component="span" sx={labelSx}>From Date</Box>
+          <DatePicker
+            format="MM/DD/YYYY"
+            value={filters.startDate}
+            onChange={(val) => updateField('startDate', val)}
+            slotProps={{ textField: { size: 'small', fullWidth: true, placeholder: 'MM/DD/YYYY' } }}
+          />
+        </Grid>
+        <Grid size={{ xs: 12, sm: 6, md: 4, lg: 2 }}>
+          <Box component="span" sx={labelSx}>To Date</Box>
+          <DatePicker
+            format="MM/DD/YYYY"
+            value={filters.endDate}
+            onChange={(val) => updateField('endDate', val)}
+            slotProps={{ textField: { size: 'small', fullWidth: true, placeholder: 'MM/DD/YYYY' } }}
+          />
+        </Grid>
+      </Grid>
+
+      {(onServiceNameChange || onSelectedCustomerIdsChange) && (
+        <Grid container spacing={1.5} sx={{ mt: 0.5 }}>
+          {onServiceNameChange && (
+            <Grid size={{ xs: 12, sm: 6, md: 4, lg: 3 }}>
+              <Box component="span" sx={labelSx}>Service Name</Box>
+              <TextField
+                fullWidth size="small" placeholder="Search service name"
+                value={serviceName || ''}
+                onChange={(e) => onServiceNameChange(e.target.value)}
               />
-            </Form.Item>
-          </Col>
-          <Col xs={24} sm={12} md={8} lg={4}>
-            <Form.Item name="firstName" label={<span style={labelStyle}>First Name</span>}>
-              <Input size="small" placeholder="First name" allowClear />
-            </Form.Item>
-          </Col>
-          <Col xs={24} sm={12} md={8} lg={4}>
-            <Form.Item name="lastName" label={<span style={labelStyle}>Last Name</span>}>
-              <Input size="small" placeholder="Last name" allowClear />
-            </Form.Item>
-          </Col>
-          <Col xs={24} sm={12} md={8} lg={4}>
-            <Form.Item name="dateOfBirth" label={<span style={labelStyle}>Date of Birth</span>}>
-              <DatePicker
-                format="MM/DD/YYYY"
-                className="w-full"
-                placeholder="MM/DD/YYYY"
-                allowClear
+            </Grid>
+          )}
+          {onSelectedCustomerIdsChange && (
+            <Grid size={{ xs: 12, sm: 6, md: 8, lg: 5 }}>
+              <Box component="span" sx={labelSx}>Select Customer(s) for Export (optional)</Box>
+              <Autocomplete
+                multiple
                 size="small"
+                options={customerOptions}
+                value={customerOptions.filter((o) => selectedCustomerIds.includes(o.value))}
+                onChange={(_, vals) => onSelectedCustomerIdsChange(vals.map((v) => v.value))}
+                getOptionLabel={(o) => o.label || ''}
+                isOptionEqualToValue={(o, v) => o.value === v.value}
+                filterOptions={(options, state) =>
+                  options.filter((o) => fuzzyIncludes(o.label, state.inputValue))
+                }
+                renderInput={(params) => (
+                  <TextField {...params} placeholder="If selected, export includes all rows for selected customers" />
+                )}
               />
-            </Form.Item>
-          </Col>
-          <Col xs={24} sm={12} md={8} lg={4}>
-            <Form.Item name="startDate" label={<span style={labelStyle}>From Date</span>}>
-              <DatePicker
-                format="MM/DD/YYYY"
-                className="w-full"
-                placeholder="MM/DD/YYYY"
-                allowClear
-                size="small"
-              />
-            </Form.Item>
-          </Col>
-          <Col xs={24} sm={12} md={8} lg={4}>
-            <Form.Item name="endDate" label={<span style={labelStyle}>To Date</span>}>
-              <DatePicker
-                format="MM/DD/YYYY"
-                className="w-full"
-                placeholder="MM/DD/YYYY"
-                allowClear
-                size="small"
-              />
-            </Form.Item>
-          </Col>
-        </Row>
-        {(onServiceNameChange || onSelectedCustomerIdsChange) && (
-          <Row gutter={[12, 8]}>
-            {onServiceNameChange && (
-              <Col xs={24} sm={12} md={8} lg={6}>
-                <Form.Item label={<span style={labelStyle}>Service Name</span>}>
-                  <Input
-                    size="small"
-                    placeholder="Search service name"
-                    allowClear
-                    value={serviceName}
-                    onChange={(e) => onServiceNameChange(e.target.value)}
-                  />
-                </Form.Item>
-              </Col>
-            )}
-            {onSelectedCustomerIdsChange && (
-              <Col xs={24} sm={12} md={16} lg={10}>
-                <Form.Item label={<span style={labelStyle}>Select Customer(s) for Export (optional)</span>}>
-                  <Select
-                    mode="multiple"
-                    allowClear
-                    showSearch
-                    optionFilterProp="label"
-                    filterOption={(input, option) => fuzzyIncludes(option?.label, input)}
-                    placeholder="If selected, export includes all rows for selected customers"
-                    options={customerOptions}
-                    value={selectedCustomerIds}
-                    onChange={(vals) => onSelectedCustomerIdsChange(vals)}
-                    className="w-full"
-                    size="small"
-                  />
-                </Form.Item>
-              </Col>
-            )}
-          </Row>
-        )}
-      </Form>
-    </Card>
+            </Grid>
+          )}
+        </Grid>
+      )}
+    </Paper>
   );
 }

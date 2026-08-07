@@ -1,5 +1,11 @@
 import React, { useState, useEffect } from 'react';
-import { Input, Card, Spin, Modal, Empty, Button } from 'antd';
+import {
+  TextField, InputAdornment, IconButton, Card as MuiCard, CardHeader, CardContent,
+  CircularProgress, Dialog, DialogTitle, DialogContent, Box, Typography, Button,
+} from '@mui/material';
+import SearchIcon from '@mui/icons-material/Search';
+import ClearIcon from '@mui/icons-material/Clear';
+import InboxIcon from '@mui/icons-material/Inbox';
 import CustomerSearch from '../components/CustomerSearch';
 import CustomerList from '../components/CustomerList';
 import CustomerForm from '../components/form';
@@ -119,6 +125,18 @@ export default function CustomersPage({ showAddForm = false, onNavigate }) {
       controller.abort();
     };
   }, [filters]);
+
+  // H0038 has no separate `units` column on the server — `days` IS the unit
+  // count. This mirrors form.jsx's check so the network payload can be
+  // re-verified independently of whatever the form already computed.
+  function isUnitsServiceName(name) {
+    if (!name || !Array.isArray(services)) return false;
+    const match = services.find(x => (x.name === name || x.serviceName === name || x.service_name === name));
+    const code = (match?.code || match?.serviceCode || match?.service_code || '').toString().toUpperCase().trim();
+    const catalogName = (match?.name || match?.serviceName || match?.service_name || '').toString().toUpperCase();
+    if (match) return code.includes('H0038') || catalogName.includes('H0038');
+    return String(name).toUpperCase().includes('H0038');
+  }
 
   async function handleSearch(f) {
     // Only update filters here; a debounced effect will perform the fetch.
@@ -340,6 +358,9 @@ export default function CustomersPage({ showAddForm = false, onNavigate }) {
         const serviceBody = {
           serviceName: s.serviceName,
           days: Number(s.days) || 0,
+          // H0038 (units-based): units drives amountBilled and is stored on
+          // its own column, independent of days.
+          units: isUnitsServiceName(s.serviceName) ? (Number(s.units) || 0) : undefined,
           ratePerDay: s.ratePerDay,
           amountBilled: s.amountBilled ?? 0,
           amountPaid: s.amountPaid === '' ? 0 : Number(s.amountPaid),
@@ -599,6 +620,7 @@ export default function CustomersPage({ showAddForm = false, onNavigate }) {
             start_date: r.start_date,
             end_date: r.end_date,
             days: r.days,
+            units: r.units,
             rate_per_day: r.rate_per_day,
             amount_billed: r.amount_billed,
             amount_paid: r.amount_paid,
@@ -627,6 +649,7 @@ export default function CustomersPage({ showAddForm = false, onNavigate }) {
       serviceType: e.service_name || e.serviceName || '',
       days: e.days,
       numberOfDays: e.days != null ? String(e.days) : '',
+      units: e.units ?? '',
       ratePerDay: e.rate_per_day ?? e.ratePerDay ?? 0,
       rate_per_day: e.rate_per_day ?? e.ratePerDay ?? 0,
       startDate: e.start_date || '',
@@ -646,9 +669,9 @@ export default function CustomersPage({ showAddForm = false, onNavigate }) {
 
   if (!servicesLoaded) {
     return (
-      <div className="w-full max-w-full mx-auto p-6 md:p-8 min-h-[300px] flex items-center justify-center">
-        <Spin size="large" tip="Loading services..." />
-      </div>
+      <Box sx={{ width: '100%', maxWidth: '100%', mx: 'auto', p: { xs: 3, md: 4 }, minHeight: 300, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+        <CircularProgress />
+      </Box>
     );
   }
 
@@ -660,145 +683,178 @@ export default function CustomersPage({ showAddForm = false, onNavigate }) {
   })() : '';
 
   return (
-    <div className="w-full max-w-full mx-auto p-4 md:p-8 box-border overflow-x-hidden">
+    <Box sx={{ width: '100%', maxWidth: '100%', mx: 'auto', p: { xs: 2, md: 4 }, boxSizing: 'border-box', overflowX: 'hidden' }}>
       {!showAddCustomer && <CustomerSearch onSearch={handleSearch} status={statusFilter} onStatusChange={handleStatusChange} />}
 
-      <div>
+      <Box>
         {!showAddCustomer && (
-          <Card
-            className="mb-6 overflow-x-hidden"
-            title={<span className="text-lg font-semibold">{statusFilter === 'active' ? 'Active' : statusFilter === 'inactive' ? 'Inactive' : 'All'} Participant Records</span>}
-            extra={
-              <div className="flex items-center gap-2">
-                <Button
-                  type="default"
-                  disabled={quickEntryCustomers.length === 0}
-                  onClick={() => setShowQuickEntry(true)}
-                >
-                  Quick Entry{quickEntryCustomers.length ? ` (${quickEntryCustomers.length})` : ''}
-                </Button>
-                <Input.Search
-                  placeholder="Search by name, ID, or service"
-                  allowClear
-                  enterButton
-                  size="middle"
-                  value={tableSearchText}
-                  onSearch={setTableSearchText}
-                  onChange={(e) => setTableSearchText(e.target.value)}
-                />
-              </div>
-            }
-          >
-            {notFound && customers.length === 0 ? (
-              <Empty
-                description="No customers found matching your search criteria."
-                className="py-10"
-              >
-                <Button type="primary" onClick={() => onNavigate?.('add-customer')}>Add Customer</Button>
-              </Empty>
-            ) : (
-              <div className="relative min-h-[200px]">
-                {loading && (
-                  <div className="absolute inset-0 flex items-center justify-center bg-white/80 z-10 rounded">
-                    <Spin tip="Loading customers..." />
-                  </div>
-                )}
-                <CustomerList
-                  customers={customers}
-                  onEdit={handleEdit}
-                  onUpdate={handleUpdate}
-                  onAddService={handleAddService}
-                  onChangeStatus={handleChangeStatus}
-                  onSelectionChange={(selectedCustomers) => {
-                    setQuickEntryCustomers(Array.isArray(selectedCustomers) ? selectedCustomers : []);
-                  }}
-                  onCustomerUpdated={(action, key) => {
-                    if (action === 'optimistic-delete' && key) {
-                      // Immediately remove the row from UI
-                      setCustomers(prev => prev.filter(c => String(c.id) !== key));
-                    } else {
-                      refreshCustomers();
-                    }
-                  }}
-                  searchText={tableSearchText}
-                />
-              </div>
-            )}
-          </Card>
+          <MuiCard variant="outlined" sx={{ mb: 3, overflowX: 'hidden' }}>
+            <CardHeader
+              title={
+                <Typography variant="h6" fontWeight={600}>
+                  {statusFilter === 'active' ? 'Active' : statusFilter === 'inactive' ? 'Inactive' : 'All'} Participant Records
+                </Typography>
+              }
+              action={
+                <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, flexWrap: 'wrap' }}>
+                  <Button
+                    variant="outlined"
+                    disabled={quickEntryCustomers.length === 0}
+                    onClick={() => setShowQuickEntry(true)}
+                  >
+                    Quick Entry{quickEntryCustomers.length ? ` (${quickEntryCustomers.length})` : ''}
+                  </Button>
+                  <TextField
+                    size="small"
+                    placeholder="Search by name, ID, or service"
+                    value={tableSearchText}
+                    onChange={(e) => setTableSearchText(e.target.value)}
+                    slotProps={{
+                      input: {
+                        startAdornment: <InputAdornment position="start"><SearchIcon fontSize="small" /></InputAdornment>,
+                        endAdornment: tableSearchText ? (
+                          <InputAdornment position="end">
+                            <IconButton size="small" onClick={() => setTableSearchText('')}><ClearIcon fontSize="small" /></IconButton>
+                          </InputAdornment>
+                        ) : null,
+                      },
+                    }}
+                  />
+                </Box>
+              }
+            />
+            <CardContent sx={{ pt: 0 }}>
+              {notFound && customers.length === 0 ? (
+                <Box sx={{ py: 6, textAlign: 'center' }}>
+                  <InboxIcon sx={{ fontSize: 48, color: 'text.disabled', mb: 1 }} />
+                  <Typography color="text.secondary" sx={{ mb: 2 }}>
+                    No customers found matching your search criteria.
+                  </Typography>
+                  <Button variant="contained" onClick={() => onNavigate?.('add-customer')}>Add Customer</Button>
+                </Box>
+              ) : (
+                <Box sx={{ position: 'relative', minHeight: 200 }}>
+                  {loading && (
+                    <Box sx={{
+                      position: 'absolute', inset: 0, display: 'flex', alignItems: 'center', justifyContent: 'center',
+                      bgcolor: 'rgba(255,255,255,0.8)', zIndex: 10, borderRadius: 1,
+                    }}>
+                      <CircularProgress size={32} />
+                    </Box>
+                  )}
+                  <CustomerList
+                    customers={customers}
+                    onEdit={handleEdit}
+                    onUpdate={handleUpdate}
+                    onAddService={handleAddService}
+                    onChangeStatus={handleChangeStatus}
+                    onSelectionChange={(selectedCustomers) => {
+                      setQuickEntryCustomers(Array.isArray(selectedCustomers) ? selectedCustomers : []);
+                    }}
+                    onCustomerUpdated={(action, key) => {
+                      if (action === 'optimistic-delete' && key) {
+                        // Immediately remove the row from UI
+                        setCustomers(prev => prev.filter(c => String(c.id) !== key));
+                      } else {
+                        refreshCustomers();
+                      }
+                    }}
+                    searchText={tableSearchText}
+                  />
+                </Box>
+              )}
+            </CardContent>
+          </MuiCard>
         )}
 
-        <Modal
+        <Dialog
           open={showQuickEntry}
-          title={`Quick Entry${quickEntryCustomers.length ? ` — ${quickEntryCustomers.length} customer(s)` : ''}`}
-          onCancel={() => setShowQuickEntry(false)}
-          footer={null}
-          width={980}
-          centered
-          destroyOnClose
-          styles={{ body: { maxHeight: '72vh', overflowY: 'auto', padding: 16, background: '#f8fafc' } }}
+          onClose={() => setShowQuickEntry(false)}
+          maxWidth="md"
+          fullWidth
+          keepMounted={false}
         >
-          <QuickEntryModal
-            selectedCustomers={quickEntryCustomers}
-            servicesCatalog={services}
-            onClose={() => setShowQuickEntry(false)}
-          />
-        </Modal>
+          <DialogTitle>
+            Quick Entry{quickEntryCustomers.length ? ` — ${quickEntryCustomers.length} customer(s)` : ''}
+          </DialogTitle>
+          <DialogContent dividers sx={{ maxHeight: '72vh', bgcolor: '#f8fafc' }}>
+            <QuickEntryModal
+              selectedCustomers={quickEntryCustomers}
+              servicesCatalog={services}
+              onClose={() => setShowQuickEntry(false)}
+            />
+          </DialogContent>
+        </Dialog>
 
-        <Modal
+        <Dialog
           open={!!editingItem}
-          title={
-            editingItem?.customer
+          onClose={savingEditService || savingEditCustomer || openingEditModal ? undefined : handleCancelEdit}
+          maxWidth="sm"
+          fullWidth
+          keepMounted={false}
+        >
+          <DialogTitle>
+            {editingItem?.customer
               ? `Edit Customer — ${editingItem.customer.first_name ?? ''} ${editingItem.customer.last_name ?? ''}`.trim()
-              : editTitle
-          }
-          onCancel={handleCancelEdit}
-          footer={null}
-          width={800}
-          centered
-          destroyOnClose
-          maskClosable={!savingEditService && !savingEditCustomer && !openingEditModal}
-          closable={!savingEditService && !savingEditCustomer && !openingEditModal}
-          styles={{ body: { maxHeight: '65vh', overflowY: 'auto', padding: 0, background: '#f8fafc' } }}
-        >
-          {editingItem?.customer ? (
-            // Edit Customer: one customer record, all services; Add Service adds rows in modal
-            <Spin
-              spinning={openingEditModal || loadingEditEntries || savingEditCustomer}
-              tip={openingEditModal || loadingEditEntries ? 'Loading…' : 'Saving…'}
-            >
-              {!loadingEditEntries && (
-                <CustomerForm
-                  submitting={savingEditCustomer}
-                  services={services}
-                  onSubmit={handleEditCustomerSubmit}
-                  onCancel={handleCancelEdit}
-                  initial={{
-                    customer: editingItem.customer,
-                    services: mapEntriesToForm(editCustomerEntries || []),
-                  }}
-                  allowMultipleServicesInEdit={true}
-                  useCollapsibleServices={true}
-                  onRemoveService={handleRemoveService}
-                />
-              )}
-            </Spin>
-          ) : null}
-        </Modal>
+              : editTitle}
+          </DialogTitle>
+          <DialogContent dividers sx={{ maxHeight: '65vh', p: 0, bgcolor: '#f8fafc' }}>
+            {editingItem?.customer ? (
+              // Edit Customer: one customer record, all services; Add Service adds rows in modal
+              <Box sx={{ position: 'relative' }}>
+                {(openingEditModal || loadingEditEntries || savingEditCustomer) && (
+                  <Box sx={{
+                    position: 'absolute', inset: 0, display: 'flex', flexDirection: 'column', alignItems: 'center',
+                    justifyContent: 'center', gap: 1, bgcolor: 'rgba(255,255,255,0.85)', zIndex: 5,
+                  }}>
+                    <CircularProgress size={28} />
+                    <Typography variant="body2" color="text.secondary">
+                      {openingEditModal || loadingEditEntries ? 'Loading…' : 'Saving…'}
+                    </Typography>
+                  </Box>
+                )}
+                {!loadingEditEntries && (
+                  <CustomerForm
+                    submitting={savingEditCustomer}
+                    services={services}
+                    onSubmit={handleEditCustomerSubmit}
+                    onCancel={handleCancelEdit}
+                    initial={{
+                      customer: editingItem.customer,
+                      services: mapEntriesToForm(editCustomerEntries || []),
+                    }}
+                    allowMultipleServicesInEdit={true}
+                    useCollapsibleServices={true}
+                    onRemoveService={handleRemoveService}
+                  />
+                )}
+              </Box>
+            ) : null}
+          </DialogContent>
+        </Dialog>
 
-        <Modal
+        <Dialog
           open={!!addingServiceFor}
-          title={addingServiceFor ? `Add services for ${addingServiceFor.first_name} ${addingServiceFor.last_name}` : ''}
-          onCancel={handleCancelAddService}
-          footer={null}
-          width={800}
-          centered
-          destroyOnClose
-          maskClosable={!savingAddService}
-          closable={!savingAddService}
-          styles={{ body: { maxHeight: '70vh', overflowY: 'auto', padding: 0, background: '#f8fafc' } }}
+          onClose={savingAddService ? undefined : handleCancelAddService}
+          maxWidth="sm"
+          fullWidth
+          keepMounted={false}
         >
-          {addingServiceFor && (
-            <Spin spinning={savingAddService} tip="Saving services...">
+          <DialogTitle>
+            {addingServiceFor ? `Add services for ${addingServiceFor.first_name} ${addingServiceFor.last_name}` : ''}
+          </DialogTitle>
+          <DialogContent dividers sx={{ maxHeight: '70vh', p: 0, bgcolor: '#f8fafc' }}>
+            {addingServiceFor && (
+            <Box sx={{ position: 'relative' }}>
+              {savingAddService && (
+                <Box sx={{
+                  position: 'absolute', inset: 0, display: 'flex', flexDirection: 'column', alignItems: 'center',
+                  justifyContent: 'center', gap: 1, bgcolor: 'rgba(255,255,255,0.85)', zIndex: 5,
+                }}>
+                  <CircularProgress size={28} />
+                  <Typography variant="body2" color="text.secondary">Saving services...</Typography>
+                </Box>
+              )}
             <CustomerForm
               submitting={savingAddService}
               services={services}
@@ -851,16 +907,20 @@ export default function CustomersPage({ showAddForm = false, onNavigate }) {
               }}
               hideCustomerFields={true}
             />
-            </Spin>
-          )}
-        </Modal>
+            </Box>
+            )}
+          </DialogContent>
+        </Dialog>
 
         {showAddCustomer && (
-          <Card title={<span className="text-xl font-bold text-[#1a253c]">Add New Customer</span>} className="mt-4 overflow-x-auto">
-            <CustomerForm key={addFormKey} submitting={savingAddCustomer} onSubmit={handleSubmit} services={services} />
-          </Card>
+          <MuiCard variant="outlined" sx={{ mt: 2, overflowX: 'auto' }}>
+            <CardHeader title={<Typography variant="h5" fontWeight={700} color="#1a253c">Add New Customer</Typography>} />
+            <CardContent sx={{ pt: 0 }}>
+              <CustomerForm key={addFormKey} submitting={savingAddCustomer} onSubmit={handleSubmit} services={services} />
+            </CardContent>
+          </MuiCard>
         )}
-      </div>
-    </div>
+      </Box>
+    </Box>
   );
 }

@@ -48,6 +48,10 @@ def _get_or_create_canonical_batch_id(cur, customer_id: int) -> str:
 class ServiceModel(BaseModel):
     serviceName: Optional[str] = None
     days: Optional[int] = None
+    # Units-based services (e.g. H0038) are billed as units * ratePerDay.
+    # days and units are independent — days is calendar days, units is a
+    # separate count (e.g. 15-minute sessions) tracked on its own column.
+    units: Optional[int] = None
     ratePerDay: Optional[float] = None
     amountBilled: Optional[float] = None
     amountPaid: Optional[float] = None
@@ -301,7 +305,8 @@ def ensure_customer_services_columns():
 
 
 def ensure_customer_entries_columns():
-    """Add batch_id to customer_entries if missing (for batch-based add/edit)."""
+    """Add batch_id/units to customer_entries if missing (for batch-based add/edit
+    and units-based services like H0038, where days and units are tracked separately)."""
     conn = get_db_connection()
     cur = conn.cursor()
     try:
@@ -310,6 +315,10 @@ def ensure_customer_entries_columns():
         if 'batch_id' not in existing:
             cur.execute("ALTER TABLE customer_entries ADD COLUMN batch_id TEXT")
             logger.info("Added batch_id to customer_entries")
+            conn.commit()
+        if 'units' not in existing:
+            cur.execute("ALTER TABLE customer_entries ADD COLUMN units INTEGER")
+            logger.info("Added units to customer_entries")
             conn.commit()
     except Exception as e:
         logger.debug("ensure_customer_entries_columns: %s", e)
@@ -449,10 +458,10 @@ def create_customer(payload: CreateCustomerPayload, current_user: dict = Depends
                     denial_codes = None
                     
                 cur.execute(
-                    '''INSERT INTO customer_entries 
-                       (customer_id, customer_code, service_name, start_date, end_date, days, rate_per_day, 
-                        amount_billed, amount_paid, date_of_payment, date_submitted, denial_codes, billing_comments, batch_id) 
-                       VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?) RETURNING id''',
+                    '''INSERT INTO customer_entries
+                       (customer_id, customer_code, service_name, start_date, end_date, days, units, rate_per_day,
+                        amount_billed, amount_paid, date_of_payment, date_submitted, denial_codes, billing_comments, batch_id)
+                       VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?) RETURNING id''',
                     (
                         customer_id,
                         customer_code,
@@ -460,6 +469,7 @@ def create_customer(payload: CreateCustomerPayload, current_user: dict = Depends
                         service.get('startDate') or service.get('start_date'),
                         service.get('endDate') or service.get('end_date'),
                         service.get('days'),
+                        service.get('units'),
                         service.get('ratePerDay'),
                         service.get('amountBilled'),
                         service.get('amountPaid', 0),
@@ -855,11 +865,11 @@ def update_customer(customer_id: int, payload: UpdateCustomerPayload, current_us
                 # Create new entry for resubmission
                 logger.info("Creating new resubmission entry...")
                 cur.execute(
-                    '''INSERT INTO customer_entries 
-                       (customer_id, customer_code, service_name, start_date, end_date, days, rate_per_day, 
-                        amount_billed, amount_paid, date_of_payment, date_submitted, denial_codes, 
-                        is_resubmission, original_entry_id, resubmission_date, billing_comments) 
-                       VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?) RETURNING id''',
+                    '''INSERT INTO customer_entries
+                       (customer_id, customer_code, service_name, start_date, end_date, days, units, rate_per_day,
+                        amount_billed, amount_paid, date_of_payment, date_submitted, denial_codes,
+                        is_resubmission, original_entry_id, resubmission_date, billing_comments)
+                       VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?) RETURNING id''',
                     (
                         customer_id,
                         customer_code,
@@ -867,6 +877,7 @@ def update_customer(customer_id: int, payload: UpdateCustomerPayload, current_us
                         service.get('startDate') or service.get('start_date'),
                         service.get('endDate') or service.get('end_date'),
                         service.get('days'),
+                        service.get('units'),
                         service.get('ratePerDay'),
                         service.get('amountBilled'),
                         service.get('amountPaid', 0),
@@ -901,11 +912,11 @@ def update_customer(customer_id: int, payload: UpdateCustomerPayload, current_us
                 if not target_entry_id:
                     logger.info("No entry ID provided - creating NEW entry...")
                     cur.execute(
-                        '''INSERT INTO customer_entries 
-                           (customer_id, customer_code, service_name, start_date, end_date, days, rate_per_day, 
-                            amount_billed, amount_paid, date_of_payment, date_submitted, denial_codes, 
-                            is_resubmission, billing_comments) 
-                           VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?) RETURNING id''',
+                        '''INSERT INTO customer_entries
+                           (customer_id, customer_code, service_name, start_date, end_date, days, units, rate_per_day,
+                            amount_billed, amount_paid, date_of_payment, date_submitted, denial_codes,
+                            is_resubmission, billing_comments)
+                           VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?) RETURNING id''',
                         (
                             customer_id,
                             customer_code,
@@ -913,6 +924,7 @@ def update_customer(customer_id: int, payload: UpdateCustomerPayload, current_us
                             service.get('startDate') or service.get('start_date'),
                             service.get('endDate') or service.get('end_date'),
                             service.get('days'),
+                            service.get('units'),
                             service.get('ratePerDay'),
                             service.get('amountBilled'),
                             service.get('amountPaid', 0),
@@ -929,9 +941,9 @@ def update_customer(customer_id: int, payload: UpdateCustomerPayload, current_us
                     # Update existing entry
                     logger.info(f"Updating existing entry ID: {entry_to_update}")
                     cur.execute(
-                        '''UPDATE customer_entries 
-                           SET service_name = ?, start_date = ?, end_date = ?, days = ?, rate_per_day = ?, 
-                               amount_billed = ?, amount_paid = ?, date_of_payment = ?, date_submitted = ?, 
+                        '''UPDATE customer_entries
+                           SET service_name = ?, start_date = ?, end_date = ?, days = ?, units = ?, rate_per_day = ?,
+                               amount_billed = ?, amount_paid = ?, date_of_payment = ?, date_submitted = ?,
                                denial_codes = ?, is_resubmission = ?, billing_comments = ?, updated_at = CURRENT_TIMESTAMP
                            WHERE id = ?''',
                         (
@@ -939,6 +951,7 @@ def update_customer(customer_id: int, payload: UpdateCustomerPayload, current_us
                             service.get('startDate') or service.get('start_date'),
                             service.get('endDate') or service.get('end_date'),
                             service.get('days'),
+                            service.get('units'),
                             service.get('ratePerDay'),
                             service.get('amountBilled'),
                             service.get('amountPaid', 0),
@@ -956,11 +969,11 @@ def update_customer(customer_id: int, payload: UpdateCustomerPayload, current_us
                     # Entry ID was provided but not found - create new one
                     logger.warning(f"Entry ID {target_entry_id} not found - creating new entry...")
                     cur.execute(
-                        '''INSERT INTO customer_entries 
-                           (customer_id, customer_code, service_name, start_date, end_date, days, rate_per_day, 
-                            amount_billed, amount_paid, date_of_payment, date_submitted, denial_codes, 
-                            is_resubmission, billing_comments) 
-                           VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?) RETURNING id''',
+                        '''INSERT INTO customer_entries
+                           (customer_id, customer_code, service_name, start_date, end_date, days, units, rate_per_day,
+                            amount_billed, amount_paid, date_of_payment, date_submitted, denial_codes,
+                            is_resubmission, billing_comments)
+                           VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?) RETURNING id''',
                         (
                             customer_id,
                             customer_code,
@@ -968,6 +981,7 @@ def update_customer(customer_id: int, payload: UpdateCustomerPayload, current_us
                             service.get('startDate') or service.get('start_date'),
                             service.get('endDate') or service.get('end_date'),
                             service.get('days'),
+                            service.get('units'),
                             service.get('ratePerDay'),
                             service.get('amountBilled'),
                             service.get('amountPaid', 0),
@@ -1030,7 +1044,7 @@ def update_customer_service(customer_id: int, service_id: int, payload: ServiceW
 
             cur.execute(
                 '''UPDATE customer_entries
-                   SET service_name = ?, start_date = ?, end_date = ?, days = ?, rate_per_day = ?,
+                   SET service_name = ?, start_date = ?, end_date = ?, days = ?, units = ?, rate_per_day = ?,
                        amount_billed = ?, amount_paid = ?, date_of_payment = ?, date_submitted = ?,
                        denial_codes = ?, updated_at = CURRENT_TIMESTAMP
                    WHERE id = ?''',
@@ -1039,6 +1053,7 @@ def update_customer_service(customer_id: int, service_id: int, payload: ServiceW
                     service.get('startDate') or service.get('start_date'),
                     service.get('endDate') or service.get('end_date'),
                     service.get('days'),
+                    service.get('units'),
                     service.get('ratePerDay'),
                     service.get('amountBilled'),
                     service.get('amountPaid'),
@@ -1203,9 +1218,9 @@ def add_customer_service(customer_id: int, payload: ServiceWrapper, current_user
         # immediately reflects the new service line.
         cur.execute(
             '''INSERT INTO customer_entries
-               (customer_id, customer_code, service_name, start_date, end_date, days, rate_per_day,
+               (customer_id, customer_code, service_name, start_date, end_date, days, units, rate_per_day,
                 amount_billed, amount_paid, date_of_payment, date_submitted, denial_codes, is_resubmission, billing_comments, batch_id)
-               VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?) RETURNING id''',
+               VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?) RETURNING id''',
             (
                 customer_id,
                 customer_code,
@@ -1213,6 +1228,7 @@ def add_customer_service(customer_id: int, payload: ServiceWrapper, current_user
                 service.get('startDate') or service.get('start_date') or None,
                 service.get('endDate') or service.get('end_date') or None,
                 service.get('days'),
+                service.get('units'),
                 service.get('ratePerDay'),
                 service.get('amountBilled'),
                 service.get('amountPaid', 0),
@@ -1452,9 +1468,9 @@ def create_batch(customer_id: int, payload: BatchCreatePayload, current_user: di
                 denial_codes_val = None
             cur.execute(
                 '''INSERT INTO customer_entries
-                   (customer_id, customer_code, service_name, start_date, end_date, days, rate_per_day,
+                   (customer_id, customer_code, service_name, start_date, end_date, days, units, rate_per_day,
                     amount_billed, amount_paid, date_of_payment, date_submitted, denial_codes, batch_id)
-                   VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?) RETURNING id''',
+                   VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?) RETURNING id''',
                 (
                     customer_id,
                     customer_code,
@@ -1462,6 +1478,7 @@ def create_batch(customer_id: int, payload: BatchCreatePayload, current_user: di
                     svc.get('startDate') or svc.get('start_date'),
                     svc.get('endDate') or svc.get('end_date'),
                     svc.get('days'),
+                    svc.get('units'),
                     svc.get('ratePerDay'),
                     svc.get('amountBilled'),
                     svc.get('amountPaid', 0),
@@ -1530,7 +1547,7 @@ def update_batch(customer_id: int, batch_id: str, payload: BatchUpdatePayload, c
                 denial_codes_val = None
             cur.execute(
                 '''UPDATE customer_entries SET
-                   service_name = ?, start_date = ?, end_date = ?, days = ?, rate_per_day = ?,
+                   service_name = ?, start_date = ?, end_date = ?, days = ?, units = ?, rate_per_day = ?,
                    amount_billed = ?, amount_paid = ?, date_of_payment = ?, date_submitted = ?, denial_codes = ?,
                    updated_at = CURRENT_TIMESTAMP
                    WHERE id = ? AND customer_id = ?''',
@@ -1539,6 +1556,7 @@ def update_batch(customer_id: int, batch_id: str, payload: BatchUpdatePayload, c
                     svc.get('startDate') or svc.get('start_date'),
                     svc.get('endDate') or svc.get('end_date'),
                     svc.get('days'),
+                    svc.get('units'),
                     svc.get('ratePerDay'),
                     svc.get('amountBilled'),
                     svc.get('amountPaid', 0),
@@ -1602,9 +1620,9 @@ def add_customer_entry(customer_id: int, payload: ServiceWrapper, current_user: 
         # Insert into customer_entries table
         cur.execute(
             '''INSERT INTO customer_entries
-               (customer_id, customer_code, service_name, start_date, end_date, days, rate_per_day,
+               (customer_id, customer_code, service_name, start_date, end_date, days, units, rate_per_day,
                 amount_billed, amount_paid, date_of_payment, date_submitted, denial_codes, is_resubmission, billing_comments)
-               VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?) RETURNING id''',
+               VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?) RETURNING id''',
             (
                 customer_id,
                 customer_code,
@@ -1612,6 +1630,7 @@ def add_customer_entry(customer_id: int, payload: ServiceWrapper, current_user: 
                 service.get('startDate') or service.get('start_date'),
                 service.get('endDate') or service.get('end_date'),
                 service.get('days'),
+                service.get('units'),
                 service.get('ratePerDay'),
                 service.get('amountBilled'),
                 service.get('amountPaid', 0),
@@ -1732,11 +1751,11 @@ def create_resubmission(customer_id: int, payload: ResubmissionPayload, current_
             
         # Create resubmission entry
         cur.execute(
-            '''INSERT INTO customer_entries 
-               (customer_id, customer_code, service_name, start_date, end_date, days, rate_per_day, 
-                amount_billed, amount_paid, date_of_payment, date_submitted, denial_codes, 
-                is_resubmission, original_entry_id, resubmission_date, billing_comments) 
-               VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?) RETURNING id''',
+            '''INSERT INTO customer_entries
+               (customer_id, customer_code, service_name, start_date, end_date, days, units, rate_per_day,
+                amount_billed, amount_paid, date_of_payment, date_submitted, denial_codes,
+                is_resubmission, original_entry_id, resubmission_date, billing_comments)
+               VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?) RETURNING id''',
             (
                 customer_id,
                 customer['customer_code'],
@@ -1744,6 +1763,7 @@ def create_resubmission(customer_id: int, payload: ResubmissionPayload, current_
                 service.get('startDate') or original_entry['start_date'],
                 service.get('endDate') or original_entry['end_date'],
                 service.get('days') or original_entry['days'],
+                service.get('units') or original_entry.get('units'),
                 service.get('ratePerDay') or original_entry['rate_per_day'],
                 service.get('amountBilled') or original_entry['amount_billed'],
                 service.get('amountPaid', 0),
@@ -1843,6 +1863,7 @@ def get_all_entries(
                    e.start_date,
                    e.end_date,
                    e.days,
+                   e.units,
                    e.rate_per_day,
                    e.amount_billed,
                    e.amount_paid,
@@ -1964,6 +1985,7 @@ def get_latest_entries(
                    COALESCE(e.start_date, cs.start_date) as start_date,
                    COALESCE(e.end_date, cs.end_date) as end_date,
                    COALESCE(e.days, cs.days) as days,
+                   e.units as units,
                    COALESCE(e.rate_per_day, cs.rate_per_day) as rate_per_day,
                    COALESCE(e.amount_billed, cs.amount_billed) as amount_billed,
                    COALESCE(e.amount_paid, cs.amount_paid) as amount_paid,

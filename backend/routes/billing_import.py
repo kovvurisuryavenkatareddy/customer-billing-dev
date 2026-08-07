@@ -240,8 +240,8 @@ def _parse_h0038_cell(raw_val, year: int, rate: float) -> Tuple[List[Dict[str, A
         return [], None
     if isinstance(raw_val, datetime):
         dt_str = raw_val.strftime('%Y-%m-%d')
-        return [{'start_date': dt_str, 'end_date': dt_str,
-                 'days': 1, 'rate_per_day': rate, 'amount_billed': round(rate, 2)}], None
+        return [{'start_date': dt_str, 'end_date': dt_str, 'days': 1, 'units': 1,
+                 'rate_per_day': rate, 'amount_billed': round(rate, 2)}], None
     if isinstance(raw_val, (int, float)):
         return [], None
     s = str(raw_val).strip()
@@ -281,7 +281,10 @@ def _parse_h0038_cell(raw_val, year: int, rate: float) -> Tuple[List[Dict[str, A
             entries.append({
                 'start_date':    dt_str,
                 'end_date':      dt_str,
-                'days':          units,
+                # H0038 is billed per unit, not per day — each entry covers one
+                # calendar day but a variable number of units (15-min sessions).
+                'days':          1,
+                'units':         units,
                 'rate_per_day':  rate,
                 'amount_billed': round(units * rate, 2),
             })
@@ -605,13 +608,14 @@ def _process_workbook(wb, filename: str, source_type: str = 'excel') -> Dict[str
                     cur.execute(
                         "INSERT INTO customer_entries "
                         "(customer_id, customer_code, service_name, start_date, end_date, "
-                        " days, rate_per_day, amount_billed, amount_paid, created_at, batch_id) "
-                        "VALUES (?,?,?,?,?,?,?,?,?,?,?)",
+                        " days, units, rate_per_day, amount_billed, amount_paid, created_at, batch_id) "
+                        "VALUES (?,?,?,?,?,?,?,?,?,?,?,?)",
                         (
                             customer_id,           customer_code,
                             entry['service_name'],
                             entry['start_date'],   entry['end_date'],
-                            entry['days'],         entry['rate_per_day'],
+                            entry['days'],         entry.get('units'),
+                            entry['rate_per_day'],
                             entry['amount_billed'], 0.0,
                             created_at,            batch_id,
                         )
@@ -623,6 +627,7 @@ def _process_workbook(wb, filename: str, source_type: str = 'excel') -> Dict[str
                         'start_date':   entry['start_date'],
                         'end_date':     entry['end_date'],
                         'days':         entry['days'],
+                        'units':        entry.get('units'),
                         'rate_per_day': entry['rate_per_day'],
                         'amount_billed': entry['amount_billed'],
                     })
@@ -879,13 +884,14 @@ def _insert_parsed_entries(
         cur.execute(
             "INSERT INTO customer_entries "
             "(customer_id, customer_code, service_name, start_date, end_date, "
-            " days, rate_per_day, amount_billed, amount_paid, created_at, batch_id) "
-            "VALUES (?,?,?,?,?,?,?,?,?,?,?)",
+            " days, units, rate_per_day, amount_billed, amount_paid, created_at, batch_id) "
+            "VALUES (?,?,?,?,?,?,?,?,?,?,?,?)",
             (
                 customer_id, customer_code,
                 entry['service_name'],
                 entry['start_date'], entry['end_date'],
-                entry['days'], entry['rate_per_day'],
+                entry['days'], entry.get('units'),
+                entry['rate_per_day'],
                 entry['amount_billed'], 0.0,
                 created_at, batch_id,
             ),
@@ -896,6 +902,7 @@ def _insert_parsed_entries(
             'start_date': entry['start_date'],
             'end_date': entry['end_date'],
             'days': entry['days'],
+            'units': entry.get('units'),
             'rate_per_day': entry['rate_per_day'],
             'amount_billed': entry['amount_billed'],
         })

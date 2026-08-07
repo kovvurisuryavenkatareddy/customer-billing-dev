@@ -4,14 +4,25 @@
 import React, { useState, useEffect } from 'react';
 import axios from 'axios';
 import {
-  Card, Button, Progress, Alert, List, Collapse, InputNumber,
-  Table, Spin, Space, Tag, Empty, Modal, Input, Form, message, Tooltip,
-} from 'antd';
-import {
-  UploadOutlined, FileExcelOutlined, InboxOutlined,
-  ReloadOutlined, HistoryOutlined, AppstoreOutlined, BarsOutlined,
-  EditOutlined, SyncOutlined, GoogleOutlined,
-} from '@ant-design/icons';
+  Box, Paper, Button, ButtonGroup, LinearProgress, Alert, List, ListItem,
+  Accordion, AccordionSummary, AccordionDetails, TextField, Table, TableBody,
+  TableCell, TableContainer, TableHead, TableRow, TablePagination, IconButton,
+  CircularProgress, Chip, Tooltip, Typography, Dialog, DialogTitle, DialogContent,
+  DialogActions, Collapse,
+} from '@mui/material';
+import UploadIcon from '@mui/icons-material/Upload';
+import DescriptionIcon from '@mui/icons-material/Description';
+import InboxIcon from '@mui/icons-material/Inbox';
+import RefreshIcon from '@mui/icons-material/Refresh';
+import HistoryIcon from '@mui/icons-material/History';
+import GridViewIcon from '@mui/icons-material/GridView';
+import ViewListIcon from '@mui/icons-material/ViewList';
+import EditIcon from '@mui/icons-material/Edit';
+import SyncIcon from '@mui/icons-material/Sync';
+import GoogleIcon from '@mui/icons-material/Google';
+import ExpandMoreIcon from '@mui/icons-material/ExpandMore';
+import KeyboardArrowDownIcon from '@mui/icons-material/KeyboardArrowDown';
+import KeyboardArrowRightIcon from '@mui/icons-material/KeyboardArrowRight';
 import { API_BASE, getAuthHeaders, handle401Error } from '../utils/api';
 
 // ─── Formatters ───────────────────────────────────────────────────────────────
@@ -108,172 +119,285 @@ function buildCustomerEntryRows(cust) {
   return [...valid, ...mapInvalidEntryRows(cust.entries_invalid)];
 }
 
-// ─── Column definitions (defined once, outside the component) ────────────────
+// ─── Level 3 — individual service entries inside a customer ──────────────────
 
-// Level 3 — individual service entries inside a customer
-// Rows with _is_invalid=true are format-error rows; they render in red with the raw cell value.
-const entrySubColumns = [
-  {
-    title: 'Service', dataIndex: 'service_name', key: 'service_name', width: 80, ellipsis: true,
-    render: (v, r) => r._is_invalid
-      ? <span style={{ color: '#dc2626', fontWeight: 600 }}>{v}</span>
-      : v,
-  },
-  {
-    title: 'Start Date', dataIndex: 'start_date', key: 'start_date', width: 130, ellipsis: true,
-    render: (v, r) => r._is_invalid
-      ? <span style={{ color: '#dc2626', fontFamily: 'monospace', fontSize: 12 }} title={r._error}>{v}</span>
-      : fmtDate(v),
-  },
-  {
-    title: 'End Date', dataIndex: 'end_date', key: 'end_date', width: 100,
-    render: (v, r) => r._is_invalid ? <span style={{ color: '#94a3b8' }}>—</span> : fmtDate(v),
-  },
-  {
-    title: 'Days', dataIndex: 'days', key: 'days', width: 48, align: 'center',
-    render: (v, r) => r._is_invalid ? <span style={{ color: '#94a3b8' }}>—</span> : v,
-  },
-  {
-    title: 'Rate/Day', dataIndex: 'rate_per_day', key: 'rate_per_day',
-    width: 80, align: 'center',
-    render: (v, r) => r._is_invalid ? <span style={{ color: '#94a3b8' }}>—</span> : fmtMoney(v),
-  },
-  {
-    title: 'Amount', dataIndex: 'amount_billed', key: 'amount_billed',
-    width: 110, align: 'center',
-    render: (v, r) => r._is_invalid
-      ? <Tag color="error" style={{ margin: 0, fontSize: 11 }}>Invalid format</Tag>
-      : <span style={{ fontWeight: 600 }}>{fmtMoney(v)}</span>,
-  },
-];
+function EntriesTable({ rows }) {
+  const totalBilled = rows
+    .filter((r) => !r._is_invalid)
+    .reduce((s, e) => s + (Number(e.amount_billed) || 0), 0);
+  const hasValid = rows.some((r) => !r._is_invalid);
 
-// Level 2 — customers inside one import session
-function buildCustomerColumns(onEditInvalid) {
-  return [
-    {
-      title: 'Customer', dataIndex: 'customer_name', key: 'customer_name', width: 70, ellipsis: true,
-      render: (n) => <span style={{ fontWeight: 600 }}>{n}</span>,
-    },
-    {
-      title: 'Status', key: 'status', width: 75, align: 'center',
-      render: (_, r) =>
-        r.is_new_customer ? <Tag color="green">New</Tag> : <Tag color="blue">Existing</Tag>,
-    },
-    {
-      title: 'Added', key: 'added', width: 58, align: 'center',
-      render: (_, r) => (
-        <span style={{ color: r.entries_added?.length > 0 ? '#16a34a' : '#94a3b8', fontWeight: 600 }}>
-          {r.entries_added?.length ?? 0}
-        </span>
-      ),
-    },
-    {
-      title: 'Existed', dataIndex: 'entries_skipped', key: 'skipped', width: 30, align: 'center',
-      render: (v) => <span style={{ color: v > 0 ? '#d97706' : '#94a3b8' }}>{v}</span>,
-    },
-    {
-      title: 'Issues', key: 'issues', width: 88, align: 'center',
-      render: (_, r) => {
-        const n = r.entries_invalid?.length ?? 0;
-        if (n === 0) return <span style={{ color: '#94a3b8' }}>—</span>;
-        return (
-          <Tag color="warning" style={{ margin: 0, fontSize: 11 }}>
-            {n} invalid
-          </Tag>
-        );
-      },
-    },
-    {
-      title: 'Total Billed', key: 'total_billed', width: 110, align: 'center',
-      render: (_, r) => {
-        const t = (r.entries_added || []).reduce((s, e) => s + (Number(e.amount_billed) || 0), 0);
-        return <span style={{ fontWeight: 600, fontFamily: 'monospace' }}>{fmtMoney(t)}</span>;
-      },
-    },
-    {
-      title: '', key: 'actions', width: 72, align: 'center',
-      render: (_, r) => (
-        hasInvalidEntries(r) ? (
-          <Button
-            type="link"
-            size="small"
-            icon={<EditOutlined />}
-            onClick={(e) => { e.stopPropagation(); onEditInvalid(r); }}
-          >
-            Edit
-          </Button>
-        ) : null
-      ),
-    },
-  ];
+  if (rows.length === 0) {
+    return <Typography variant="caption" color="text.secondary" sx={{ px: 1, py: 0.75, display: 'block' }}>No entries.</Typography>;
+  }
+
+  return (
+    <TableContainer sx={{ overflowX: 'auto' }}>
+      <Table size="small" sx={{ minWidth: 640 }}>
+        <TableHead>
+          <TableRow>
+            <TableCell sx={{ width: 80 }}>Service</TableCell>
+            <TableCell sx={{ width: 130 }}>Start Date</TableCell>
+            <TableCell sx={{ width: 100 }}>End Date</TableCell>
+            <TableCell align="center" sx={{ width: 64 }}>Days/Units</TableCell>
+            <TableCell align="center" sx={{ width: 80 }}>Rate/Day</TableCell>
+            <TableCell align="center" sx={{ width: 110 }}>Amount</TableCell>
+          </TableRow>
+        </TableHead>
+        <TableBody>
+          {rows.map((r) => (
+            <TableRow key={r.key} sx={r._is_invalid ? { bgcolor: '#fef2f2' } : undefined}>
+              <TableCell sx={r._is_invalid ? { color: '#dc2626', fontWeight: 600 } : undefined}>
+                {r.service_name}
+              </TableCell>
+              <TableCell
+                sx={r._is_invalid ? { color: '#dc2626', fontFamily: 'monospace', fontSize: 12 } : undefined}
+                title={r._is_invalid ? r._error : undefined}
+              >
+                {r._is_invalid ? r.start_date : fmtDate(r.start_date)}
+              </TableCell>
+              <TableCell sx={r._is_invalid ? { color: '#94a3b8' } : undefined}>
+                {r._is_invalid ? '—' : fmtDate(r.end_date)}
+              </TableCell>
+              <TableCell align="center" sx={r._is_invalid ? { color: '#94a3b8' } : undefined}>
+                {r._is_invalid ? '—' : ((r.units != null && r.units !== '') ? `${r.units}u` : r.days)}
+              </TableCell>
+              <TableCell align="center" sx={r._is_invalid ? { color: '#94a3b8' } : undefined}>
+                {r._is_invalid ? '—' : fmtMoney(r.rate_per_day)}
+              </TableCell>
+              <TableCell align="center">
+                {r._is_invalid
+                  ? <Chip size="small" color="error" label="Invalid format" sx={{ fontSize: 11 }} />
+                  : <Box component="span" sx={{ fontWeight: 600 }}>{fmtMoney(r.amount_billed)}</Box>}
+              </TableCell>
+            </TableRow>
+          ))}
+          {hasValid && (
+            <TableRow>
+              <TableCell colSpan={5} align="right" sx={{ borderBottom: 0 }}>
+                <Typography variant="caption" color="text.secondary" fontWeight={500}>Total</Typography>
+              </TableCell>
+              <TableCell align="center" sx={{ borderBottom: 0 }}>
+                <Box component="span" sx={{ fontWeight: 700, fontFamily: 'monospace' }}>{fmtMoney(totalBilled)}</Box>
+              </TableCell>
+            </TableRow>
+          )}
+        </TableBody>
+      </Table>
+    </TableContainer>
+  );
 }
 
-// Level 1 — one row per import session
-const historyColumns = [
-  {
-    title: 'Date & Time (EST)', dataIndex: 'imported_at', key: 'imported_at',
-    width: 160, ellipsis: true, render: fmtDateTime,
-  },
-  {
-    // Source is shown inline rather than in its own column: Google syncs get a
-    // green icon + "Google Sync" tag, uploads just get the Excel icon.
-    title: 'File', dataIndex: 'filename', key: 'filename',
-    width: 260,
-    render: (v, r) => {
-      const isGoogle = r.source_type === 'google';
-      const name = v || 'Untitled';
-      return (
-        <Tooltip title={`${isGoogle ? 'Google Sync' : 'Excel upload'} — ${name}`}>
-          <span style={{ display: 'flex', alignItems: 'center', gap: 6, minWidth: 0 }}>
-            {isGoogle
-              ? <GoogleOutlined style={{ color: '#0f9d58', flexShrink: 0 }} />
-              : <FileExcelOutlined style={{ color: '#1d6f42', flexShrink: 0 }} />}
-            {isGoogle && (
-              <Tag color="green" style={{ margin: 0, flexShrink: 0, fontSize: 10, lineHeight: '16px', padding: '0 5px' }}>
-                Google Sync
-              </Tag>
-            )}
-            <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
-              {name}
-            </span>
-          </span>
-        </Tooltip>
-      );
-    },
-  },
-  {
-    title: 'New', dataIndex: 'customers_new', key: 'customers_new',
-    width: 50, align: 'center',
-    render: (v) => <span style={{ color: v > 0 ? '#16a34a' : '#94a3b8', fontWeight: 600 }}>{v}</span>,
-  },
-  {
-    title: 'Added', dataIndex: 'entries_added', key: 'entries_added',
-    width: 58, align: 'center',
-    render: (v) => <span style={{ color: v > 0 ? '#16a34a' : '#94a3b8', fontWeight: 600 }}>{v}</span>,
-  },
-  {
-    title: 'Existed', dataIndex: 'entries_skipped', key: 'entries_skipped',
-    width: 62, align: 'center',
-    render: (v) => <span style={{ color: v > 0 ? '#d97706' : '#94a3b8' }}>{v}</span>,
-  },
-  {
-    title: 'Invalid', key: 'entries_invalid', width: 68, align: 'center',
-    render: (_, r) => {
-      const n = countInvalidCells(r);
-      if (n === 0) return <span style={{ color: '#94a3b8' }}>—</span>;
-      return (
-        <Tag color="warning" style={{ margin: 0, fontWeight: 600 }}>
-          {n}
-        </Tag>
-      );
-    },
-  },
-  {
-    title: 'Total Billed', dataIndex: 'total_billed', key: 'total_billed',
-    width: 110, align: 'right',
-    render: (v) => <span style={{ fontWeight: 600, fontFamily: 'monospace' }}>{fmtMoney(v)}</span>,
-  },
-];
+// ─── Level 2 — customers inside one import session ────────────────────────────
+
+function CustomerRow({ record, onEditInvalid }) {
+  const [open, setOpen] = useState(false);
+  const entryRows = buildCustomerEntryRows(record);
+
+  return (
+    <>
+      <TableRow hover sx={hasInvalidEntries(record) ? { bgcolor: '#fefce8' } : undefined}>
+        <TableCell sx={{ width: 32 }}>
+          <IconButton size="small" onClick={() => setOpen((o) => !o)}>
+            {open ? <KeyboardArrowDownIcon fontSize="small" /> : <KeyboardArrowRightIcon fontSize="small" />}
+          </IconButton>
+        </TableCell>
+        <TableCell sx={{ fontWeight: 600 }}>{record.customer_name}</TableCell>
+        <TableCell align="center">
+          {record.is_new_customer
+            ? <Chip size="small" color="success" label="New" />
+            : <Chip size="small" color="info" label="Existing" />}
+        </TableCell>
+        <TableCell align="center">
+          <Box component="span" sx={{ color: record.entries_added?.length > 0 ? '#16a34a' : '#94a3b8', fontWeight: 600 }}>
+            {record.entries_added?.length ?? 0}
+          </Box>
+        </TableCell>
+        <TableCell align="center">
+          <Box component="span" sx={{ color: record.entries_skipped > 0 ? '#d97706' : '#94a3b8' }}>
+            {record.entries_skipped}
+          </Box>
+        </TableCell>
+        <TableCell align="center">
+          {(record.entries_invalid?.length ?? 0) === 0
+            ? <Box component="span" sx={{ color: '#94a3b8' }}>—</Box>
+            : <Chip size="small" color="warning" label={`${record.entries_invalid.length} invalid`} sx={{ fontSize: 11 }} />}
+        </TableCell>
+        <TableCell align="center">
+          <Box component="span" sx={{ fontWeight: 600, fontFamily: 'monospace' }}>
+            {fmtMoney((record.entries_added || []).reduce((s, e) => s + (Number(e.amount_billed) || 0), 0))}
+          </Box>
+        </TableCell>
+        <TableCell align="center">
+          {hasInvalidEntries(record) && (
+            <Button size="small" startIcon={<EditIcon fontSize="small" />} onClick={(e) => { e.stopPropagation(); onEditInvalid(record); }}>
+              Edit
+            </Button>
+          )}
+        </TableCell>
+      </TableRow>
+      <TableRow>
+        <TableCell colSpan={8} sx={{ p: 0, borderBottom: open ? undefined : 0 }}>
+          <Collapse in={open} unmountOnExit>
+            <Box sx={{ py: 1, px: 1 }}>
+              <EntriesTable rows={entryRows} />
+            </Box>
+          </Collapse>
+        </TableCell>
+      </TableRow>
+    </>
+  );
+}
+
+function CustomerLogsTable({ changed, onEditInvalid }) {
+  return (
+    <TableContainer sx={{ overflowX: 'auto' }}>
+      <Table size="small" sx={{ minWidth: 700 }}>
+        <TableHead>
+          <TableRow>
+            <TableCell sx={{ width: 32 }} />
+            <TableCell sx={{ width: 70 }}>Customer</TableCell>
+            <TableCell align="center" sx={{ width: 75 }}>Status</TableCell>
+            <TableCell align="center" sx={{ width: 58 }}>Added</TableCell>
+            <TableCell align="center" sx={{ width: 60 }}>Existed</TableCell>
+            <TableCell align="center" sx={{ width: 88 }}>Issues</TableCell>
+            <TableCell align="center" sx={{ width: 110 }}>Total Billed</TableCell>
+            <TableCell align="center" sx={{ width: 72 }} />
+          </TableRow>
+        </TableHead>
+        <TableBody>
+          {changed.map((l, i) => (
+            <CustomerRow key={i} record={l} onEditInvalid={onEditInvalid} />
+          ))}
+        </TableBody>
+      </Table>
+    </TableContainer>
+  );
+}
+
+// ─── Level 1 — one row per import session ─────────────────────────────────────
+
+function FileCell({ record }) {
+  const isGoogle = record.source_type === 'google';
+  const name = record.filename || 'Untitled';
+  return (
+    <Tooltip title={`${isGoogle ? 'Google Sync' : 'Excel upload'} — ${name}`}>
+      <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.75, minWidth: 0 }}>
+        {isGoogle
+          ? <GoogleIcon fontSize="small" sx={{ color: '#0f9d58', flexShrink: 0 }} />
+          : <DescriptionIcon fontSize="small" sx={{ color: '#1d6f42', flexShrink: 0 }} />}
+        {isGoogle && (
+          <Chip size="small" color="success" label="Google Sync" sx={{ fontSize: 10, height: 18, flexShrink: 0 }} />
+        )}
+        <Box component="span" sx={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+          {name}
+        </Box>
+      </Box>
+    </Tooltip>
+  );
+}
+
+function HistoryRow({ record, expanded, onToggle, onEditInvalid }) {
+  const changed = (record.customer_logs || []).filter(
+    (l) => !l.is_error && ((l.entries_added?.length > 0) || hasInvalidEntries(l))
+  );
+  const invalidCellCount = changed.reduce((s, l) => s + (l.entries_invalid?.length ?? 0), 0);
+
+  return (
+    <>
+      <TableRow hover>
+        <TableCell sx={{ width: 32 }}>
+          <IconButton size="small" onClick={onToggle}>
+            {expanded ? <KeyboardArrowDownIcon fontSize="small" /> : <KeyboardArrowRightIcon fontSize="small" />}
+          </IconButton>
+        </TableCell>
+        <TableCell sx={{ width: 160 }}>{fmtDateTime(record.imported_at)}</TableCell>
+        <TableCell sx={{ width: 260 }}><FileCell record={record} /></TableCell>
+        <TableCell align="center" sx={{ width: 50 }}>
+          <Box component="span" sx={{ color: record.customers_new > 0 ? '#16a34a' : '#94a3b8', fontWeight: 600 }}>
+            {record.customers_new}
+          </Box>
+        </TableCell>
+        <TableCell align="center" sx={{ width: 58 }}>
+          <Box component="span" sx={{ color: record.entries_added > 0 ? '#16a34a' : '#94a3b8', fontWeight: 600 }}>
+            {record.entries_added}
+          </Box>
+        </TableCell>
+        <TableCell align="center" sx={{ width: 62 }}>
+          <Box component="span" sx={{ color: record.entries_skipped > 0 ? '#d97706' : '#94a3b8' }}>
+            {record.entries_skipped}
+          </Box>
+        </TableCell>
+        <TableCell align="center" sx={{ width: 68 }}>
+          {countInvalidCells(record) === 0
+            ? <Box component="span" sx={{ color: '#94a3b8' }}>—</Box>
+            : <Chip size="small" color="warning" label={countInvalidCells(record)} sx={{ fontWeight: 600 }} />}
+        </TableCell>
+        <TableCell align="right" sx={{ width: 110 }}>
+          <Box component="span" sx={{ fontWeight: 600, fontFamily: 'monospace' }}>{fmtMoney(record.total_billed)}</Box>
+        </TableCell>
+      </TableRow>
+      <TableRow>
+        <TableCell colSpan={8} sx={{ p: 0, borderBottom: expanded ? undefined : 0 }}>
+          <Collapse in={expanded} unmountOnExit>
+            <Box sx={{ py: 1 }}>
+              {changed.length === 0 ? (
+                <Typography variant="body2" color="text.secondary" sx={{ ml: 5, my: 0.75 }}>
+                  No new entries — all data already existed.
+                </Typography>
+              ) : (
+                <>
+                  {invalidCellCount > 0 && (
+                    <Alert severity="warning" sx={{ mb: 1, fontSize: 13 }}>
+                      {invalidCellCount} cell{invalidCellCount !== 1 ? 's' : ''} could not be parsed — use Edit to fix
+                      (add year when start month &gt; end month, e.g. 12/5/2025-3/10/2026)
+                    </Alert>
+                  )}
+                  <CustomerLogsTable changed={changed} onEditInvalid={(cust) => onEditInvalid(record, cust)} />
+                </>
+              )}
+            </Box>
+          </Collapse>
+        </TableCell>
+      </TableRow>
+    </>
+  );
+}
+
+function HistoryTable({ rows, expandedKeys, onToggle, onEditInvalid, pagination }) {
+  return (
+    <Box>
+      <TableContainer sx={{ overflowX: 'auto' }}>
+        <Table size="small" sx={{ minWidth: 870 }} stickyHeader>
+          <TableHead>
+            <TableRow>
+              <TableCell sx={{ width: 32 }} />
+              <TableCell>Date &amp; Time (EST)</TableCell>
+              <TableCell>File</TableCell>
+              <TableCell align="center">New</TableCell>
+              <TableCell align="center">Added</TableCell>
+              <TableCell align="center">Existed</TableCell>
+              <TableCell align="center">Invalid</TableCell>
+              <TableCell align="right">Total Billed</TableCell>
+            </TableRow>
+          </TableHead>
+          <TableBody>
+            {rows.map((r) => (
+              <HistoryRow
+                key={r.key}
+                record={r}
+                expanded={expandedKeys.includes(r.key)}
+                onToggle={() => onToggle(r.key)}
+                onEditInvalid={onEditInvalid}
+              />
+            ))}
+          </TableBody>
+        </Table>
+      </TableContainer>
+      {pagination}
+    </Box>
+  );
+}
 
 // ─── Component ────────────────────────────────────────────────────────────────
 
@@ -292,6 +416,8 @@ export default function BillingImport() {
   const [expandedHistoryKeys, setExpandedHistoryKeys] = useState([]);
   const [groupByDate, setGroupByDate] = useState(false);
   const [activeView, setActiveView] = useState('import');
+  const [historyPage, setHistoryPage] = useState(0);
+  const [historyRowsPerPage, setHistoryRowsPerPage] = useState(20);
 
   // Service manager
   const [services, setServices] = useState([]);
@@ -324,7 +450,7 @@ export default function BillingImport() {
 
   async function handleSync() {
     const url = syncUrl.trim();
-    if (!url) { message.warning('Paste a Google Sheets or Drive link first.'); return; }
+    if (!url) { window.showToast?.({ message: 'Paste a Google Sheets or Drive link first.', type: 'warning' }); return; }
     setSyncing(true);
     setSyncResult(null);
     setError('');
@@ -492,39 +618,6 @@ export default function BillingImport() {
     }
   };
 
-  const serviceColumns = [
-    {
-      title: 'Name', dataIndex: 'name', key: 'name',
-      render: (val, record, idx) => (
-        <input className="w-full border border-gray-300 rounded px-2 py-1" value={val || ''}
-          onChange={(e) => handleServiceFieldChange(idx, 'name', e.target.value)} />
-      ),
-    },
-    {
-      title: 'Rate/Day ($)', dataIndex: 'rate_per_day', key: 'rate_per_day',
-      render: (val, record, idx) => (
-        <InputNumber min={0} step={0.01} className="w-full" value={val ?? record.ratePerDay ?? ''}
-          onChange={(v) => handleServiceFieldChange(idx, 'rate_per_day', v)} />
-      ),
-    },
-    {
-      title: 'Default Days', dataIndex: 'default_days', key: 'default_days',
-      render: (val, record, idx) => (
-        <InputNumber min={0} className="w-full" value={val ?? record.defaultDays ?? ''}
-          onChange={(v) => handleServiceFieldChange(idx, 'default_days', v)} />
-      ),
-    },
-    {
-      title: '', key: 'save',
-      render: (_, record) => (
-        <Button size="small" type="primary"
-          onClick={async () => { const ok = await saveService(record); if (ok) fetchServices(); }}>
-          Save
-        </Button>
-      ),
-    },
-  ];
-
   function openEditInvalid(importLog, cust) {
     const importedYear = importLog.imported_at
       ? new Date(importLog.imported_at).getFullYear()
@@ -578,489 +671,427 @@ export default function BillingImport() {
       if (res.status === 401) { handle401Error(); return; }
       const data = await res.json().catch(() => ({}));
       if (!res.ok) {
-        message.error(data.detail || 'Failed to save corrected entries');
+        window.showToast?.({ message: data.detail || 'Failed to save corrected entries', type: 'error' });
         return;
       }
       if (data.parse_errors?.length) {
-        message.warning(
-          `${data.parse_errors.length} row(s) still invalid — check format and year`,
-        );
+        window.showToast?.({ message: `${data.parse_errors.length} row(s) still invalid — check format and year`, type: 'warning' });
       } else {
-        message.success(
-          `Added ${data.entries_added ?? 0} service entr${(data.entries_added ?? 0) === 1 ? 'y' : 'ies'}`,
-        );
+        window.showToast?.({
+          message: `Added ${data.entries_added ?? 0} service entr${(data.entries_added ?? 0) === 1 ? 'y' : 'ies'}`,
+          type: 'success',
+        });
       }
       setEditModalOpen(false);
       setEditContext(null);
       await loadHistory();
     } catch (e) {
-      message.error('Failed to save corrected entries');
+      window.showToast?.({ message: 'Failed to save corrected entries', type: 'error' });
     } finally {
       setEditSaving(false);
     }
   }
 
-  // ── Expandable row renderer for the history table ────────────────────────
-
-  function renderHistoryExpanded(record) {
-    const changed = (record.customer_logs || []).filter(
-      (l) => !l.is_error && ((l.entries_added?.length > 0) || hasInvalidEntries(l))
-    );
-
-    if (changed.length === 0) {
-      return (
-        <div style={{ margin: '6px 0 6px 40px', color: '#94a3b8', fontSize: 13 }}>
-          No new entries — all data already existed.
-        </div>
-      );
-    }
-
-    const invalidCellCount = changed.reduce(
-      (s, l) => s + (l.entries_invalid?.length ?? 0), 0
-    );
-
-    return (
-      <div style={{ padding: '4px 0' }}>
-        {invalidCellCount > 0 && (
-          <Alert
-            type="warning"
-            showIcon
-            message={`${invalidCellCount} cell${invalidCellCount !== 1 ? 's' : ''} could not be parsed — use Edit to fix (add year when start month > end month, e.g. 12/5/2025-3/10/2026)`}
-            style={{ marginBottom: 8, padding: '4px 12px', fontSize: 13 }}
-          />
-        )}
-        <Table
-          size="small"
-          bordered
-          dataSource={changed.map((l, i) => ({ ...l, key: i }))}
-          columns={buildCustomerColumns((cust) => openEditInvalid(record, cust))}
-          pagination={false}
-          scroll={{ x: 700 }}
-          onRow={(row) => (
-            hasInvalidEntries(row) ? { style: { background: '#fefce8' } } : {}
-          )}
-          expandable={{
-            expandedRowRender: (cust) => {
-              const entryRows = buildCustomerEntryRows(cust);
-              if (entryRows.length === 0) {
-                return <div style={{ padding: '6px 8px', color: '#94a3b8', fontSize: 13 }}>No entries.</div>;
-              }
-              const totalBilled = (cust.entries_added || []).reduce(
-                (s, e) => s + (Number(e.amount_billed) || 0), 0
-              );
-              const hasValid = (cust.entries_added?.length ?? 0) > 0;
-              return (
-                <Table
-                  size="small"
-                  bordered
-                  dataSource={entryRows}
-                  columns={entrySubColumns}
-                  pagination={false}
-                  scroll={{ x: 640 }}
-                  onRow={(r) => (r._is_invalid ? { style: { background: '#fef2f2' } } : {})}
-                  summary={hasValid ? () => (
-                    <Table.Summary.Row>
-                      <Table.Summary.Cell colSpan={5} index={0} align="right">
-                        <span style={{ fontSize: 12, color: '#64748b', fontWeight: 500 }}>Total</span>
-                      </Table.Summary.Cell>
-                      <Table.Summary.Cell index={5} align="center">
-                        <span style={{ fontWeight: 700, fontFamily: 'monospace' }}>{fmtMoney(totalBilled)}</span>
-                      </Table.Summary.Cell>
-                    </Table.Summary.Row>
-                  ) : undefined}
-                />
-              );
-            },
-            rowExpandable: () => true,
-          }}
-        />
-      </div>
-    );
+  function toggleHistoryKey(key) {
+    setExpandedHistoryKeys((prev) => (
+      prev.includes(key) ? prev.filter((k) => k !== key) : [...prev, key]
+    ));
   }
 
   // ── Render ───────────────────────────────────────────────────────────────
 
+  const historyRows = importHistory.map((r) => ({ ...r, key: String(r.id) }));
+  const pagedHistoryRows = historyRows.slice(
+    historyPage * historyRowsPerPage, historyPage * historyRowsPerPage + historyRowsPerPage
+  );
+
   return (
-    <div className={activeView === 'import' ? 'max-w-[720px] mx-auto py-4' : 'w-full py-4 px-2 sm:px-4 lg:px-6'}>
+    <Box sx={{ maxWidth: activeView === 'import' ? 720 : '100%', mx: 'auto', py: 2, px: activeView === 'import' ? 0 : { xs: 1, sm: 2, lg: 3 } }}>
 
       {/* ── View Toggle ──────────────────────────────────────────────────── */}
-      <div className="flex justify-center mb-6">
-        <Button.Group size="large">
+      <Box sx={{ display: 'flex', justifyContent: 'center', mb: 3 }}>
+        <ButtonGroup size="large">
           <Button
-            type={activeView === 'import' ? 'primary' : 'default'}
-            icon={<UploadOutlined />}
+            variant={activeView === 'import' ? 'contained' : 'outlined'}
+            startIcon={<UploadIcon />}
             onClick={() => setActiveView('import')}
           >
             Import Data
           </Button>
           <Button
-            type={activeView === 'history' ? 'primary' : 'default'}
-            icon={<HistoryOutlined />}
-            onClick={() => { setActiveView('history'); }}
+            variant={activeView === 'history' ? 'contained' : 'outlined'}
+            startIcon={<HistoryIcon />}
+            onClick={() => setActiveView('history')}
           >
             History
           </Button>
-        </Button.Group>
-      </div>
+        </ButtonGroup>
+      </Box>
 
       {/* ── Google Sheets / Drive Sync Card ──────────────────────────────── */}
-      {activeView === 'import' && <Card
-        title={
-          <span className="flex items-center gap-2 text-lg font-semibold">
-            <GoogleOutlined style={{ color: '#0f9d58' }} />Sync from Google Sheets / Drive
-          </span>
-        }
-        className="shadow-sm mb-6"
-        styles={{ body: { padding: 24 } }}
-      >
-        <p className="text-gray-500 mb-3 mt-0">
-          Paste a public Google&nbsp;Sheets or Drive file link. Click <b>Sync</b> to pull the
-          latest data — only new or changed rows are added, so you can sync again any time you
-          update the sheet.
-        </p>
+      {activeView === 'import' && (
+        <Paper variant="outlined" sx={{ p: 3, mb: 3 }}>
+          <Typography variant="h6" sx={{ display: 'flex', alignItems: 'center', gap: 1, mb: 1.5 }}>
+            <GoogleIcon sx={{ color: '#0f9d58' }} />Sync from Google Sheets / Drive
+          </Typography>
 
-        <Space.Compact style={{ width: '100%' }} className="mb-3">
-          <Input
-            allowClear
-            value={syncUrl}
-            onChange={(e) => setSyncUrl(e.target.value)}
-            onPressEnter={handleSync}
-            disabled={syncing}
-            placeholder="https://docs.google.com/spreadsheets/d/…  or  https://drive.google.com/file/d/…"
-            prefix={<GoogleOutlined style={{ color: '#94a3b8' }} />}
-          />
-          <Button
-            type="primary"
-            icon={<SyncOutlined spin={syncing} />}
-            onClick={handleSync}
-            loading={syncing}
-          >
-            {syncing ? 'Syncing…' : 'Sync'}
-          </Button>
-        </Space.Compact>
+          <Typography color="text.secondary" sx={{ mb: 2 }}>
+            Paste a public Google&nbsp;Sheets or Drive file link. Click <strong>Sync</strong> to pull the
+            latest data — only new or changed rows are added, so you can sync again any time you
+            update the sheet.
+          </Typography>
 
-        {syncResult && (
-          <Alert
-            type={syncResult.status}
-            showIcon
-            className="mb-1"
-            closable
-            onClose={() => setSyncResult(null)}
-            message={syncResult.message}
-            description={
-              syncResult.data && (
-                <div className="text-xs text-gray-500 mt-1">
+          <Box sx={{ display: 'flex', gap: 1, mb: 1.5 }}>
+            <TextField
+              fullWidth
+              value={syncUrl}
+              onChange={(e) => setSyncUrl(e.target.value)}
+              onKeyDown={(e) => e.key === 'Enter' && handleSync()}
+              disabled={syncing}
+              placeholder="https://docs.google.com/spreadsheets/d/…  or  https://drive.google.com/file/d/…"
+              slotProps={{ input: { startAdornment: <GoogleIcon fontSize="small" sx={{ color: 'text.disabled', mr: 1 }} /> } }}
+            />
+            <Button
+              variant="contained"
+              startIcon={<SyncIcon sx={syncing ? { animation: 'spin 1s linear infinite', '@keyframes spin': { to: { transform: 'rotate(360deg)' } } } : undefined} />}
+              onClick={handleSync}
+              loading={syncing}
+              sx={{ whiteSpace: 'nowrap' }}
+            >
+              {syncing ? 'Syncing…' : 'Sync'}
+            </Button>
+          </Box>
+
+          {syncResult && (
+            <Alert severity={syncResult.status} onClose={() => setSyncResult(null)} sx={{ mb: 1 }}>
+              <Box>{syncResult.message}</Box>
+              {syncResult.data && (
+                <Box sx={{ fontSize: 12, color: 'text.secondary', mt: 0.5 }}>
                   {syncResult.data.filename && (
-                    <div className="mb-1">
-                      <FileExcelOutlined className="mr-1" />
-                      <b>{syncResult.data.filename}</b>
-                    </div>
+                    <Box sx={{ mb: 0.5, display: 'flex', alignItems: 'center', gap: 0.5 }}>
+                      <DescriptionIcon sx={{ fontSize: 14 }} />
+                      <strong>{syncResult.data.filename}</strong>
+                    </Box>
                   )}
                   New customers: {syncResult.data.customers_inserted ?? 0}
                   {' · '}Entries added: {syncResult.data.entries_inserted ?? 0}
                   {(syncResult.data.entries_invalid_count ?? 0) > 0 && (
-                    <span style={{ color: '#d97706', fontWeight: 600 }}>
+                    <Box component="span" sx={{ color: '#d97706', fontWeight: 600 }}>
                       {' · '}Invalid cells: {syncResult.data.entries_invalid_count}
-                    </span>
+                    </Box>
                   )}
-                </div>
-              )
-            }
-          />
-        )}
+                </Box>
+              )}
+            </Alert>
+          )}
 
-        <p className="text-xs text-gray-400 mt-2 mb-0">
-          The sheet must be shared as “Anyone with the link” (Viewer). The link is saved
-          automatically for next time.
-        </p>
-      </Card>}
+          <Typography variant="caption" color="text.disabled" sx={{ display: 'block', mt: 1 }}>
+            The sheet must be shared as "Anyone with the link" (Viewer). The link is saved automatically for next time.
+          </Typography>
+        </Paper>
+      )}
 
       {/* ── Upload Card ──────────────────────────────────────────────────── */}
-      {activeView === 'import' && <Card
-        title={<span className="text-xl font-semibold">Import Billing Data</span>}
-        className="shadow-sm mb-6"
-        styles={{ body: { padding: 24 } }}
-      >
-        <p className="text-gray-500 mb-4 mt-0">
-          Upload one or more files (.csv, .xlsx, .xls). Files are processed sequentially.
-        </p>
+      {activeView === 'import' && (
+        <Paper variant="outlined" sx={{ p: 3, mb: 3 }}>
+          <Typography variant="h6" sx={{ mb: 1.5 }}>Import Billing Data</Typography>
+          <Typography color="text.secondary" sx={{ mb: 2 }}>
+            Upload one or more files (.csv, .xlsx, .xls). Files are processed sequentially.
+          </Typography>
 
-        <div className="border-2 border-dashed border-gray-200 rounded-lg p-6 mb-4 bg-gray-50/50 hover:border-[#007bff]/40 transition-colors">
-          <input type="file" accept=".csv,.xlsx,.xls" onChange={handleFileChange}
-            disabled={uploading} multiple id="billing-file-input" className="sr-only" />
-          <label htmlFor="billing-file-input"
-            className="flex flex-col items-center justify-center cursor-pointer text-center">
-            <InboxOutlined className="text-4xl text-gray-400 mb-2" />
-            <span className="text-gray-600 font-medium">
-              {files.length ? `${files.length} file(s) selected` : 'Click or drag files here'}
-            </span>
-            <span className="text-sm text-gray-400 mt-1">.csv, .xlsx, .xls</span>
-          </label>
-        </div>
+          <Box
+            sx={{
+              border: '2px dashed #e5e7eb', borderRadius: 2, p: 3, mb: 2, bgcolor: '#f9fafb80',
+              transition: 'border-color .2s', '&:hover': { borderColor: 'rgba(0,123,255,0.4)' },
+            }}
+          >
+            <input type="file" accept=".csv,.xlsx,.xls" onChange={handleFileChange}
+              disabled={uploading} multiple id="billing-file-input" style={{ position: 'absolute', width: 1, height: 1, overflow: 'hidden', clip: 'rect(0 0 0 0)' }} />
+            <Box component="label" htmlFor="billing-file-input"
+              sx={{ display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', cursor: 'pointer', textAlign: 'center' }}>
+              <InboxIcon sx={{ fontSize: 40, color: 'text.disabled', mb: 1 }} />
+              <Typography color="text.secondary" fontWeight={500}>
+                {files.length ? `${files.length} file(s) selected` : 'Click or drag files here'}
+              </Typography>
+              <Typography variant="body2" color="text.disabled" sx={{ mt: 0.5 }}>.csv, .xlsx, .xls</Typography>
+            </Box>
+          </Box>
 
-        {files.length > 0 && (
-          <Alert type="info" message={`${files.length} file(s) selected`}
-            description={
-              <ul className="list-disc pl-4 mb-0 mt-1 text-sm">
+          {files.length > 0 && (
+            <Alert severity="info" sx={{ mb: 2 }}>
+              <Box sx={{ mb: 0.5 }}>{files.length} file(s) selected</Box>
+              <Box component="ul" sx={{ m: 0, pl: 2, fontSize: 14 }}>
                 {files.map((f, i) => <li key={i}>{f.name} ({(f.size / 1024).toFixed(1)} KB)</li>)}
-              </ul>
-            }
-            className="mb-4"
-          />
-        )}
+              </Box>
+            </Alert>
+          )}
 
-        <Button type="primary" icon={<UploadOutlined />} onClick={handleUpload}
-          loading={uploading} disabled={!files.length} block size="large" className="mb-4">
-          {uploading ? `Processing... ${currentFile || ''}` : `Upload ${files.length} file(s)`}
-        </Button>
+          <Button
+            variant="contained" fullWidth size="large" startIcon={<UploadIcon />}
+            onClick={handleUpload} loading={uploading} disabled={!files.length} sx={{ mb: 2 }}
+          >
+            {uploading ? `Processing... ${currentFile || ''}` : `Upload ${files.length} file(s)`}
+          </Button>
 
-        {uploading && <div className="mb-4"><Progress percent={progress} showInfo status="active" /></div>}
+          {uploading && <Box sx={{ mb: 2 }}><LinearProgress variant="determinate" value={progress} /></Box>}
 
-        {error && (
-          <Alert type="error" message={error} showIcon className="mb-4"
-            closable onClose={() => setError('')} />
-        )}
+          {error && (
+            <Alert severity="error" onClose={() => setError('')} sx={{ mb: 2 }}>{error}</Alert>
+          )}
 
-        {results.length > 0 && (
-          <div className="mb-4">
-            <List
-              dataSource={results}
-              renderItem={(result) => {
+          {results.length > 0 && (
+            <List sx={{ mb: 2 }}>
+              {results.map((result, idx) => {
                 const invalidCount = result.data?.entries_invalid_count ?? 0;
-                const alertType = result.status === 'error'
-                  ? 'error'
-                  : invalidCount > 0
-                    ? 'warning'
-                    : 'success';
+                const severity = result.status === 'error' ? 'error' : invalidCount > 0 ? 'warning' : 'success';
                 return (
-                <List.Item>
-                  <Alert
-                    type={alertType}
-                    message={`${result.status === 'success' ? '✓' : '✗'} ${result.filename}`}
-                    description={
-                      <>
-                        <div>{result.message}</div>
-                        {result.data?.customers_inserted !== undefined && (
-                          <div className="text-xs text-gray-500 mt-1">
-                            New customers: {result.data.customers_inserted}
-                            {' · '}Entries added: {result.data.entries_inserted}
-                            {invalidCount > 0 && (
-                              <span style={{ color: '#d97706', fontWeight: 600 }}>
-                                {' · '}Invalid cells: {invalidCount}
-                              </span>
-                            )}
-                          </div>
-                        )}
-                      </>
-                    }
-                    showIcon className="w-full"
-                  />
-                </List.Item>
+                  <ListItem key={idx} sx={{ px: 0 }}>
+                    <Alert severity={severity} sx={{ width: '100%' }}>
+                      <Box sx={{ fontWeight: 600 }}>{result.status === 'success' ? '✓' : '✗'} {result.filename}</Box>
+                      <Box>{result.message}</Box>
+                      {result.data?.customers_inserted !== undefined && (
+                        <Box sx={{ fontSize: 12, color: 'text.secondary', mt: 0.5 }}>
+                          New customers: {result.data.customers_inserted}
+                          {' · '}Entries added: {result.data.entries_inserted}
+                          {invalidCount > 0 && (
+                            <Box component="span" sx={{ color: '#d97706', fontWeight: 600 }}>
+                              {' · '}Invalid cells: {invalidCount}
+                            </Box>
+                          )}
+                        </Box>
+                      )}
+                    </Alert>
+                  </ListItem>
                 );
-              }}
-            />
-          </div>
-        )}
+              })}
+            </List>
+          )}
 
-        <Collapse
-          items={[{
-            key: 'services',
-            label: (
-              <span className="flex items-center gap-2">
-                <FileExcelOutlined />Manage Service Types & Prices
-              </span>
-            ),
-            children: servicesLoading ? (
-              <div className="py-8 text-center"><Spin tip="Loading services..." /></div>
-            ) : (
-              <>
-                <Table dataSource={services} rowKey={(r, i) => r.id ?? `row-${i}`}
-                  columns={serviceColumns} pagination={false} size="small" className="mb-3" />
-                <Space>
-                  <Button type="primary" onClick={saveAllServices}>Save All</Button>
-                  <Button onClick={fetchServices}>Reload</Button>
-                </Space>
-              </>
-            ),
-          }]}
-          onChange={(keys) => {
-            if (keys.includes('services') && !showServiceManager) fetchServices();
-            setShowServiceManager(keys.includes('services'));
-          }}
-          className="mb-0"
-        />
+          <Accordion
+            expanded={showServiceManager}
+            onChange={(_, expanded) => {
+              if (expanded && !showServiceManager) fetchServices();
+              setShowServiceManager(expanded);
+            }}
+            variant="outlined"
+            sx={{ '&:before': { display: 'none' } }}
+          >
+            <AccordionSummary expandIcon={<ExpandMoreIcon />}>
+              <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
+                <DescriptionIcon fontSize="small" />
+                <Typography variant="body2">Manage Service Types &amp; Prices</Typography>
+              </Box>
+            </AccordionSummary>
+            <AccordionDetails>
+              {servicesLoading ? (
+                <Box sx={{ py: 4, textAlign: 'center' }}><CircularProgress size={24} /></Box>
+              ) : (
+                <>
+                  <TableContainer sx={{ mb: 1.5 }}>
+                    <Table size="small">
+                      <TableHead>
+                        <TableRow>
+                          <TableCell>Name</TableCell>
+                          <TableCell>Rate/Day ($)</TableCell>
+                          <TableCell>Default Days</TableCell>
+                          <TableCell />
+                        </TableRow>
+                      </TableHead>
+                      <TableBody>
+                        {services.map((s, idx) => (
+                          <TableRow key={s.id ?? `row-${idx}`}>
+                            <TableCell>
+                              <TextField
+                                size="small" fullWidth value={s.name || ''}
+                                onChange={(e) => handleServiceFieldChange(idx, 'name', e.target.value)}
+                              />
+                            </TableCell>
+                            <TableCell>
+                              <TextField
+                                size="small" fullWidth type="number"
+                                value={s.rate_per_day ?? s.ratePerDay ?? ''}
+                                onChange={(e) => handleServiceFieldChange(idx, 'rate_per_day', e.target.value)}
+                                slotProps={{ htmlInput: { min: 0, step: 0.01 } }}
+                              />
+                            </TableCell>
+                            <TableCell>
+                              <TextField
+                                size="small" fullWidth type="number"
+                                value={s.default_days ?? s.defaultDays ?? ''}
+                                onChange={(e) => handleServiceFieldChange(idx, 'default_days', e.target.value)}
+                                slotProps={{ htmlInput: { min: 0 } }}
+                              />
+                            </TableCell>
+                            <TableCell>
+                              <Button size="small" variant="contained"
+                                onClick={async () => { const ok = await saveService(s); if (ok) fetchServices(); }}>
+                                Save
+                              </Button>
+                            </TableCell>
+                          </TableRow>
+                        ))}
+                      </TableBody>
+                    </Table>
+                  </TableContainer>
+                  <Box sx={{ display: 'flex', gap: 1 }}>
+                    <Button variant="contained" onClick={saveAllServices}>Save All</Button>
+                    <Button variant="outlined" onClick={fetchServices}>Reload</Button>
+                  </Box>
+                </>
+              )}
+            </AccordionDetails>
+          </Accordion>
 
-        <ul className="text-sm text-gray-500 mt-4 list-disc pl-5 space-y-1">
-          <li>Use Ctrl+Click (Windows) or Cmd+Click (Mac) to select multiple files</li>
-          <li>Accepted formats: .csv, .xlsx, .xls</li>
-        </ul>
-      </Card>}
+          <Box component="ul" sx={{ fontSize: 14, color: 'text.secondary', mt: 2, pl: 2.5 }}>
+            <li>Use Ctrl+Click (Windows) or Cmd+Click (Mac) to select multiple files</li>
+            <li>Accepted formats: .csv, .xlsx, .xls</li>
+          </Box>
+        </Paper>
+      )}
 
       {/* ── Import History Card ───────────────────────────────────────────── */}
-      {activeView === 'history' && <Card
-        title={
-          <span className="flex items-center gap-2 text-base font-semibold">
-            <HistoryOutlined />Import History
-          </span>
-        }
-        extra={
-          <Space size={6}>
-            <Button
-              size="small"
-              icon={groupByDate ? <BarsOutlined /> : <AppstoreOutlined />}
-              type={groupByDate ? 'primary' : 'default'}
-              onClick={() => setGroupByDate((g) => !g)}
-            >
-              {groupByDate ? 'List' : 'Group'}
-            </Button>
-            <Button icon={<ReloadOutlined />} size="small"
-              onClick={loadHistory} loading={historyLoading}>
-              Refresh
-            </Button>
-          </Space>
-        }
-        className="shadow-sm"
-        style={{ overflow: 'hidden' }}
-        styles={{ body: { padding: '12px 16px', overflowX: 'auto', width: '100%' } }}
-      >
-        {historyLoading ? (
-          <div className="flex justify-center py-10"><Spin tip="Loading history..." /></div>
-        ) : importHistory.length === 0 ? (
-          <Empty description="No imports yet" className="py-10" />
-        ) : groupByDate ? (
-          /* ── Grouped by date ── */
-          <Collapse accordion={false} size="small">
-            {groupHistoryByDate(importHistory).map((group) => (
-              <Collapse.Panel
-                key={group.dateKey}
-                header={
-                  <div style={{ display: 'flex', alignItems: 'center', gap: 12, flexWrap: 'wrap' }}>
-                    <span style={{ fontWeight: 600, minWidth: 220 }}>{group.label}</span>
-                    <Tag color="geekblue">{group.importCount} import{group.importCount !== 1 ? 's' : ''}</Tag>
-                    <span style={{ color: group.totalAdded > 0 ? '#16a34a' : '#94a3b8', fontWeight: 600 }}>
-                      {group.totalAdded} added
-                    </span>
-                    <span style={{ color: group.totalSkipped > 0 ? '#d97706' : '#94a3b8' }}>
-                      {group.totalSkipped} existed
-                    </span>
-                    {group.totalInvalid > 0 && (
-                      <span style={{ color: '#d97706', fontWeight: 600 }}>
-                        {group.totalInvalid} invalid
-                      </span>
-                    )}
-                    <span style={{ fontWeight: 600, fontFamily: 'monospace' }}>
-                      {fmtMoney(group.totalBilled)}
-                    </span>
-                  </div>
-                }
+      {activeView === 'history' && (
+        <Paper variant="outlined" sx={{ overflow: 'hidden' }}>
+          <Box sx={{
+            display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 1,
+            px: 2, py: 1.5, borderBottom: '1px solid #e2e8f0',
+          }}>
+            <Typography variant="body1" fontWeight={600} sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
+              <HistoryIcon fontSize="small" />Import History
+            </Typography>
+            <Box sx={{ display: 'flex', gap: 1 }}>
+              <Button
+                size="small"
+                variant={groupByDate ? 'contained' : 'outlined'}
+                startIcon={groupByDate ? <ViewListIcon fontSize="small" /> : <GridViewIcon fontSize="small" />}
+                onClick={() => setGroupByDate((g) => !g)}
               >
-                <div style={{ overflowX: 'auto' }}>
-                  <Table
-                    size="small"
-                    bordered
-                    dataSource={group.items.map((r) => ({ ...r, key: String(r.id) }))}
-                    columns={historyColumns}
-                    pagination={false}
-                    scroll={{ x: 870 }}
-                    expandable={{
-                      expandedRowKeys: expandedHistoryKeys,
-                      onExpandedRowsChange: (keys) => setExpandedHistoryKeys(keys),
-                      expandedRowRender: renderHistoryExpanded,
-                      rowExpandable: () => true,
-                    }}
-                  />
-                </div>
-              </Collapse.Panel>
-            ))}
-          </Collapse>
-        ) : (
-          /* ── Flat list ── */
-          <Table
-            size="small"
-            bordered
-            dataSource={importHistory.map((r) => ({ ...r, key: String(r.id) }))}
-            columns={historyColumns}
-            pagination={{
-              pageSize: 20,
-              showSizeChanger: false,
-              showTotal: (t) => `${t} import${t !== 1 ? 's' : ''}`,
-            }}
-            scroll={{ x: 870 }}
-            expandable={{
-              expandedRowKeys: expandedHistoryKeys,
-              onExpandedRowsChange: (keys) => setExpandedHistoryKeys(keys),
-              expandedRowRender: renderHistoryExpanded,
-              rowExpandable: () => true,
-            }}
-          />
-        )}
-      </Card>}
+                {groupByDate ? 'List' : 'Group'}
+              </Button>
+              <Button size="small" variant="outlined" startIcon={<RefreshIcon fontSize="small" />}
+                onClick={loadHistory} loading={historyLoading}>
+                Refresh
+              </Button>
+            </Box>
+          </Box>
 
-      <Modal
-        title={editContext ? `Fix invalid data — ${editContext.customerName}` : 'Fix invalid data'}
-        open={editModalOpen}
-        onCancel={() => { setEditModalOpen(false); setEditContext(null); }}
-        onOk={saveInvalidFixes}
-        okText="Save services"
-        confirmLoading={editSaving}
-        width={640}
-        destroyOnClose
-      >
-        {editContext && (
-          <>
-            <p className="text-gray-500 text-sm mt-0 mb-3">
-              Correct each value below. Use M/D/YYYY or M/D/YYYY-M/D/YYYY when the start month
-              is after the end month (e.g. 12/5/2025-3/10/2026). H0038 uses M/D-N (e.g. 3/5-2).
-            </p>
-            <Form layout="inline" className="mb-4">
-              <Form.Item label="Default year (for M/D without year)">
-                <InputNumber
-                  min={2000}
-                  max={2100}
-                  value={editContext.year}
-                  onChange={(v) => setEditContext((prev) => prev && { ...prev, year: v })}
-                />
-              </Form.Item>
-            </Form>
-            <Table
-              size="small"
-              bordered
-              pagination={false}
-              dataSource={editContext.rows}
-              rowKey="key"
-              columns={[
-                {
-                  title: 'Service',
-                  dataIndex: 'service_name',
-                  width: 90,
-                  render: (v) => <span style={{ fontWeight: 600 }}>{v}</span>,
-                },
-                {
-                  title: 'Corrected value',
-                  dataIndex: 'raw_value',
-                  render: (v, row) => (
-                    <Input
-                      value={v}
-                      onChange={(e) => updateEditRow(row.key, 'raw_value', e.target.value)}
-                      placeholder="e.g. 3/15/2025 or 3/5-2"
-                      status={row.error ? 'warning' : undefined}
+          <Box sx={{ p: { xs: 1.5, sm: 2 } }}>
+            {historyLoading ? (
+              <Box sx={{ display: 'flex', justifyContent: 'center', py: 5 }}><CircularProgress /></Box>
+            ) : importHistory.length === 0 ? (
+              <Box sx={{ py: 5, textAlign: 'center', color: 'text.secondary' }}>
+                <InboxIcon sx={{ fontSize: 40, color: 'text.disabled', mb: 1 }} />
+                <Typography>No imports yet</Typography>
+              </Box>
+            ) : groupByDate ? (
+              /* ── Grouped by date ── */
+              groupHistoryByDate(importHistory).map((group) => (
+                <Accordion key={group.dateKey} variant="outlined" sx={{ mb: 1, '&:before': { display: 'none' } }}>
+                  <AccordionSummary expandIcon={<ExpandMoreIcon />}>
+                    <Box sx={{ display: 'flex', alignItems: 'center', gap: 1.5, flexWrap: 'wrap' }}>
+                      <Typography fontWeight={600} sx={{ minWidth: 220 }}>{group.label}</Typography>
+                      <Chip size="small" color="primary" label={`${group.importCount} import${group.importCount !== 1 ? 's' : ''}`} />
+                      <Box component="span" sx={{ color: group.totalAdded > 0 ? '#16a34a' : '#94a3b8', fontWeight: 600 }}>
+                        {group.totalAdded} added
+                      </Box>
+                      <Box component="span" sx={{ color: group.totalSkipped > 0 ? '#d97706' : '#94a3b8' }}>
+                        {group.totalSkipped} existed
+                      </Box>
+                      {group.totalInvalid > 0 && (
+                        <Box component="span" sx={{ color: '#d97706', fontWeight: 600 }}>{group.totalInvalid} invalid</Box>
+                      )}
+                      <Box component="span" sx={{ fontWeight: 600, fontFamily: 'monospace' }}>{fmtMoney(group.totalBilled)}</Box>
+                    </Box>
+                  </AccordionSummary>
+                  <AccordionDetails>
+                    <HistoryTable
+                      rows={group.items.map((r) => ({ ...r, key: String(r.id) }))}
+                      expandedKeys={expandedHistoryKeys}
+                      onToggle={toggleHistoryKey}
+                      onEditInvalid={openEditInvalid}
                     />
-                  ),
-                },
-                {
-                  title: 'Issue',
-                  dataIndex: 'error',
-                  width: 200,
-                  ellipsis: true,
-                  render: (v) => (
-                    <span style={{ fontSize: 11, color: '#b45309' }}>{v}</span>
-                  ),
-                },
-              ]}
-            />
-          </>
-        )}
-      </Modal>
-    </div>
+                  </AccordionDetails>
+                </Accordion>
+              ))
+            ) : (
+              /* ── Flat list ── */
+              <HistoryTable
+                rows={pagedHistoryRows}
+                expandedKeys={expandedHistoryKeys}
+                onToggle={toggleHistoryKey}
+                onEditInvalid={openEditInvalid}
+                pagination={
+                  <TablePagination
+                    component="div"
+                    count={historyRows.length}
+                    page={historyPage}
+                    onPageChange={(_, p) => setHistoryPage(p)}
+                    rowsPerPage={historyRowsPerPage}
+                    onRowsPerPageChange={(e) => { setHistoryRowsPerPage(parseInt(e.target.value, 10)); setHistoryPage(0); }}
+                    rowsPerPageOptions={[20]}
+                    labelDisplayedRows={({ from, to, count }) => `${from}-${to} of ${count} import${count !== 1 ? 's' : ''}`}
+                  />
+                }
+              />
+            )}
+          </Box>
+        </Paper>
+      )}
+
+      <Dialog open={editModalOpen} onClose={() => { setEditModalOpen(false); setEditContext(null); }} maxWidth="sm" fullWidth>
+        <DialogTitle>{editContext ? `Fix invalid data — ${editContext.customerName}` : 'Fix invalid data'}</DialogTitle>
+        <DialogContent dividers>
+          {editContext && (
+            <>
+              <Typography variant="body2" color="text.secondary" sx={{ mb: 2 }}>
+                Correct each value below. Use M/D/YYYY or M/D/YYYY-M/D/YYYY when the start month
+                is after the end month (e.g. 12/5/2025-3/10/2026). H0038 uses M/D-N (e.g. 3/5-2).
+              </Typography>
+              <TextField
+                type="number"
+                label="Default year (for M/D without year)"
+                value={editContext.year}
+                onChange={(e) => setEditContext((prev) => prev && { ...prev, year: Number(e.target.value) })}
+                slotProps={{ htmlInput: { min: 2000, max: 2100 } }}
+                sx={{ mb: 2, width: 320 }}
+              />
+              <TableContainer>
+                <Table size="small">
+                  <TableHead>
+                    <TableRow>
+                      <TableCell sx={{ width: 90 }}>Service</TableCell>
+                      <TableCell>Corrected value</TableCell>
+                      <TableCell sx={{ width: 200 }}>Issue</TableCell>
+                    </TableRow>
+                  </TableHead>
+                  <TableBody>
+                    {editContext.rows.map((row) => (
+                      <TableRow key={row.key}>
+                        <TableCell sx={{ fontWeight: 600 }}>{row.service_name}</TableCell>
+                        <TableCell>
+                          <TextField
+                            fullWidth size="small"
+                            value={row.raw_value}
+                            onChange={(e) => updateEditRow(row.key, 'raw_value', e.target.value)}
+                            placeholder="e.g. 3/15/2025 or 3/5-2"
+                            color={row.error ? 'warning' : undefined}
+                            focused={row.error ? true : undefined}
+                          />
+                        </TableCell>
+                        <TableCell sx={{ fontSize: 11, color: '#b45309' }}>{row.error}</TableCell>
+                      </TableRow>
+                    ))}
+                  </TableBody>
+                </Table>
+              </TableContainer>
+            </>
+          )}
+        </DialogContent>
+        <DialogActions>
+          <Button onClick={() => { setEditModalOpen(false); setEditContext(null); }}>Cancel</Button>
+          <Button variant="contained" onClick={saveInvalidFixes} loading={editSaving}>Save services</Button>
+        </DialogActions>
+      </Dialog>
+    </Box>
   );
 }

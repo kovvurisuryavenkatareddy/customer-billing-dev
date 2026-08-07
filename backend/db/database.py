@@ -97,34 +97,72 @@ class _PGConnWrapper:
         return self._conn.rollback()
 
     def close(self):
-        """Rollback any open transaction, then return the connection to the pool."""
+        """Rollback any open transaction, then return the connection to the pool.
+        If the connection turns out to be dead (e.g. Neon closed it server-side),
+        discard it instead of returning it to the pool for someone else to fail on.
+        """
         try:
             if self._conn.status == psycopg2.extensions.STATUS_IN_TRANSACTION:
                 self._conn.rollback()
             _get_pool().putconn(self._conn)
         except Exception:
             try:
-                self._conn.close()
+                _get_pool().putconn(self._conn, close=True)
             except Exception:
-                pass
+                try:
+                    self._conn.close()
+                except Exception:
+                    pass
 
     def __getattr__(self, name):
         return getattr(self._conn, name)
 
 
+_MAX_GETCONN_ATTEMPTS = 3
+
+
 def get_db_connection() -> _PGConnWrapper:
     """Get a connection from the pool. Always call conn.close() when done
     (it returns the connection to the pool rather than closing it).
+
+    Neon (and other serverless Postgres) can close idle connections server-side
+    without telling the pool, which otherwise hands out a dead connection that
+    fails on first use (psycopg2.InterfaceError: connection already closed).
+    Ping each connection with a trivial query before returning it; if that
+    fails, discard the connection and try again with a fresh one.
     """
-    try:
-        conn = _get_pool().getconn()
+    pool = _get_pool()
+    last_exc = None
+    for _ in range(_MAX_GETCONN_ATTEMPTS):
+        try:
+            conn = pool.getconn()
+        except Exception:
+            traceback.print_exc()
+            raise
 
-        # Reset any aborted transaction state before handing the connection out
-        if conn.status == psycopg2.extensions.STATUS_IN_TRANSACTION:
-            conn.rollback()
+        try:
+            # Reset any aborted transaction state before handing the connection out
+            if conn.status == psycopg2.extensions.STATUS_IN_TRANSACTION:
+                conn.rollback()
 
-        _apply_schema(conn)
-        return _PGConnWrapper(conn)
-    except Exception:
-        traceback.print_exc()
-        raise
+            # Cheap liveness check — catches connections Neon already closed.
+            probe = conn.cursor()
+            probe.execute('SELECT 1')
+            probe.fetchone()
+            probe.close()
+
+            _apply_schema(conn)
+            return _PGConnWrapper(conn)
+        except (psycopg2.InterfaceError, psycopg2.OperationalError) as e:
+            print(f"get_db_connection: discarding dead pooled connection ({e}), retrying...")
+            last_exc = e
+            try:
+                pool.putconn(conn, close=True)
+            except Exception:
+                pass
+            continue
+        except Exception:
+            traceback.print_exc()
+            raise
+
+    raise last_exc or RuntimeError('Failed to obtain a live database connection')

@@ -1,9 +1,10 @@
 /**
- * Add Customer page: Card layout, Spin, optional back link.
+ * Add Customer page: Card layout, loading spinner, back link.
  */
 import React, { useState, useEffect } from 'react';
-import { Card, Spin, Button } from 'antd';
-import { ArrowLeftOutlined, UserAddOutlined } from '@ant-design/icons';
+import { Box, Paper, CardHeader, CardContent, CircularProgress, Button, Typography } from '@mui/material';
+import ArrowBackIcon from '@mui/icons-material/ArrowBack';
+import PersonAddIcon from '@mui/icons-material/PersonAdd';
 import { useNavigate } from 'react-router-dom';
 import CustomerForm from '../components/form';
 import { API_BASE, getAuthHeaders } from '../utils/api';
@@ -56,47 +57,41 @@ export default function AddCustomerPage({ onNavigate }) {
   }
 
   return (
-    <div className="w-full max-w-4xl mx-auto p-4 md:p-6">
-      <div className="flex items-center justify-between gap-3 mb-4">
+    <Box sx={{ width: '100%', maxWidth: 900, mx: 'auto', p: { xs: 2, md: 3 } }}>
+      <Box sx={{ mb: 2 }}>
         <Button
-          type="text"
           size="small"
-          icon={<ArrowLeftOutlined />}
-          onClick={() => {
-            navigate('/');
-            onNavigate?.('home');
-          }}
-          className="-ml-2 text-slate-700 hover:text-[#007bff]"
+          startIcon={<ArrowBackIcon fontSize="small" />}
+          onClick={() => { navigate('/'); onNavigate?.('home'); }}
+          sx={{ ml: -1 }}
         >
           Back
         </Button>
-      </div>
+      </Box>
 
-      <Card
-        className="shadow-sm border border-slate-200 rounded-xl"
-        styles={{
-          header: { padding: '16px 20px' },
-          body: { padding: '20px 20px 24px' },
-        }}
-        title={
-          <span className="flex items-center gap-2">
-            <UserAddOutlined className="text-[#007bff]" />
-            <span className="text-lg font-semibold text-slate-900">Add Customer</span>
-          </span>
-        }
-      >
-        <p className="text-slate-500 mb-5 mt-0 text-sm">
-          Add a new participant with customer details and service information.
-        </p>
+      <Paper variant="outlined" sx={{ borderRadius: 3 }}>
+        <CardHeader
+          title={
+            <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
+              <PersonAddIcon sx={{ color: '#007bff' }} />
+              <Typography variant="h6" fontWeight={600}>Add Customer</Typography>
+            </Box>
+          }
+        />
+        <CardContent sx={{ pt: 0 }}>
+          <Typography color="text.secondary" sx={{ mb: 2.5 }}>
+            Add a new participant with customer details and service information.
+          </Typography>
 
-        {loading ? (
-          <div className="py-14 flex justify-center">
-            <Spin size="large" tip="Loading services..." />
-          </div>
-        ) : (
-          <CustomerForm key={formKey} onSubmit={handleSubmit} services={services} submitting={saving} />
-        )}
-      </Card>
-    </div>
+          {loading ? (
+            <Box sx={{ py: 6, display: 'flex', justifyContent: 'center' }}>
+              <CircularProgress />
+            </Box>
+          ) : (
+            <CustomerForm key={formKey} onSubmit={handleSubmit} services={services} submitting={saving} />
+          )}
+        </CardContent>
+      </Paper>
+    </Box>
   );
 }

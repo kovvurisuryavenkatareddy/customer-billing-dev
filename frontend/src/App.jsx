@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react';
-import { Layout } from 'antd';
+import { Box } from '@mui/material';
 import Header from './components/Header';
 import Sidebar from './components/Sidebar';
 import CustomersPage from './pages/CustomersPage';
@@ -13,8 +13,6 @@ import ReportsPage from './pages/ReportsPage';
 import { Routes, Route, useLocation } from 'react-router-dom';
 import { useNavigate, Navigate } from 'react-router-dom';
 import { setNavigator } from './utils/router';
-
-const { Content } = Layout;
 
 function getInitialAuth() {
   const tokenRaw = localStorage.getItem('token');
@@ -100,7 +98,7 @@ function App() {
   const SIDEBAR_WIDTH = 260;
 
   return (
-    <Layout className="min-h-screen bg-[#f4f7f9] overflow-x-hidden">
+    <Box sx={{ minHeight: '100vh', bgcolor: '#f4f7f9', overflowX: 'hidden' }}>
       {isAuthenticated && (
         <Header
           currentPage={currentPage}
@@ -109,13 +107,10 @@ function App() {
           onLogout={handleLogout}
           onToggleSidebar={toggleSidebar}
           sidebarOpen={sidebarOpen}
-          style={{ position: 'fixed', top: 0, left: 0, right: 0, zIndex: 1000 }}
+          style={{ position: 'fixed', top: 0, left: 0, right: 0 }}
         />
       )}
-      <Layout
-        className="flex-row"
-        style={isAuthenticated ? { paddingTop: HEADER_HEIGHT, minHeight: '100vh' } : {}}
-      >
+      <Box sx={{ display: 'flex', ...(isAuthenticated ? { pt: `${HEADER_HEIGHT}px`, minHeight: '100vh' } : {}) }}>
         {isAuthenticated && (
           <Sidebar
             currentPage={currentPage}
@@ -126,9 +121,15 @@ function App() {
             width={SIDEBAR_WIDTH}
           />
         )}
-        <Content
-          className={`min-h-screen transition-[margin-left] duration-300 bg-[#f4f7f9] ${isAuthenticated && sidebarOpen ? 'md:ml-[260px]' : ''}`}
-          style={isAuthenticated ? { paddingTop: 16 } : {}}
+        <Box
+          component="main"
+          sx={{
+            minHeight: '100vh',
+            flex: 1,
+            minWidth: 0,
+            bgcolor: '#f4f7f9',
+            ...(isAuthenticated ? { pt: 2 } : {}),
+          }}
         >
           <Routes>
             <Route path="/login" element={isAuthenticated ? <Navigate to="/" replace /> : <LoginPage onLoginSuccess={(userData) => { handleLoginSuccess(userData); navigate('/'); }} />} />
@@ -140,10 +141,10 @@ function App() {
             <Route path="/reports" element={isAuthenticated ? <ReportsPage /> : <Navigate to="/login" replace />} />
             <Route path="*" element={<Navigate to={isAuthenticated ? '/' : '/login'} replace />} />
           </Routes>
-        </Content>
-      </Layout>
+        </Box>
+      </Box>
       <ToastContainer />
-    </Layout>
+    </Box>
   );
 }
 

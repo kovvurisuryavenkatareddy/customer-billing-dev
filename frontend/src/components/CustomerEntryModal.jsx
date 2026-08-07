@@ -1,6 +1,10 @@
 import React, { useState, useEffect } from 'react';
 import { formatMMDDYYYY, toISO } from '../utils/dates';
-import { Button, Input, Select, Space, Spin, Alert, Divider } from 'antd';
+import {
+  Dialog, DialogTitle, DialogContent, IconButton, Button, TextField, MenuItem,
+  Box, CircularProgress, Alert, Divider, Typography, Chip,
+} from '@mui/material';
+import CloseIcon from '@mui/icons-material/Close';
 import { API_BASE, getAuthHeaders } from '../utils/api';
 
 export default function CustomerEntryModal({ customerId, customerCode, onClose, onUpdated }) {
@@ -55,6 +59,7 @@ export default function CustomerEntryModal({ customerId, customerCode, onClose, 
           start_date: r.start_date,
           end_date: r.end_date,
           days: r.days,
+          units: r.units,
           rate_per_day: r.rate_per_day,
           amount_billed: r.amount_billed,
           amount_paid: r.amount_paid,
@@ -159,223 +164,187 @@ export default function CustomerEntryModal({ customerId, customerCode, onClose, 
 
   if (!customerId) return null;
 
+  const title = customer
+    ? `${(customer.last_name || customer.lastName || '').trim()}${(customer.first_name || customer.firstName) ? (', ' + ((customer.first_name || customer.firstName || '').trim())) : ''}`.trim()
+    : 'Participant Details';
+
   return (
-    <div className="fixed inset-0 flex items-center justify-center bg-black/60 backdrop-blur-sm z-[1000]" onClick={(e) => e.target === e.currentTarget && onClose()}>
-      <div className="w-full max-w-[600px] max-h-[80vh] overflow-auto bg-white rounded-2xl shadow-2xl">
-        <div className="flex items-center justify-between px-6 py-5 border-b border-[#e9ecef] bg-gradient-to-br from-[#f8f9fa] to-[#e9ecef]">
-          <h3 className="m-0 text-xl text-[#1a253c]">
-            {customer ? `${(customer.last_name || customer.lastName || '').trim()}${(customer.first_name || customer.firstName) ? (', ' + ((customer.first_name || customer.firstName || '').trim())) : ''}`.trim() : 'Participant Details'}
-          </h3>
-          <button type="button" className="bg-transparent border-0 text-2xl cursor-pointer text-gray-500 p-0 w-8 h-8 flex items-center justify-center hover:text-gray-800 focus:outline-none" onClick={onClose} aria-label="Close">&times;</button>
-        </div>
+    <Dialog open={Boolean(customerId)} onClose={onClose} maxWidth="sm" fullWidth>
+      <DialogTitle sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', bgcolor: '#f8f9fa' }}>
+        <Typography variant="h6" component="span" sx={{ color: '#1a253c' }}>{title}</Typography>
+        <IconButton onClick={onClose} aria-label="Close" size="small"><CloseIcon /></IconButton>
+      </DialogTitle>
 
-        <div className="p-5 max-h-[65vh] overflow-y-auto overflow-x-hidden">
-          {loading && (
-            <div className="flex items-center justify-center py-8">
-              <Spin />
-            </div>
-          )}
+      <DialogContent dividers sx={{ maxHeight: '65vh' }}>
+        {loading && (
+          <Box sx={{ display: 'flex', justifyContent: 'center', py: 4 }}>
+            <CircularProgress size={28} />
+          </Box>
+        )}
 
-          {error && <Alert type="error" showIcon message="Error" description={error} />}
+        {error && <Alert severity="error" sx={{ mb: 2 }}>{error}</Alert>}
 
-          {!loading && !error && customer && (
-            <>
-              <div className="flex items-center justify-between gap-3 mb-3">
-                <div className="text-sm text-gray-500">
-                  Participant Details
-                </div>
-                {!isEditing ? (
-                  <Button type="primary" onClick={beginEdit}>
-                    Edit
-                  </Button>
-                ) : (
-                  <Space>
-                    <Button onClick={() => setIsEditing(false)} disabled={saving}>
-                      Cancel
-                    </Button>
-                    <Button type="primary" onClick={saveDetails} loading={saving}>
-                      Save
-                    </Button>
-                  </Space>
-                )}
-              </div>
-
-              <Divider style={{ margin: '12px 0' }} />
-
+        {!loading && !error && customer && (
+          <>
+            <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 1.5, mb: 1.5 }}>
+              <Typography variant="body2" color="text.secondary">Participant Details</Typography>
               {!isEditing ? (
-                <div style={{ display: 'grid', gap: '12px' }}>
-                  <div>
-                    <strong>Name:</strong>{' '}
-                    {(customer.last_name || customer.lastName ? (customer.last_name || customer.lastName) : '') +
-                      ((customer.first_name || customer.firstName) ? (', ' + (customer.first_name || customer.firstName)) : '')}
-                  </div>
-                  <div>
-                    <strong>DOB:</strong>{' '}
-                    {formatMMDDYYYY(customer.date_of_birth || customer.dob || customer.dateOfBirth || '') || '—'}
-                  </div>
-                  <div>
-                    <strong>ID #:</strong>{' '}
-                    {(customer.id_number != null && customer.id_number !== '') ? customer.id_number : '—'}
-                  </div>
-                  <div>
-                    <strong>F ID #:</strong>{' '}
-                    {(customer.f_id_number != null && customer.f_id_number !== '') ? customer.f_id_number : '—'}
-                  </div>
-                  <div>
-                    <strong>Status:</strong>{' '}
-                    <span style={{
-                      display: 'inline-block',
-                      marginLeft: 8,
-                      padding: '6px 10px',
-                      borderRadius: '999px',
-                      background: (customer.active_status || 'active') === 'active' ? '#e6ffed' : '#fff3f3',
+                <Button variant="contained" size="small" onClick={beginEdit}>Edit</Button>
+              ) : (
+                <Box sx={{ display: 'flex', gap: 1 }}>
+                  <Button size="small" onClick={() => setIsEditing(false)} disabled={saving}>Cancel</Button>
+                  <Button variant="contained" size="small" onClick={saveDetails} loading={saving}>Save</Button>
+                </Box>
+              )}
+            </Box>
+
+            <Divider sx={{ my: 1.5 }} />
+
+            {!isEditing ? (
+              <Box sx={{ display: 'grid', gap: 1.5 }}>
+                <Box>
+                  <strong>Name:</strong>{' '}
+                  {(customer.last_name || customer.lastName ? (customer.last_name || customer.lastName) : '') +
+                    ((customer.first_name || customer.firstName) ? (', ' + (customer.first_name || customer.firstName)) : '')}
+                </Box>
+                <Box>
+                  <strong>DOB:</strong>{' '}
+                  {formatMMDDYYYY(customer.date_of_birth || customer.dob || customer.dateOfBirth || '') || '—'}
+                </Box>
+                <Box>
+                  <strong>ID #:</strong>{' '}
+                  {(customer.id_number != null && customer.id_number !== '') ? customer.id_number : '—'}
+                </Box>
+                <Box>
+                  <strong>F ID #:</strong>{' '}
+                  {(customer.f_id_number != null && customer.f_id_number !== '') ? customer.f_id_number : '—'}
+                </Box>
+                <Box>
+                  <strong>Status:</strong>{' '}
+                  <Chip
+                    size="small"
+                    label={(customer.active_status || 'active')}
+                    sx={{
+                      ml: 1, textTransform: 'capitalize', fontWeight: 600,
+                      bgcolor: (customer.active_status || 'active') === 'active' ? '#e6ffed' : '#fff3f3',
                       color: (customer.active_status || 'active') === 'active' ? '#167d3b' : '#c92a2a',
                       border: (customer.active_status || 'active') === 'active' ? '1px solid #b8f4c6' : '1px solid #f1c0c0',
-                      fontWeight: 600,
-                      textTransform: 'capitalize'
-                    }}>{(customer.active_status || 'active')}</span>
-                  </div>
-                </div>
-              ) : (
-                <div style={{ display: 'grid', gap: '12px' }}>
-                  <div>
-                    <strong>Last name</strong>
-                    <Input value={lastName} onChange={(e) => setLastName(e.target.value)} placeholder="Last name" />
-                  </div>
-                  <div>
-                    <strong>First name</strong>
-                    <Input value={firstName} onChange={(e) => setFirstName(e.target.value)} placeholder="First name" />
-                  </div>
-                  <div>
-                    <strong>DOB</strong>
-                    <Input value={dob} onChange={(e) => setDob(e.target.value)} placeholder="MM/DD/YYYY" />
-                  </div>
-                  <div>
-                    <strong>ID #</strong>
-                    <Input value={idNumber} onChange={(e) => setIdNumber(e.target.value)} placeholder="ID #" />
-                  </div>
-                  <div>
-                    <strong>F ID #</strong>
-                    <Input value={fIdNumber} onChange={(e) => setFIdNumber(e.target.value)} placeholder="F ID #" />
-                  </div>
-                  <div>
-                    <strong>Status</strong>
-                    <Select
-                      value={activeStatus || 'active'}
-                      onChange={(val) => setActiveStatus(val)}
-                      options={[
-                        { value: 'active', label: 'Active' },
-                        { value: 'inactive', label: 'Inactive' },
-                      ]}
-                    />
-                  </div>
-                </div>
-              )}
-
-              {/* Services: read-only, professional card layout */}
-              <Divider style={{ margin: '16px 0 8px' }} />
-              <div className="text-sm font-medium text-[#495057] mb-3">Services</div>
-              {Array.isArray(customer.services) && customer.services.length > 0 ? (() => {
-                const totalBilled = customer.services.reduce((s, e) => s + (Number(e.amount_billed ?? e.amountBilled ?? 0)), 0);
-                const totalPaid = customer.services.reduce((s, e) => s + (Number(e.amount_paid ?? e.amountPaid ?? 0)), 0);
-                const totalDue = totalBilled - totalPaid;
-                return (
-                <>
-                  <div
-                    style={{
-                      display: 'flex',
-                      alignItems: 'center',
-                      gap: '1.5rem',
-                      marginBottom: '1rem',
-                      padding: '10px 16px',
-                      background: 'linear-gradient(to right, #f1f5f9, #e2e8f0)',
-                      borderRadius: '8px',
-                      border: '1px solid #e2e8f0',
-                      fontSize: '13px',
-                      fontWeight: 600,
                     }}
-                  >
-                    <span style={{ color: '#475569' }}>
-                      Grand Total: <span className="tabular-nums" style={{ color: '#1e293b' }}>${totalBilled.toFixed(2)}</span>
-                    </span>
-                    <span style={{ color: '#475569', paddingLeft: '1rem', borderLeft: '1px solid #cbd5e1' }}>
-                      Total Paid: <span className="tabular-nums" style={{ color: '#1e293b' }}>${totalPaid.toFixed(2)}</span>
-                    </span>
-                    <span style={{ paddingLeft: '1rem', borderLeft: '1px solid #cbd5e1' }}>
-                      Total Due: <span className="tabular-nums" style={{ color: totalDue > 0 ? '#dc2626' : '#64748b' }}>${totalDue.toFixed(2)}</span>
-                    </span>
-                  </div>
-                  <div className="space-y-3">
-                    {customer.services.map((s, idx) => {
-                      const billed = Number(s.amount_billed ?? s.amountBilled ?? 0);
-                      const paid = Number(s.amount_paid ?? s.amountPaid ?? 0);
-                      const due = billed - paid;
-                      const rate = Number(s.rate_per_day ?? s.ratePerDay ?? 0);
-                      const days = s.days != null ? s.days : '—';
-                      const denialList = Array.isArray(s.denial_codes) ? s.denial_codes : (s.denialCodes || (typeof s.denial_codes === 'string' && s.denial_codes ? s.denial_codes.split(',') : []));
-                      return (
-                        <div
-                          key={s.id || `svc-${idx}`}
-                          className="rounded-lg border border-[#e9ecef] bg-[#fafbfc] px-4 py-3"
-                        >
-                          <div className="text-[#1a253c] font-semibold text-[15px] mb-2">
-                            {s.service_name || s.serviceName || '—'}
-                          </div>
-                          <div className="grid grid-cols-2 gap-x-6 gap-y-1.5 text-sm">
-                            <div className="text-[#6c757d]">
-                              <span className="text-[#495057]">Rate/day</span>{' '}
-                              <span className="font-medium tabular-nums">${rate.toFixed(2)}</span>
-                            </div>
-                            <div className="text-[#6c757d]">
-                              <span className="text-[#495057]">Days</span>{' '}
-                              <span className="font-medium tabular-nums">{days}</span>
-                            </div>
-                            <div className="text-[#6c757d]">
-                              <span className="text-[#495057]">Billed</span>{' '}
-                              <span className="font-medium tabular-nums">${billed.toFixed(2)}</span>
-                            </div>
-                            <div className="text-[#6c757d]">
-                              <span className="text-[#495057]">Paid</span>{' '}
-                              <span className="font-medium tabular-nums">${paid.toFixed(2)}</span>
-                            </div>
-                            <div className="text-[#6c757d]">
-                              <span className="text-[#495057]">Due</span>{' '}
-                              <span className={`font-medium tabular-nums ${due > 0 ? 'text-[#c92a2a]' : 'text-[#495057]'}`}>
-                                ${due.toFixed(2)}
-                              </span>
-                            </div>
-                            <div className="text-[#6c757d]">
-                              <span className="text-[#495057]">Period</span>{' '}
-                              <span className="tabular-nums">
-                                {(() => {
-                                  const startStr = formatMMDDYYYY(s.start_date || s.startDate || '') || '';
-                                  const endStr = formatMMDDYYYY(s.end_date || s.endDate || '') || '';
-                                  if (!startStr && !endStr) return '—';
-                                  if (startStr && endStr) return `${startStr} - ${endStr}`;
-                                  return startStr || endStr;
-                                })()}
-                              </span>
-                            </div>
-                            {denialList.length > 0 && (
-                              <div className="col-span-2 text-[#6c757d]">
-                                <span className="text-[#495057]">Denial codes</span>{' '}
-                                <span className="font-medium">{denialList.join(', ')}</span>
-                              </div>
-                            )}
-                          </div>
-                        </div>
-                      );
-                    })}
-                  </div>
-                </>
-                );
-              })() : (
-                <p className="text-[#6c757d] text-sm py-2">No services for this participant.</p>
-              )}
-            </>
-          )}
-        </div>
-      </div>
-    </div>
+                  />
+                </Box>
+              </Box>
+            ) : (
+              <Box sx={{ display: 'grid', gap: 2 }}>
+                <TextField fullWidth label="Last name" value={lastName} onChange={(e) => setLastName(e.target.value)} placeholder="Last name" />
+                <TextField fullWidth label="First name" value={firstName} onChange={(e) => setFirstName(e.target.value)} placeholder="First name" />
+                <TextField fullWidth label="DOB" value={dob} onChange={(e) => setDob(e.target.value)} placeholder="MM/DD/YYYY" />
+                <TextField fullWidth label="ID #" value={idNumber} onChange={(e) => setIdNumber(e.target.value)} placeholder="ID #" />
+                <TextField fullWidth label="F ID #" value={fIdNumber} onChange={(e) => setFIdNumber(e.target.value)} placeholder="F ID #" />
+                <TextField select fullWidth label="Status" value={activeStatus || 'active'} onChange={(e) => setActiveStatus(e.target.value)}>
+                  <MenuItem value="active">Active</MenuItem>
+                  <MenuItem value="inactive">Inactive</MenuItem>
+                </TextField>
+              </Box>
+            )}
+
+            {/* Services: read-only, professional card layout */}
+            <Divider sx={{ mt: 2, mb: 1 }} />
+            <Typography variant="body2" fontWeight={500} color="#495057" sx={{ mb: 1.5 }}>Services</Typography>
+            {Array.isArray(customer.services) && customer.services.length > 0 ? (() => {
+              const totalBilled = customer.services.reduce((s, e) => s + (Number(e.amount_billed ?? e.amountBilled ?? 0)), 0);
+              const totalPaid = customer.services.reduce((s, e) => s + (Number(e.amount_paid ?? e.amountPaid ?? 0)), 0);
+              const totalDue = totalBilled - totalPaid;
+              return (
+              <>
+                <Box sx={{
+                  display: 'flex', alignItems: 'center', gap: 3, mb: 2, px: 2, py: 1.25,
+                  background: 'linear-gradient(to right, #f1f5f9, #e2e8f0)', borderRadius: 1.5,
+                  border: '1px solid #e2e8f0', fontSize: 13, fontWeight: 600,
+                }}>
+                  <Box component="span" sx={{ color: '#475569' }}>
+                    Grand Total: <Box component="span" sx={{ color: '#1e293b' }}>${totalBilled.toFixed(2)}</Box>
+                  </Box>
+                  <Box component="span" sx={{ color: '#475569', pl: 2, borderLeft: '1px solid #cbd5e1' }}>
+                    Total Paid: <Box component="span" sx={{ color: '#1e293b' }}>${totalPaid.toFixed(2)}</Box>
+                  </Box>
+                  <Box component="span" sx={{ pl: 2, borderLeft: '1px solid #cbd5e1' }}>
+                    Total Due: <Box component="span" sx={{ color: totalDue > 0 ? '#dc2626' : '#64748b' }}>${totalDue.toFixed(2)}</Box>
+                  </Box>
+                </Box>
+                <Box sx={{ display: 'flex', flexDirection: 'column', gap: 1.5 }}>
+                  {customer.services.map((s, idx) => {
+                    const billed = Number(s.amount_billed ?? s.amountBilled ?? 0);
+                    const paid = Number(s.amount_paid ?? s.amountPaid ?? 0);
+                    const due = billed - paid;
+                    const rate = Number(s.rate_per_day ?? s.ratePerDay ?? 0);
+                    const days = s.days != null ? s.days : '—';
+                    const units = s.units ?? s.unitsCount;
+                    const denialList = Array.isArray(s.denial_codes) ? s.denial_codes : (s.denialCodes || (typeof s.denial_codes === 'string' && s.denial_codes ? s.denial_codes.split(',') : []));
+                    return (
+                      <Box key={s.id || `svc-${idx}`} sx={{ borderRadius: 1.5, border: '1px solid #e9ecef', bgcolor: '#fafbfc', px: 2, py: 1.5 }}>
+                        <Typography sx={{ color: '#1a253c', fontWeight: 600, fontSize: 15, mb: 1 }}>
+                          {s.service_name || s.serviceName || '—'}
+                        </Typography>
+                        <Box sx={{ display: 'grid', gridTemplateColumns: '1fr 1fr', columnGap: 3, rowGap: 0.75, fontSize: 14 }}>
+                          <Box sx={{ color: '#6c757d' }}>
+                            <Box component="span" sx={{ color: '#495057' }}>Rate/day</Box>{' '}
+                            <Box component="span" sx={{ fontWeight: 500 }}>${rate.toFixed(2)}</Box>
+                          </Box>
+                          <Box sx={{ color: '#6c757d' }}>
+                            <Box component="span" sx={{ color: '#495057' }}>Days</Box>{' '}
+                            <Box component="span" sx={{ fontWeight: 500 }}>{days}</Box>
+                          </Box>
+                          {units != null && units !== '' && (
+                            <Box sx={{ color: '#6c757d' }}>
+                              <Box component="span" sx={{ color: '#495057' }}>Units</Box>{' '}
+                              <Box component="span" sx={{ fontWeight: 500 }}>{units}</Box>
+                            </Box>
+                          )}
+                          <Box sx={{ color: '#6c757d' }}>
+                            <Box component="span" sx={{ color: '#495057' }}>Billed</Box>{' '}
+                            <Box component="span" sx={{ fontWeight: 500 }}>${billed.toFixed(2)}</Box>
+                          </Box>
+                          <Box sx={{ color: '#6c757d' }}>
+                            <Box component="span" sx={{ color: '#495057' }}>Paid</Box>{' '}
+                            <Box component="span" sx={{ fontWeight: 500 }}>${paid.toFixed(2)}</Box>
+                          </Box>
+                          <Box sx={{ color: '#6c757d' }}>
+                            <Box component="span" sx={{ color: '#495057' }}>Due</Box>{' '}
+                            <Box component="span" sx={{ fontWeight: 500, color: due > 0 ? '#c92a2a' : '#495057' }}>
+                              ${due.toFixed(2)}
+                            </Box>
+                          </Box>
+                          <Box sx={{ color: '#6c757d' }}>
+                            <Box component="span" sx={{ color: '#495057' }}>Period</Box>{' '}
+                            <Box component="span">
+                              {(() => {
+                                const startStr = formatMMDDYYYY(s.start_date || s.startDate || '') || '';
+                                const endStr = formatMMDDYYYY(s.end_date || s.endDate || '') || '';
+                                if (!startStr && !endStr) return '—';
+                                if (startStr && endStr) return `${startStr} - ${endStr}`;
+                                return startStr || endStr;
+                              })()}
+                            </Box>
+                          </Box>
+                          {denialList.length > 0 && (
+                            <Box sx={{ gridColumn: '1 / -1', color: '#6c757d' }}>
+                              <Box component="span" sx={{ color: '#495057' }}>Denial codes</Box>{' '}
+                              <Box component="span" sx={{ fontWeight: 500 }}>{denialList.join(', ')}</Box>
+                            </Box>
+                          )}
+                        </Box>
+                      </Box>
+                    );
+                  })}
+                </Box>
+              </>
+              );
+            })() : (
+              <Typography variant="body2" color="text.secondary" sx={{ py: 1 }}>No services for this participant.</Typography>
+            )}
+          </>
+        )}
+      </DialogContent>
+    </Dialog>
   );
 }

@@ -6,6 +6,7 @@
  * Right pane: reuses existing CustomerForm to edit services for the active customer
  */
 import React, { useEffect, useMemo, useRef, useState } from 'react';
+import { Box, Paper, Typography, Button, CircularProgress } from '@mui/material';
 import CustomerForm from './form';
 import { API_BASE, getAuthHeaders, handle401Error } from '../utils/api';
 import { formatMMDDYYYY } from '../utils/dates';
@@ -26,6 +27,7 @@ function mapEntriesToForm(entries) {
     serviceType: e.service_name || e.serviceName || '',
     days: e.days,
     numberOfDays: e.days != null ? String(e.days) : '',
+    units: e.units ?? '',
     ratePerDay: e.rate_per_day ?? e.ratePerDay ?? 0,
     rate_per_day: e.rate_per_day ?? e.ratePerDay ?? 0,
     startDate: e.start_date || '',
@@ -330,72 +332,66 @@ export default function QuickEntryModal({
   }
  
   return (
-    <div className="flex h-[68vh] gap-4">
-      <aside className="w-[320px] shrink-0 rounded-xl border border-slate-200 bg-white shadow-sm overflow-hidden">
-        <div className="px-4 py-3 border-b border-slate-200 bg-slate-50">
-          <div className="text-sm font-semibold text-slate-900">Selected customers</div>
-          <div className="text-xs text-slate-500">{normalizedCustomers.length} customer(s)</div>
-        </div>
-        <div className="h-full overflow-auto p-2">
+    <Box sx={{ display: 'flex', height: '68vh', gap: 2, flexDirection: { xs: 'column', md: 'row' } }}>
+      <Paper variant="outlined" sx={{ width: { xs: '100%', md: 320 }, flexShrink: 0, overflow: 'hidden', maxHeight: { xs: 220, md: 'none' } }}>
+        <Box sx={{ px: 2, py: 1.5, borderBottom: '1px solid #e2e8f0', bgcolor: '#f8fafc' }}>
+          <Typography variant="body2" fontWeight={600}>Selected customers</Typography>
+          <Typography variant="caption" color="text.secondary">{normalizedCustomers.length} customer(s)</Typography>
+        </Box>
+        <Box sx={{ height: '100%', overflow: 'auto', p: 1 }}>
           {normalizedCustomers.map((c) => {
             const isActive = c.id === activeCustomerId;
             return (
-              <button
+              <Box
                 key={c.id}
+                component="button"
                 type="button"
                 onClick={() => setActiveCustomerId(c.id)}
-                className={
-                  'w-full text-left rounded-lg px-3 py-2 transition ' +
-                  (isActive
-                    ? 'bg-blue-50 border border-blue-200'
-                    : 'hover:bg-slate-50 border border-transparent')
-                }
+                sx={{
+                  display: 'block', width: '100%', textAlign: 'left', borderRadius: 1.5, px: 1.5, py: 1, mb: 0.5,
+                  border: isActive ? '1px solid #bfdbfe' : '1px solid transparent',
+                  bgcolor: isActive ? '#eff6ff' : 'transparent',
+                  cursor: 'pointer',
+                  '&:hover': { bgcolor: isActive ? '#eff6ff' : '#f8fafc' },
+                }}
               >
-                <div className="text-sm font-semibold text-slate-900 truncate">{displayName(c)}</div>
-                <div className="text-xs text-slate-500 truncate">ID: {String(c.id)}</div>
-              </button>
+                <Typography variant="body2" fontWeight={600} noWrap>{displayName(c)}</Typography>
+                <Typography variant="caption" color="text.secondary" noWrap>ID: {String(c.id)}</Typography>
+              </Box>
             );
           })}
-        </div>
-      </aside>
- 
-      <main className="flex-1 min-w-0">
-        <div className="mb-3 flex items-center justify-between gap-2">
-          <div className="min-w-0">
-            <div className="text-sm font-semibold text-slate-900 truncate">
+        </Box>
+      </Paper>
+
+      <Box sx={{ flex: 1, minWidth: 0, display: 'flex', flexDirection: 'column' }}>
+        <Box sx={{ mb: 1.5, display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 1 }}>
+          <Box sx={{ minWidth: 0 }}>
+            <Typography variant="body2" fontWeight={600} noWrap>
               {activeCustomer ? displayName(activeCustomer) : 'Customer'}
-            </div>
-            <div className="text-xs text-slate-500">
+            </Typography>
+            <Typography variant="caption" color="text.secondary">
               Edit services{dirtyCount ? ` • ${dirtyCount} unsaved` : ''}
-            </div>
-          </div>
-          <div className="flex items-center gap-2">
-            <button
-              type="button"
+            </Typography>
+          </Box>
+          <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
+            <Button
+              variant="contained" color="success" size="small"
               onClick={handleSaveAll}
               disabled={savingAll || dirtyCount === 0}
-              className={
-                'rounded-md px-3 py-2 text-sm font-semibold transition ' +
-                (savingAll || dirtyCount === 0
-                  ? 'bg-slate-200 text-slate-600 cursor-not-allowed'
-                  : 'bg-emerald-600 text-white hover:bg-emerald-700')
-              }
+              loading={savingAll}
             >
-              {savingAll ? 'Saving…' : 'Save All'}
-            </button>
-            <button
-              type="button"
-              onClick={() => onClose?.()}
-              className="rounded-md border border-slate-200 bg-white px-3 py-2 text-sm font-semibold text-slate-700 hover:bg-slate-50"
-            >
-              Close
-            </button>
-          </div>
-        </div>
- 
-        <div className="rounded-xl border border-slate-200 bg-white shadow-sm overflow-auto h-[calc(68vh-56px)] p-3">
+              Save All
+            </Button>
+            <Button variant="outlined" size="small" onClick={() => onClose?.()}>Close</Button>
+          </Box>
+        </Box>
+
+        <Paper variant="outlined" sx={{ flex: 1, overflow: 'auto', p: 1.5 }}>
           {isLoadingActive ? (
-            <div className="p-6 text-sm text-slate-600">Loading services…</div>
+            <Box sx={{ display: 'flex', alignItems: 'center', gap: 1.5, p: 3, color: 'text.secondary' }}>
+              <CircularProgress size={18} />
+              <Typography variant="body2">Loading services…</Typography>
+            </Box>
           ) : (
             <CustomerForm
               key={activeCustomerId || 'none'}
@@ -428,9 +424,9 @@ export default function QuickEntryModal({
               onRemoveService={null}
             />
           )}
-        </div>
-      </main>
-    </div>
+        </Paper>
+      </Box>
+    </Box>
   );
 }
   

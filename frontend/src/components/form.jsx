@@ -1,5 +1,28 @@
 import React, { useState, useEffect, useCallback } from 'react';
+import {
+  Box, TextField, MenuItem, Button,
+  Accordion, AccordionSummary, AccordionDetails, Autocomplete,
+  Typography, Alert, Paper,
+} from '@mui/material';
+import ExpandMoreIcon from '@mui/icons-material/ExpandMore';
+import { DatePicker } from '@mui/x-date-pickers/DatePicker';
+import dayjs from 'dayjs';
 import { formatMMDDYYYY, toISO, parseToDate } from '../utils/dates';
+
+// Convert the form's MM/DD/YYYY string storage to/from a dayjs object for the
+// MUI DatePicker UI layer only — the underlying state stays a string so all
+// existing date logic (parseToDate/toISO/day-diff calc) keeps working as-is.
+function strToDayjs(mmddyyyy) {
+  if (!mmddyyyy) return null;
+  const iso = toISO(mmddyyyy);
+  if (!iso) return null;
+  const d = dayjs(iso);
+  return d.isValid() ? d : null;
+}
+function dayjsToStr(d) {
+  if (!d || !d.isValid?.()) return '';
+  return formatMMDDYYYY(d.format('YYYY-MM-DD'));
+}
 
 // Exported helper to create an initial form state (useful for parent components or tests)
 export function formInit() {
@@ -34,7 +57,7 @@ export default function CustomerForm({
   const [activeStatus, setActiveStatus] = useState('active');
   const [idNumber, setIdNumber] = useState('');
   const [fIdNumber, setFIdNumber] = useState('');
-  
+
   // Services array state
   const [services, setServices] = useState([]);
   const [errors, setErrors] = useState([]);
@@ -113,7 +136,7 @@ export default function CustomerForm({
   const updateService = (serviceId, field, value) => {
     setServices(services.map(service => {
       if (service.id !== serviceId) return service;
-      
+
       const updatedService = { ...service, [field]: value };
 
       // When service type changes, set rate per day from catalog
@@ -127,12 +150,11 @@ export default function CustomerForm({
       if (field === 'serviceStartDate' || field === 'serviceEndDate') {
         updatedService.isDaysManuallyEdited = false;
       }
-      
       // Auto-calculate amount billed when relevant fields change (unless manually edited)
       if (!service.isAmountBilledManuallyEdited) {
         if (field === 'serviceType' || field === 'numberOfDays' || field === 'units' ||
             field === 'serviceStartDate' || field === 'serviceEndDate') {
-          
+
           const rate = Number(updatedService.ratePerDay) || getRateForService(updatedService.serviceType);
           if (rate && rate > 0) {
             if (isUnitsServiceType(updatedService.serviceType)) {
@@ -142,7 +164,7 @@ export default function CustomerForm({
               }
             } else {
               // Auto-calculate days from dates if both dates are present
-              if (updatedService.serviceStartDate && updatedService.serviceEndDate && 
+              if (updatedService.serviceStartDate && updatedService.serviceEndDate &&
                   (field === 'serviceStartDate' || field === 'serviceEndDate')) {
                 const startDate = parseToDate(updatedService.serviceStartDate);
                 const endDate = parseToDate(updatedService.serviceEndDate);
@@ -168,12 +190,12 @@ export default function CustomerForm({
           }
         }
       }
-      
+
       // Mark amount as manually edited if user changes it directly
       if (field === 'amountBilled') {
         updatedService.isAmountBilledManuallyEdited = true;
       }
-      
+
       return updatedService;
     }));
   };
@@ -195,7 +217,7 @@ export default function CustomerForm({
   useEffect(() => {
     if (!initial) return;
     const c = initial.customer || initial;
-    
+
     if (c) {
       setFirstName(c.firstName || c.first_name || '');
       setLastName(c.lastName || c.last_name || '');
@@ -257,37 +279,8 @@ export default function CustomerForm({
     }
   }, [initial]);
 
-  // Denial code options for dropdowns
+  // Denial code options for the Autocomplete
   const denialCodeOptions = ['D1', 'D2', 'D3', 'D4', 'D5', 'D6', 'D7', 'D8', 'D9', 'D10'];
-
-  // Add click outside handler for denial codes dropdowns
-  useEffect(() => {
-    const handleClickOutside = (event) => {
-      // hide dropdowns only when clicking outside them
-      const dropdowns = document.querySelectorAll('[id^="denial-codes-dropdown-"]');
-      dropdowns.forEach(dropdown => {
-        const trigger = dropdown?.previousElementSibling;
-        if (dropdown && !dropdown.contains(event.target) && !trigger?.contains(event.target)) {
-          // extract service id from element id
-          const id = dropdown.id || '';
-          const parts = id.split('denial-codes-dropdown-');
-          const sid = parts[1];
-          if (sid) setDenialShowMap(m => ({ ...m, [sid]: false }));
-        }
-      });
-    };
-    document.addEventListener('mousedown', handleClickOutside);
-    return () => document.removeEventListener('mousedown', handleClickOutside);
-  }, []);
-
-  // Per-service denial code input/search state
-  const [denialSearchMap, setDenialSearchMap] = useState({});
-  const [denialShowMap, setDenialShowMap] = useState({});
-  const [denialDropdownStyleMap, setDenialDropdownStyleMap] = useState({});
-
-  const setDenialSearch = (serviceId, val) => setDenialSearchMap(m => ({ ...m, [serviceId]: val }));
-  const setDenialShow = (serviceId, val) => setDenialShowMap(m => ({ ...m, [serviceId]: val }));
-  const setDenialDropdownStyle = (serviceId, style) => setDenialDropdownStyleMap(m => ({ ...m, [serviceId]: style }));
 
   /**
    * "Editing" means modifying an already-saved entry/service (or legacy edit flow).
@@ -306,13 +299,13 @@ export default function CustomerForm({
   // Basic validation
   const validate = () => {
     const errs = [];
-    
+
     // When editing an existing entry, or when participant fields are hidden (add services), don't validate names here.
     if (!isEditing && !hideCustomerFields) {
       if (!lastName.trim()) errs.push('Last name is required');
       if (!firstName.trim()) errs.push('First name is required');
     }
-    
+
     // Require at least one service only when adding services for an existing customer (hideCustomerFields).
     // When adding a new customer, services are optional.
     if (services.length === 0 && hideCustomerFields) {
@@ -321,11 +314,11 @@ export default function CustomerForm({
 
     services.forEach((service, index) => {
       const servicePrefix = services.length > 1 ? `Service ${index + 1}: ` : '';
-      
+
       if (!service.serviceType) {
         errs.push(`${servicePrefix}Type of service is required`);
       }
-      
+
       // For H0038 (units) services, require units instead of dates
       if (isUnitsServiceType(service.serviceType)) {
         const u = Number(service.units);
@@ -347,19 +340,19 @@ export default function CustomerForm({
             errs.push(`${servicePrefix}Service end date cannot be before service start date`);
           }
         }
-        
+
         // Only validate days for non-units services
         const days = Number(service.numberOfDays);
         if (Number.isNaN(days) || days < 0) {
           errs.push(`${servicePrefix}Number of days must be a non-negative number`);
         }
       }
-      
+
       const billed = Number(service.amountBilled);
       if (Number.isNaN(billed) || billed < 0) {
         errs.push(`${servicePrefix}Amount billed must be a non-negative number`);
       }
-      
+
       const paid = Number(service.amountPaid);
       if (service.amountPaid !== '' && (Number.isNaN(paid) || paid < 0)) {
         errs.push(`${servicePrefix}Amount paid must be a non-negative number`);
@@ -394,6 +387,9 @@ export default function CustomerForm({
     const servicesPayload = services.map(service => ({
       id: service.id,
       serviceName: service.serviceType,
+      // days and units are independent columns: days is calendar days, units
+      // is the H0038 unit count. amountBilled is driven by units for H0038,
+      // by days for everything else — see updateService's calc above.
       days: Number(service.numberOfDays) || 0,
       units: isUnitsServiceType(service.serviceType) ? Number(service.units) || 0 : undefined,
       ratePerDay: (service.ratePerDay != null && service.ratePerDay !== '') ? Number(service.ratePerDay) : getRateForService(service.serviceType),
@@ -495,629 +491,320 @@ export default function CustomerForm({
     getRateForService,
   ]);
 
+  // ── Render ──────────────────────────────────────────────────────────────
+
+  function renderServiceFields(service, index) {
+    const unitsType = isUnitsServiceType(service.serviceType);
+    const showRemove = (services.length > 1 || hideCustomerFields || (!hideCustomerFields && !isEditing && !isEditBatch));
+
+    return (
+      <Box>
+        <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 1.5, mb: 2 }}>
+          <Typography variant="subtitle2" fontWeight={600}>Service {index + 1}</Typography>
+          {showRemove && (
+            <Button size="small" color="error" variant="outlined" onClick={() => removeService(service.id)}>
+              Remove
+            </Button>
+          )}
+        </Box>
+
+        <TextField
+          select
+          fullWidth
+          required
+          label="Type of Service"
+          value={service.serviceType}
+          onChange={(e) => updateService(service.id, 'serviceType', e.target.value)}
+          sx={{ mb: 2.5 }}
+        >
+          <MenuItem value="">Select service</MenuItem>
+          {Array.isArray(servicesProp) && servicesProp.map(s => {
+            const svcName = s.name || s.serviceName || s.service_name || '';
+            const key = s.id || svcName;
+            const codeRaw = (s.code || s.serviceCode || s.service_code || '').toString();
+            const name = svcName.toString();
+            const normalizedCode = codeRaw.toUpperCase().trim();
+            const normalizedName = name.toUpperCase();
+            const isUnit = normalizedCode.includes('H0038') || normalizedName.includes('H0038');
+            const dayRate = Number(s.rate_per_day ?? s.ratePerDay ?? 0) || 0;
+            const unitRate = Number(s.unitRate ?? s.ratePerUnit ?? s.rate_per_unit ?? dayRate) || dayRate;
+            const displayRate = isUnit ? unitRate : dayRate;
+            const perLabel = isUnit ? '/unit' : '/day';
+            return (
+              <MenuItem key={key} value={svcName}>{svcName} — ${displayRate}{perLabel}</MenuItem>
+            );
+          })}
+        </TextField>
+
+        {/* Start date, End date: show for day-based or when no type selected (Add flow) */}
+        {(!service.serviceType || !unitsType) && (
+          <Box sx={{ display: 'grid', gridTemplateColumns: { xs: '1fr', md: '1fr 1fr' }, gap: 2, mb: 2.5 }}>
+            <DatePicker
+              label="Start date *"
+              format="MM/DD/YYYY"
+              value={strToDayjs(service.serviceStartDate)}
+              onChange={(val) => updateService(service.id, 'serviceStartDate', dayjsToStr(val))}
+              slotProps={{ textField: { fullWidth: true, required: !unitsType } }}
+            />
+            <DatePicker
+              label="End date *"
+              format="MM/DD/YYYY"
+              value={strToDayjs(service.serviceEndDate)}
+              onChange={(val) => updateService(service.id, 'serviceEndDate', dayjsToStr(val))}
+              slotProps={{ textField: { fullWidth: true, required: !unitsType } }}
+            />
+          </Box>
+        )}
+
+        {/* Number of days: always its own field. For units-based services (H0038),
+            days and units are independent — days is calendar days, units drives the
+            amount (units * rate). Both are saved to their own DB columns. */}
+        <Box sx={{ display: 'grid', gridTemplateColumns: { xs: '1fr', md: '1fr 1fr' }, gap: 2, mb: 2.5 }}>
+          <TextField
+            fullWidth
+            type="number"
+            label="Number of days"
+            placeholder="Days"
+            value={service.numberOfDays ?? ''}
+            onChange={(e) => updateService(service.id, 'numberOfDays', e.target.value)}
+            slotProps={{ htmlInput: { min: 0, step: 1 } }}
+          />
+          <TextField
+            fullWidth
+            type="number"
+            label={`Rate per ${unitsType ? 'unit' : 'day'} ($)`}
+            placeholder="From service type or enter manually"
+            value={service.ratePerDay ?? ''}
+            onChange={(e) => updateService(service.id, 'ratePerDay', e.target.value === '' ? '' : parseFloat(e.target.value) || 0)}
+            slotProps={{ htmlInput: { min: 0, step: 0.01 } }}
+          />
+        </Box>
+
+        {/* Units: only when service type is units-based — drives amountBilled = units * rate */}
+        {service.serviceType && unitsType && (
+          <TextField
+            fullWidth
+            required
+            type="number"
+            label="Number of units"
+            value={service.units}
+            onChange={(e) => updateService(service.id, 'units', e.target.value)}
+            sx={{ mb: 2.5 }}
+            slotProps={{ htmlInput: { min: 0, step: 1 } }}
+          />
+        )}
+
+        <Box sx={{ display: 'grid', gridTemplateColumns: { xs: '1fr', md: '1fr 1fr' }, gap: 2, mb: 2.5 }}>
+          <TextField
+            fullWidth
+            type="number"
+            label="Amount billed ($)"
+            value={service.amountBilled}
+            onChange={(e) => updateService(service.id, 'amountBilled', parseFloat(e.target.value) || 0)}
+            slotProps={{ htmlInput: { min: 0, step: 0.01 } }}
+          />
+          <TextField
+            fullWidth
+            type="number"
+            label="Amount paid ($)"
+            value={service.amountPaid}
+            onChange={(e) => updateService(service.id, 'amountPaid', e.target.value)}
+            slotProps={{ htmlInput: { min: 0, step: 0.01 } }}
+          />
+        </Box>
+
+        <Box sx={{ display: 'grid', gridTemplateColumns: { xs: '1fr', md: '1fr 1fr' }, gap: 2, mb: 2.5 }}>
+          <DatePicker
+            label="Date of payment"
+            format="MM/DD/YYYY"
+            value={strToDayjs(service.dateOfPayment)}
+            onChange={(val) => updateService(service.id, 'dateOfPayment', dayjsToStr(val))}
+            slotProps={{ textField: { fullWidth: true } }}
+          />
+          <DatePicker
+            label="Date submitted"
+            format="MM/DD/YYYY"
+            value={strToDayjs(service.dateSubmitted)}
+            onChange={(val) => updateService(service.id, 'dateSubmitted', dayjsToStr(val))}
+            slotProps={{ textField: { fullWidth: true } }}
+          />
+        </Box>
+
+        <Autocomplete
+          multiple
+          freeSolo
+          fullWidth
+          options={denialCodeOptions}
+          value={service.denialCodes || []}
+          onChange={(_, vals) => updateService(service.id, 'denialCodes', vals)}
+          renderInput={(params) => (
+            <TextField {...params} label="Denial codes" placeholder="Type to search or add denial codes…" />
+          )}
+          sx={{ mb: 2.5 }}
+        />
+
+        <Paper variant="outlined" sx={{ px: 2, py: 1.25, bgcolor: '#f8fafc' }}>
+          <Box sx={{ display: 'flex', flexWrap: 'wrap', alignItems: 'center', justifyContent: 'space-between', gap: 1, fontSize: 14 }}>
+            <span><strong>Billed:</strong> ${(service.amountBilled || 0).toFixed(2)}</span>
+            <span><strong>Paid:</strong> ${(parseFloat(service.amountPaid) || 0).toFixed(2)}</span>
+            <Box component="span" sx={{ color: ((service.amountBilled || 0) - (parseFloat(service.amountPaid) || 0)) > 0 ? '#e74c3c' : '#64748b' }}>
+              <strong>Due:</strong> ${((service.amountBilled || 0) - (parseFloat(service.amountPaid) || 0)).toFixed(2)}
+            </Box>
+          </Box>
+        </Paper>
+      </Box>
+    );
+  }
+
   return (
-    <div className="w-full">
+    <Box sx={{ width: '100%' }}>
       {isResubmission && (
-        <div className="rounded-lg border border-cyan-200 bg-cyan-50 px-4 py-3 mb-5 text-center font-semibold text-cyan-900 shadow-sm">
+        <Alert severity="info" sx={{ mb: 2.5 }}>
           Resubmission Mode — Creating a new entry based on the previous submission
-        </div>
-      )} 
-      <form onSubmit={handleSubmit} className="add-customer-form rounded-xl border border-slate-200 bg-white shadow-sm p-4">
-        <fieldset disabled={submitting} style={{ border: 'none', padding: 0, margin: 0, opacity: submitting ? 0.7 : 1 }}>
+        </Alert>
+      )}
+      <Box
+        component="form"
+        onSubmit={handleSubmit}
+        sx={{
+          width: '100%', borderRadius: 3, border: '1px solid #e2e8f0', bgcolor: '#fff',
+          boxShadow: 1, p: 2.5, opacity: submitting ? 0.7 : 1,
+          pointerEvents: submitting ? 'none' : 'auto',
+        }}
+      >
         {/* When editing a service, keep participant identifiers read-only elsewhere (Participant Details modal). */}
-
         {!isEditing && !hideCustomerFields && (
-          <>
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-              <div className="min-w-0">
-                <label>First name <span style={{ color: '#c0392b' }}>*</span></label>
-                <input
-                  value={firstName}
-                  onChange={(e) => setFirstName(e.target.value)}
-                  placeholder="First name"
-                  required
-                />
-              </div>
-
-              <div className="min-w-0">
-                <label>Last name <span style={{ color: '#c0392b' }}>*</span></label>
-                <input
-                  value={lastName}
-                  onChange={(e) => setLastName(e.target.value)}
-                  placeholder="Last name"
-                  required
-                />
-              </div>
-
-              <div className="min-w-0">
-                <label>Date of Birth</label>
-                <div className="relative">
-                  <input
-                    type="text"
-                    placeholder="MM/DD/YYYY"
-                    value={dateOfBirth}
-                    onChange={(e) => setDateOfBirth(e.target.value)}
-                    className="pr-10"
-                  />
-                  <input
-                    type="date"
-                    className="absolute right-0 top-0 bottom-0 opacity-0 cursor-pointer z-[2]"
-                    style={{ width: '2.5rem' }}
-                    value={dateOfBirth ? toISO(dateOfBirth) : ''}
-                    onChange={(e) => {
-                      if (e.target.value) {
-                        setDateOfBirth(formatMMDDYYYY(e.target.value));
-                      }
-                    }}
-                    onFocus={(e) => e.target.showPicker && e.target.showPicker()}
-                  />
-                  <svg width="18" height="18" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg" className="absolute right-3 top-1/2 -translate-y-1/2 pointer-events-none text-blue-600">
-                    <rect x="3" y="4" width="18" height="18" rx="2" stroke="currentColor" strokeWidth="2" fill="none" />
-                    <line x1="16" y1="2" x2="16" y2="6" stroke="currentColor" strokeWidth="2" strokeLinecap="round" />
-                    <line x1="8" y1="2" x2="8" y2="6" stroke="currentColor" strokeWidth="2" strokeLinecap="round" />
-                    <line x1="3" y1="10" x2="21" y2="10" stroke="currentColor" strokeWidth="2" />
-                    <rect x="7" y="14" width="2" height="2" fill="currentColor" />
-                    <rect x="11" y="14" width="2" height="2" fill="currentColor" />
-                    <rect x="15" y="14" width="2" height="2" fill="currentColor" />
-                  </svg>
-                </div>
-              </div>
-
-              <div className="min-w-0">
-                <label>Status</label>
-                <select value={activeStatus} onChange={(e) => setActiveStatus(e.target.value)}>
-                  <option value="active">Active</option>
-                  <option value="inactive">Inactive</option>
-                </select>
-              </div>
-
-              <div className="min-w-0">
-                <label>ID #</label>
-                <input
-                  type="text"
-                  value={idNumber}
-                  onChange={(e) => setIdNumber(e.target.value)}
-                  placeholder="ID #"
-                />
-              </div>
-
-              <div className="min-w-0">
-                <label>F ID #</label>
-                <input
-                  type="text"
-                  value={fIdNumber}
-                  onChange={(e) => setFIdNumber(e.target.value)}
-                  placeholder="F ID #"
-                />
-              </div>
-            </div>
-          </>
+          <Box sx={{ display: 'grid', gridTemplateColumns: { xs: '1fr', md: '1fr 1fr' }, gap: 2 }}>
+            <TextField
+              required fullWidth label="First name" placeholder="First name"
+              value={firstName} onChange={(e) => setFirstName(e.target.value)}
+            />
+            <TextField
+              required fullWidth label="Last name" placeholder="Last name"
+              value={lastName} onChange={(e) => setLastName(e.target.value)}
+            />
+            <DatePicker
+              label="Date of Birth"
+              format="MM/DD/YYYY"
+              value={strToDayjs(dateOfBirth)}
+              onChange={(val) => setDateOfBirth(dayjsToStr(val))}
+              slotProps={{ textField: { fullWidth: true } }}
+            />
+            <TextField
+              select fullWidth label="Status"
+              value={activeStatus} onChange={(e) => setActiveStatus(e.target.value)}
+            >
+              <MenuItem value="active">Active</MenuItem>
+              <MenuItem value="inactive">Inactive</MenuItem>
+            </TextField>
+            <TextField
+              fullWidth label="ID #" placeholder="ID #"
+              value={idNumber} onChange={(e) => setIdNumber(e.target.value)}
+            />
+            <TextField
+              fullWidth label="F ID #" placeholder="F ID #"
+              value={fIdNumber} onChange={(e) => setFIdNumber(e.target.value)}
+            />
+          </Box>
         )}
 
         {/* Services Section */}
-        <div className="mt-6 mb-6">
-          <div className="flex flex-wrap items-start justify-between gap-3 mb-4">
-            <div>
-              <div className="text-sm font-semibold text-slate-900">{isEditing ? 'Service' : 'Services'}</div>
-              <div className="text-xs text-slate-500">Billing line items for this participant.</div>
-            </div>
+        <Box sx={{ mt: 3, mb: 3 }}>
+          <Box sx={{ display: 'flex', flexWrap: 'wrap', alignItems: 'flex-start', justifyContent: 'space-between', gap: 1.5, mb: 2 }}>
+            <Box>
+              <Typography variant="body2" fontWeight={600}>{isEditing ? 'Service' : 'Services'}</Typography>
+              <Typography variant="caption" color="text.secondary">Billing line items for this participant.</Typography>
+            </Box>
 
             {(!isEditing || allowMultipleServicesInEdit || isEditBatch) ? (
-              <button
-                type="button"
-                onClick={addService}
-                className="inline-flex items-center justify-center rounded-md bg-emerald-600 px-3 py-2 text-sm font-semibold text-white shadow-sm hover:bg-emerald-700 active:translate-y-px"
-              >
+              <Button variant="contained" color="success" size="small" onClick={addService}>
                 + Add Service
-              </button>
+              </Button>
             ) : isEditing && !allowMultipleServicesInEdit ? (
-              <span
-                className="inline-flex items-center rounded-md border border-blue-200 bg-blue-50 px-3 py-2 text-xs font-semibold text-blue-800"
-                title="You are editing an existing service entry"
-              >
+              <Box sx={{
+                display: 'inline-flex', alignItems: 'center', borderRadius: 1.5, border: '1px solid #bfdbfe',
+                bgcolor: '#eff6ff', color: '#1e40af', px: 1.5, py: 1, fontSize: 12, fontWeight: 600,
+              }} title="You are editing an existing service entry">
                 Editing existing service
-              </span>
+              </Box>
             ) : null}
-          </div>
+          </Box>
 
-          {services.map((service, index) => {
-            const code = getServiceCodeForType(service.serviceType) || '';
-            const svcLabel = service.serviceType || code || '—';
-            const start = service.serviceStartDate || '';
-            const end = service.serviceEndDate || '';
-            const startISO = start ? toISO(start) : '';
-            const endISO = end ? toISO(end) : '';
-            const billed = Number(service.amountBilled || 0);
-            const paid = Number(service.amountPaid || 0);
-            const due = billed - (Number.isNaN(paid) ? 0 : paid);
-            const periodPart = (start || end)
-              ? ` - ${start && end ? `${start} to ${end}` : (start || end)}`
-              : '';
-            const header = `${index + 1} - ${svcLabel}${periodPart} - Billed Amt: $${billed.toFixed(2)} - Due Amt: $${due.toFixed(2)}`;
-            // In Quick Entry / Add Services (hideCustomerFields), always allow removing rows.
-            // In Add Customer flow, allow remove only when multiple rows exist (to keep at least one row optional).
-            const showRemove = (services.length > 1 || hideCustomerFields || (!hideCustomerFields && !isEditing && !isEditBatch));
+          {!useCollapsibleServices ? (
+            services.map((service, index) => (
+              <Paper key={service.id} variant="outlined" sx={{ p: 2, mb: 2, borderRadius: 3 }}>
+                {renderServiceFields(service, index)}
+              </Paper>
+            ))
+          ) : (
+            services.map((service, index) => {
+              const code = getServiceCodeForType(service.serviceType) || '';
+              const svcLabel = service.serviceType || code || '—';
+              const start = service.serviceStartDate || '';
+              const end = service.serviceEndDate || '';
+              const billed = Number(service.amountBilled || 0);
+              const paid = Number(service.amountPaid || 0);
+              const due = billed - (Number.isNaN(paid) ? 0 : paid);
+              const periodPart = (start || end)
+                ? ` - ${start && end ? `${start} to ${end}` : (start || end)}`
+                : '';
+              const header = `${index + 1} - ${svcLabel}${periodPart} - Billed Amt: $${billed.toFixed(2)} - Due Amt: $${due.toFixed(2)}`;
 
-            const serviceFields = (
-              <>
-                <div className="flex items-center justify-between gap-3 mb-3">
-                  <div className="text-sm font-semibold text-slate-900">Service {index + 1}</div>
-                  {showRemove && (
-                    <button
-                      type="button"
-                      onClick={() => removeService(service.id)}
-                      className="inline-flex items-center rounded-md border border-rose-200 bg-rose-50 px-2 py-1 text-xs font-semibold text-rose-700 hover:bg-rose-100"
-                    >
-                      Remove
-                    </button>
-                  )}
-                </div>
-
-                <div className="grid grid-cols-1 gap-2 mb-5">
-                  <label>Type of Service <span style={{ color: '#c0392b' }}>*</span></label>
-                  <select
-                    value={service.serviceType}
-                    onChange={(e) => updateService(service.id, 'serviceType', e.target.value)}
-                    required
-                  >
-                    <option value="">Select service</option>
-                    {Array.isArray(servicesProp) && servicesProp.map(s => {
-                      const svcName = s.name || s.serviceName || s.service_name || '';
-                      const key = s.id || svcName;
-                      const codeRaw = (s.code || s.serviceCode || s.service_code || '').toString();
-                      const name = svcName.toString();
-                      const normalizedCode = codeRaw.toUpperCase().trim();
-                      const normalizedName = name.toUpperCase();
-                      const isUnit = normalizedCode.includes('H0038') || normalizedName.includes('H0038');
-                      const dayRate = Number(s.rate_per_day ?? s.ratePerDay ?? 0) || 0;
-                      const unitRate = Number(s.unitRate ?? s.ratePerUnit ?? s.rate_per_unit ?? dayRate) || dayRate;
-                      const displayRate = isUnit ? unitRate : dayRate;
-                      const perLabel = isUnit ? '/unit' : '/day';
-                      return (
-                        <option key={key} value={svcName}>{svcName} — ${displayRate}{perLabel}</option>
-                      );
-                    })}
-                  </select>
-                </div>
-
-              {/* Start date, End date: show for day-based or when no type selected (Add flow) */}
-              {(!service.serviceType || !isUnitsServiceType(service.serviceType)) ? (
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mb-5">
-                  <div className="min-w-0">
-                    <label>Start date <span style={{ color: '#c0392b' }}>*</span></label>
-                    <div className="relative">
-                      <input
-                        type="text"
-                        placeholder="MM/DD/YYYY"
-                        value={service.serviceStartDate}
-                        onChange={(e) => updateService(service.id, 'serviceStartDate', e.target.value)}
-                        required={!isUnitsServiceType(service.serviceType)}
-                        className="pr-10"
-                      />
-                      <input
-                        type="date"
-                        className="absolute right-0 top-0 bottom-0 opacity-0 cursor-pointer z-[2]"
-                        style={{ width: '2.5rem' }}
-                        value={startISO}
-                        onChange={(e) => {
-                          if (e.target.value) {
-                            updateService(service.id, 'serviceStartDate', formatMMDDYYYY(e.target.value));
-                          }
-                        }}
-                        onFocus={(e) => e.target.showPicker && e.target.showPicker()}
-                      />
-                      <svg width="18" height="18" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg" className="absolute right-3 top-1/2 -translate-y-1/2 pointer-events-none text-blue-600">
-                        <rect x="3" y="4" width="18" height="18" rx="2" stroke="currentColor" strokeWidth="2" fill="none" />
-                        <line x1="16" y1="2" x2="16" y2="6" stroke="currentColor" strokeWidth="2" strokeLinecap="round" />
-                        <line x1="8" y1="2" x2="8" y2="6" stroke="currentColor" strokeWidth="2" strokeLinecap="round" />
-                        <line x1="3" y1="10" x2="21" y2="10" stroke="currentColor" strokeWidth="2" />
-                        <rect x="7" y="14" width="2" height="2" fill="currentColor" />
-                        <rect x="11" y="14" width="2" height="2" fill="currentColor" />
-                        <rect x="15" y="14" width="2" height="2" fill="currentColor" />
-                      </svg>
-                    </div>
-                  </div>
-                  <div className="min-w-0">
-                    <label>End date <span style={{ color: '#c0392b' }}>*</span></label>
-                    <div className="relative">
-                      <input
-                        type="text"
-                        placeholder="MM/DD/YYYY"
-                        value={service.serviceEndDate}
-                        onChange={(e) => updateService(service.id, 'serviceEndDate', e.target.value)}
-                        required={!isUnitsServiceType(service.serviceType)}
-                        className="pr-10"
-                      />
-                      <input
-                        type="date"
-                        className="absolute right-0 top-0 bottom-0 opacity-0 cursor-pointer z-[2]"
-                        style={{ width: '2.5rem' }}
-                        value={endISO}
-                        onChange={(e) => {
-                          if (e.target.value) {
-                            updateService(service.id, 'serviceEndDate', formatMMDDYYYY(e.target.value));
-                          }
-                        }}
-                        onFocus={(e) => e.target.showPicker && e.target.showPicker()}
-                      />
-                      <svg width="18" height="18" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg" className="absolute right-3 top-1/2 -translate-y-1/2 pointer-events-none text-blue-600">
-                        <rect x="3" y="4" width="18" height="18" rx="2" stroke="currentColor" strokeWidth="2" fill="none" />
-                        <line x1="16" y1="2" x2="16" y2="6" stroke="currentColor" strokeWidth="2" strokeLinecap="round" />
-                        <line x1="8" y1="2" x2="8" y2="6" stroke="currentColor" strokeWidth="2" strokeLinecap="round" />
-                        <line x1="3" y1="10" x2="21" y2="10" stroke="currentColor" strokeWidth="2" />
-                        <rect x="7" y="14" width="2" height="2" fill="currentColor" />
-                        <rect x="11" y="14" width="2" height="2" fill="currentColor" />
-                        <rect x="15" y="14" width="2" height="2" fill="currentColor" />
-                      </svg>
-                    </div>
-                  </div>
-                </div>
-              ) : null}
-
-              {/* Number of days, Rate per day: after dates */}
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mb-5">
-                <div className="min-w-0">
-                  <label>Number of days</label>
-                  <input
-                    type="number"
-                    min="0"
-                    step="1"
-                    value={service.numberOfDays ?? ''}
-                    onChange={(e) => updateService(service.id, 'numberOfDays', e.target.value)}
-                    placeholder="Days"
-                  />
-                </div>
-                <div className="min-w-0">
-                  <label>Rate per day ($)</label>
-                  <input
-                    type="number"
-                    min="0"
-                    step="0.01"
-                    value={service.ratePerDay ?? ''}
-                    onChange={(e) => updateService(service.id, 'ratePerDay', e.target.value === '' ? '' : parseFloat(e.target.value) || 0)}
-                    placeholder="From service type or enter manually"
-                  />
-                </div>
-              </div>
-
-              {/* Units: only when service type is units-based */}
-              {service.serviceType && isUnitsServiceType(service.serviceType) ? (
-                <div className="grid grid-cols-1 gap-2 mb-5">
-                  <label>Number of units <span style={{ color: '#c0392b' }}>*</span></label>
-                  <input
-                    type="number"
-                    min="0"
-                    step="1"
-                    value={service.units}
-                    onChange={(e) => updateService(service.id, 'units', e.target.value)}
-                  />
-                </div>
-              ) : null}
-
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mb-5">
-                <div className="min-w-0">
-                  <label>Amount billed ($)</label>
-                  <input
-                    type="number"
-                    min="0"
-                    step="0.01"
-                    value={service.amountBilled}
-                    onChange={(e) => updateService(service.id, 'amountBilled', parseFloat(e.target.value) || 0)}
-                  />
-                </div>
-                <div className="min-w-0">
-                  <label>Amount paid ($)</label>
-                  <input
-                    type="number"
-                    min="0"
-                    step="0.01"
-                    value={service.amountPaid}
-                    onChange={(e) => updateService(service.id, 'amountPaid', e.target.value)}
-                  />
-                </div>
-              </div>
-
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mb-5">
-                <div className="min-w-0">
-                  <label>Date of payment</label>
-                  <div className="relative">
-                    <input
-                      type="text"
-                      placeholder="MM/DD/YYYY"
-                      value={service.dateOfPayment}
-                      onChange={(e) => updateService(service.id, 'dateOfPayment', e.target.value)}
-                      className="pr-10"
-                    />
-                    <input
-                      type="date"
-                      className="absolute right-0 top-0 bottom-0 opacity-0 cursor-pointer z-[2]"
-                      style={{ width: '2.5rem' }}
-                      value={service.dateOfPayment ? toISO(service.dateOfPayment) : ''}
-                      onChange={(e) => {
-                        if (e.target.value) {
-                          updateService(service.id, 'dateOfPayment', formatMMDDYYYY(e.target.value));
-                        }
-                      }}
-                      onFocus={(e) => e.target.showPicker && e.target.showPicker()}
-                    />
-                    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg" className="absolute right-3 top-1/2 -translate-y-1/2 pointer-events-none text-blue-600">
-                      <rect x="3" y="4" width="18" height="18" rx="2" stroke="currentColor" strokeWidth="2" fill="none" />
-                      <line x1="16" y1="2" x2="16" y2="6" stroke="currentColor" strokeWidth="2" strokeLinecap="round" />
-                      <line x1="8" y1="2" x2="8" y2="6" stroke="currentColor" strokeWidth="2" strokeLinecap="round" />
-                      <line x1="3" y1="10" x2="21" y2="10" stroke="currentColor" strokeWidth="2" />
-                      <rect x="7" y="14" width="2" height="2" fill="currentColor" />
-                      <rect x="11" y="14" width="2" height="2" fill="currentColor" />
-                      <rect x="15" y="14" width="2" height="2" fill="currentColor" />
-                    </svg>
-                  </div>
-                </div>
-
-                <div className="min-w-0">
-                  <label>Date submitted</label>
-                  <div className="relative">
-                    <input
-                      type="text"
-                      placeholder="MM/DD/YYYY"
-                      value={service.dateSubmitted}
-                      onChange={(e) => updateService(service.id, 'dateSubmitted', e.target.value)}
-                      className="pr-10"
-                    />
-                    <input
-                      type="date"
-                      className="absolute right-0 top-0 bottom-0 opacity-0 cursor-pointer z-[2]"
-                      style={{ width: '2.5rem' }}
-                      value={service.dateSubmitted ? toISO(service.dateSubmitted) : ''}
-                      onChange={(e) => {
-                        if (e.target.value) {
-                          updateService(service.id, 'dateSubmitted', formatMMDDYYYY(e.target.value));
-                        }
-                      }}
-                      onFocus={(e) => e.target.showPicker && e.target.showPicker()}
-                    />
-                    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg" className="absolute right-3 top-1/2 -translate-y-1/2 pointer-events-none text-blue-600">
-                      <rect x="3" y="4" width="18" height="18" rx="2" stroke="currentColor" strokeWidth="2" fill="none" />
-                      <line x1="16" y1="2" x2="16" y2="6" stroke="currentColor" strokeWidth="2" strokeLinecap="round" />
-                      <line x1="8" y1="2" x2="8" y2="6" stroke="currentColor" strokeWidth="2" strokeLinecap="round" />
-                      <line x1="3" y1="10" x2="21" y2="10" stroke="currentColor" strokeWidth="2" />
-                      <rect x="7" y="14" width="2" height="2" fill="currentColor" />
-                      <rect x="11" y="14" width="2" height="2" fill="currentColor" />
-                      <rect x="15" y="14" width="2" height="2" fill="currentColor" />
-                    </svg>
-                  </div>
-                </div>
-              </div>
-
-              <div className="grid grid-cols-1 gap-2 mb-5">
-                <label>Denial codes</label>
-                <div className="relative">
-                  <div
-                    className="min-h-11 w-full rounded-lg border-2 border-slate-300 bg-white px-3 py-2 pr-10 flex flex-wrap items-center gap-2 cursor-text transition focus-within:border-blue-500 focus-within:ring-4 focus-within:ring-blue-100"
-                    onClick={(e) => {
-                      // compute trigger rect and position dropdown fixed to avoid clipping inside modal scroll containers
-                      const rect = e.currentTarget.getBoundingClientRect();
-                      setDenialDropdownStyle(service.id, {
-                        position: 'fixed',
-                        top: rect.bottom + window.scrollY,
-                        left: rect.left + window.scrollX,
-                        width: rect.width,
-                        zIndex: 20000,
-                      });
-                      setDenialShow(service.id, true);
-                      const input = document.getElementById(`denial-input-${service.id}`);
-                      input && input.focus();
-                    }}
-                  >
-                    {(service.denialCodes || []).map(code => (
-                      <span key={code} className="inline-flex items-center gap-1 rounded-full bg-blue-50 px-2 py-1 text-xs font-semibold text-blue-700">
-                        {code}
-                        <button
-                          type="button"
-                          onClick={(e) => {
-                            e.stopPropagation();
-                            updateService(service.id, 'denialCodes', (service.denialCodes || []).filter(c => c !== code));
-                          }}
-                          className="ml-1 inline-flex h-4 w-4 items-center justify-center rounded-full text-blue-700 hover:bg-blue-100"
-                          aria-label={`Remove ${code}`}
-                        >
-                          ×
-                        </button>
-                      </span>
-                    ))}
-
-                    <input
-                      id={`denial-input-${service.id}`}
-                      className="customer-denial-input flex-1 min-w-[160px] border-0 outline-none bg-transparent text-sm py-1"
-                      value={denialSearchMap[service.id] || ''}
-                      onChange={(e) => { setDenialSearch(service.id, e.target.value); setDenialShow(service.id, true); }}
-                      onKeyDown={(e) => {
-                        if (e.key === 'Enter') {
-                          e.preventDefault();
-                          const val = (denialSearchMap[service.id] || '').trim();
-                          if (val) {
-                            const current = service.denialCodes || [];
-                            if (!current.includes(val)) updateService(service.id, 'denialCodes', [...current, val]);
-                            setDenialSearch(service.id, '');
-                            setDenialShow(service.id, false);
-                          }
-                        } else if (e.key === 'Backspace' && !(denialSearchMap[service.id] || '')) {
-                          // remove last tag
-                          const current = service.denialCodes || [];
-                          if (current.length > 0) updateService(service.id, 'denialCodes', current.slice(0, -1));
-                        } else if (e.key === 'ArrowDown') {
-                          const first = document.querySelector(`#denial-codes-dropdown-${service.id} .option-item`);
-                          first && first.focus();
-                        }
-                      }}
-                      placeholder={(service.denialCodes || []).length === 0 ? 'Type to search or add denial codes…' : ''}
-                    />
-
-                    <svg className="absolute right-3 top-1/2 -translate-y-1/2 h-4 w-4 pointer-events-none text-slate-500" fill="currentColor" viewBox="0 0 20 20">
-                      <path fillRule="evenodd" d="M5.293 7.293a1 1 0 011.414 0L10 10.586l3.293-3.293a1 1 0 111.414 1.414l-4 4a1 1 0 01-1.414 0l-4-4a1 1 0 010-1.414z" clipRule="evenodd" />
-                    </svg>
-                  </div>
-
-                  <div
-                    id={`denial-codes-dropdown-${service.id}`}
-                    className="overflow-auto rounded-lg border border-slate-200 bg-white shadow-lg"
-                    style={{
-                      display: denialShowMap[service.id] ? 'block' : 'none',
-                      position: denialDropdownStyleMap[service.id]?.position || 'absolute',
-                      top: denialDropdownStyleMap[service.id]?.top ? denialDropdownStyleMap[service.id].top + 'px' : '100%',
-                      left: denialDropdownStyleMap[service.id]?.left ? denialDropdownStyleMap[service.id].left + 'px' : '0',
-                      width: denialDropdownStyleMap[service.id]?.width ? denialDropdownStyleMap[service.id].width + 'px' : 'auto',
-                      right: denialDropdownStyleMap[service.id] ? 'auto' : '0',
-                      zIndex: denialDropdownStyleMap[service.id]?.zIndex || 1000,
-                      maxHeight: '200px',
-                    }}
-                  >
-                    {denialCodeOptions
-                      .filter(code => code.toLowerCase().includes((denialSearchMap[service.id] || '').toLowerCase()))
-                      .map(code => (
-                        <div
-                          key={code}
-                          tabIndex={0}
-                          className="option-item flex items-center justify-between px-3 py-2 text-sm cursor-pointer hover:bg-slate-50"
-                          onClick={() => {
-                            const current = service.denialCodes || [];
-                            if (current.includes(code)) updateService(service.id, 'denialCodes', current.filter(c => c !== code));
-                            else updateService(service.id, 'denialCodes', [...current, code]);
-                            setDenialSearch(service.id, ''); setDenialShow(service.id, false);
-                          }}
-                          onKeyDown={(e) => { if (e.key === 'Enter') { e.preventDefault(); e.target.click(); } }}
-                        >
-                          <span>{code}</span>
-                          {(service.denialCodes || []).includes(code) && (
-                            <svg width="16" height="16" fill="currentColor" viewBox="0 0 20 20" className="text-blue-600">
-                              <path fillRule="evenodd" d="M16.707 5.293a1 1 0 010 1.414l-8 8a1 1 0 01-1.414 0l-4-4a1 1 0 011.414-1.414L8 12.586l7.293-7.293a1 1 0 011.414 0z" clipRule="evenodd" />
-                            </svg>
-                          )}
-                        </div>
-                      ))}
-                    {(denialSearchMap[service.id] || '').trim() !== '' && !denialCodeOptions.some(c => c.toLowerCase() === (denialSearchMap[service.id] || '').trim().toLowerCase()) && (
-                      <div
-                        onClick={() => {
-                          const val = (denialSearchMap[service.id] || '').trim();
-                          if (val) {
-                            const current = service.denialCodes || [];
-                            updateService(service.id, 'denialCodes', [...current, val]);
-                            setDenialSearch(service.id, '');
-                            setDenialShow(service.id, false);
-                          }
-                        }}
-                        className="px-3 py-2 text-sm cursor-pointer bg-amber-50 hover:bg-amber-100"
-                      >
-                        Add “{denialSearchMap[service.id]}”
-                      </div>
-                    )}
-                  </div>
-                </div>
-              </div>
-
-              <div className="mt-3 rounded-lg border border-slate-200 bg-slate-50 px-3 py-2 text-sm">
-                <div className="flex flex-wrap items-center justify-between gap-2">
-                  <span><strong>Billed:</strong> ${(service.amountBilled || 0).toFixed(2)}</span>
-                  <span><strong>Paid:</strong> ${(parseFloat(service.amountPaid) || 0).toFixed(2)}</span>
-                  <span style={{ color: ((service.amountBilled || 0) - (parseFloat(service.amountPaid) || 0)) > 0 ? '#e74c3c' : '#64748b' }}>
-                    <strong>Due:</strong> ${((service.amountBilled || 0) - (parseFloat(service.amountPaid) || 0)).toFixed(2)}
-                  </span>
-                </div>
-              </div>
-              </>
-            );
-
-            if (!useCollapsibleServices) {
               return (
-                <div
+                <Accordion
                   key={service.id}
-                  className="rounded-xl border border-slate-200 bg-white p-4 shadow-sm mb-4"
+                  expanded={Boolean(service.isOpen)}
+                  onChange={(_, open) => setServices(prev => prev.map(s => (s.id === service.id ? { ...s, isOpen: open } : s)))}
+                  variant="outlined"
+                  sx={{ mb: 2, borderRadius: '12px !important', '&:before': { display: 'none' } }}
                 >
-                  {serviceFields}
-                </div>
-              );
-            }
-
-            const handleToggleOpen = (open) => {
-              setServices(prev =>
-                prev.map(s => (s.id === service.id ? { ...s, isOpen: open } : s))
-              );
-            };
-
-            return (
-              <details
-                key={service.id}
-                className="group rounded-xl border border-slate-200 bg-white shadow-sm mb-4 overflow-hidden"
-                open={service.isOpen}
-                onToggle={(e) => handleToggleOpen(e.target.open)}
-              >
-                <summary
-                  className="cursor-pointer select-none px-4 py-3 bg-slate-50 hover:bg-slate-100"
-                  style={{ listStyle: 'none' }}
-                >
-                  <div className="flex items-center justify-between gap-3">
-                    <div className="text-sm font-semibold text-slate-900 tabular-nums">
+                  <AccordionSummary expandIcon={<ExpandMoreIcon />}>
+                    <Typography variant="body2" fontWeight={600} sx={{ fontVariantNumeric: 'tabular-nums' }}>
                       {header}
-                    </div>
-                    <svg
-                      className="h-4 w-4 text-slate-500 transition-transform duration-200 group-open:rotate-180"
-                      viewBox="0 0 20 20"
-                      fill="none"
-                      xmlns="http://www.w3.org/2000/svg"
-                    >
-                      <path
-                        d="M5.25 7.5L10 12.25L14.75 7.5"
-                        stroke="currentColor"
-                        strokeWidth="1.6"
-                        strokeLinecap="round"
-                        strokeLinejoin="round"
-                      />
-                    </svg>
-                  </div>
-                </summary>
-                <div className="p-4">
-                  {serviceFields}
-                </div>
-              </details>
-            );
-          })}
+                    </Typography>
+                  </AccordionSummary>
+                  <AccordionDetails>
+                    {renderServiceFields(service, index)}
+                  </AccordionDetails>
+                </Accordion>
+              );
+            })
+          )}
 
           {/* Grand Total */}
-          <div className="rounded-xl border border-slate-200 bg-blue-50 px-4 py-3 font-semibold text-blue-900">
-            <div className="flex flex-wrap items-center justify-between gap-2 text-sm">
+          <Paper variant="outlined" sx={{ px: 2, py: 1.5, borderRadius: 3, bgcolor: '#eff6ff', color: '#1e3a8a', fontWeight: 600 }}>
+            <Box sx={{ display: 'flex', flexWrap: 'wrap', alignItems: 'center', justifyContent: 'space-between', gap: 1, fontSize: 14 }}>
               <span>Grand Total: ${totalAmountBilled.toFixed(2)}</span>
               <span>Total Paid: ${totalAmountPaid.toFixed(2)}</span>
-              <span style={{ color: totalDue > 0 ? '#b91c1c' : '#1e3a8a' }}>Total Due: ${totalDue.toFixed(2)}</span>
-            </div>
-          </div>
-        </div>
+              <Box component="span" sx={{ color: totalDue > 0 ? '#b91c1c' : '#1e3a8a' }}>Total Due: ${totalDue.toFixed(2)}</Box>
+            </Box>
+          </Paper>
+        </Box>
 
         {/* Error Messages */}
         {errors.length > 0 && (
-          <div className="text-red-600 font-bold min-h-5 my-2">
-            <ul>
+          <Alert severity="error" sx={{ mb: 2 }}>
+            <Box component="ul" sx={{ m: 0, pl: 2 }}>
               {errors.map((err, idx) => (
                 <li key={idx}>{err}</li>
               ))}
-            </ul>
-          </div>
+            </Box>
+          </Alert>
         )}
 
         {!hideActions && (
-          <div className="form-actions flex gap-2 mt-4" style={{ justifyContent: onCancel ? 'space-between' : 'flex-end' }}>
+          <Box sx={{ display: 'flex', gap: 1.5, mt: 2, justifyContent: onCancel ? 'space-between' : 'flex-end' }}>
             {onCancel && (
-              <button type="button" className="btn-secondary" onClick={() => onCancel()} disabled={submitting}>
+              <Button variant="outlined" color="inherit" onClick={() => onCancel()} disabled={submitting}>
                 {submitting ? 'Please wait…' : 'Cancel'}
-              </button>
+              </Button>
             )}
-            <button type="submit" className="btn-primary" disabled={submitting}>
-              {submitting && <span className="btn-spinner" aria-hidden="true" />}
-              {submitting
-                ? (hideCustomerFields ? 'Saving…' : 'Saving…')
-                : (hideCustomerFields ? 'Save' : (isResubmission ? 'Create Resubmission' : 'Save Customer'))}
-            </button>
-          </div>
+            <Button type="submit" variant="contained" loading={submitting}>
+              {hideCustomerFields ? 'Save' : (isResubmission ? 'Create Resubmission' : 'Save Customer')}
+            </Button>
+          </Box>
         )}
-        </fieldset>
-      </form>
-    </div>
+      </Box>
+    </Box>
   );
 }

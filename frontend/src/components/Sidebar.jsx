@@ -1,24 +1,25 @@
 /**
- * App sidebar: fixed below header, Ant Design Menu. Stays at top when scrolling.
+ * App sidebar: fixed below header, Material-UI Drawer + List. Stays fixed while scrolling.
  */
 import React, { useEffect } from 'react';
 import { useNavigate, useLocation } from 'react-router-dom';
-import { Menu, Typography } from 'antd';
 import {
-  HomeOutlined,
-  UserAddOutlined,
-  ImportOutlined,
-  SettingOutlined,
-  FileTextOutlined,
-  CloseOutlined,
-} from '@ant-design/icons';
+  Drawer, List, ListItemButton, ListItemIcon, ListItemText,
+  Typography, Box, IconButton, Divider,
+} from '@mui/material';
+import HomeIcon from '@mui/icons-material/Home';
+import PersonAddIcon from '@mui/icons-material/PersonAdd';
+import UploadFileIcon from '@mui/icons-material/UploadFile';
+import SettingsIcon from '@mui/icons-material/Settings';
+import DescriptionIcon from '@mui/icons-material/Description';
+import CloseIcon from '@mui/icons-material/Close';
 
 const items = [
-  { key: 'home', icon: <HomeOutlined />, label: 'Home' },
-  { key: 'add-customer', icon: <UserAddOutlined />, label: 'Add Customer' },
-  { key: 'data-import', icon: <ImportOutlined />, label: 'Data Import' },
-  { key: 'reports', icon: <FileTextOutlined />, label: 'Reports' },
-  { key: 'services', icon: <SettingOutlined />, label: 'Services' },
+  { key: 'home', icon: <HomeIcon fontSize="small" />, label: 'Home' },
+  { key: 'add-customer', icon: <PersonAddIcon fontSize="small" />, label: 'Add Customer' },
+  { key: 'data-import', icon: <UploadFileIcon fontSize="small" />, label: 'Data Import' },
+  { key: 'reports', icon: <DescriptionIcon fontSize="small" />, label: 'Reports' },
+  { key: 'services', icon: <SettingsIcon fontSize="small" />, label: 'Services' },
 ];
 
 export default function Sidebar({ currentPage, onNavigate, open = false, onClose, top = 72, width = 260 }) {
@@ -48,7 +49,7 @@ export default function Sidebar({ currentPage, onNavigate, open = false, onClose
 
   const navigate = useNavigate();
 
-  const handleMenuClick = ({ key }) => {
+  const handleItemClick = (key) => {
     onNavigate?.(key);
     const path = key === 'home' ? '/' : `/${key}`;
     navigate(path);
@@ -57,68 +58,83 @@ export default function Sidebar({ currentPage, onNavigate, open = false, onClose
 
   return (
     <>
-      <aside
-        role="navigation"
-        aria-label="Main navigation"
-        style={{
-          position: 'fixed',
-          left: 0,
-          top,
-          bottom: 0,
-          width,
-          zIndex: 999,
-          overflowY: 'auto',
-          overflowX: 'hidden',
-          transition: 'transform 0.25s ease, box-shadow 0.25s ease',
-          transform: open ? 'translateX(0)' : 'translateX(-100%)',
-          background: '#fff',
-          borderRight: '1px solid #f0f0f0',
-          boxShadow: open ? '4px 0 12px rgba(0,0,0,0.08)' : 'none',
-          pointerEvents: open ? 'auto' : 'none',
-        }}
-        className="sidebar-container"
-      >
-        <div className="flex flex-col h-full overflow-y-auto">
-          <div className="flex items-center justify-between px-4 pt-4 pb-2 border-b border-gray-100">
-            <Typography.Text type="secondary" strong className="text-xs uppercase tracking-wider">
-              Menu
-            </Typography.Text>
-            <button
-              type="button"
-              onClick={onClose}
-              className="md:hidden p-1.5 rounded hover:bg-gray-100 text-gray-500"
-              aria-label="Close menu"
+    <Drawer
+      variant="persistent"
+      anchor="left"
+      open={open}
+      slotProps={{
+        paper: {
+          sx: {
+            top: `${top}px`,
+            height: `calc(100% - ${top}px)`,
+            width,
+            borderRight: '1px solid #f0f0f0',
+            boxShadow: open ? '4px 0 12px rgba(0,0,0,0.08)' : 'none',
+          },
+        },
+      }}
+      sx={{ width: open ? width : 0, flexShrink: 0 }}
+    >
+      <Box sx={{ display: 'flex', flexDirection: 'column', height: '100%' }}>
+        <Box sx={{
+          display: 'flex', alignItems: 'center', justifyContent: 'space-between',
+          px: 2, pt: 2, pb: 1, borderBottom: '1px solid #f3f4f6',
+        }}>
+          <Typography variant="caption" fontWeight={700} color="text.secondary" sx={{ textTransform: 'uppercase', letterSpacing: 1 }}>
+            Menu
+          </Typography>
+          <IconButton
+            size="small"
+            onClick={onClose}
+            aria-label="Close menu"
+            sx={{ display: { xs: 'inline-flex', md: 'none' } }}
+          >
+            <CloseIcon fontSize="small" />
+          </IconButton>
+        </Box>
+        <List sx={{ flex: 1, pt: 1, px: 1 }}>
+          {items.map((item) => (
+            <ListItemButton
+              key={item.key}
+              selected={selectedKey === item.key}
+              onClick={() => handleItemClick(item.key)}
+              sx={{
+                borderRadius: 2, mb: 0.5,
+                '&.Mui-selected': {
+                  bgcolor: 'rgba(0,123,255,0.1)',
+                  color: '#007bff',
+                  '& .MuiListItemIcon-root': { color: '#007bff' },
+                },
+                '&.Mui-selected:hover': { bgcolor: 'rgba(0,123,255,0.16)' },
+              }}
             >
-              <CloseOutlined />
-            </button>
-          </div>
-          <Menu
-            mode="inline"
-            selectedKeys={[selectedKey]}
-            items={items}
-            onClick={handleMenuClick}
-            className="border-0 flex-1 pt-2"
-            style={{ fontSize: 14, paddingLeft: 8, paddingRight: 8 }}
-            inlineIndent={12}
-          />
-          <div className="px-4 py-3 border-t border-gray-100">
-            <Typography.Text type="secondary" className="text-xs">
-              Misha House Billing · v1.0
-            </Typography.Text>
-          </div>
-        </div>
-      </aside>
-      {open && (
-        <div
-          role="button"
-          tabIndex={0}
-          className="fixed inset-0 md:hidden bg-black/30 z-[998]"
-          style={{ top }}
-          onClick={() => onClose?.()}
-          onKeyDown={(e) => e.key === 'Escape' && onClose?.()}
-          aria-label="Close sidebar overlay"
-        />
-      )}
+              <ListItemIcon sx={{ minWidth: 36 }}>{item.icon}</ListItemIcon>
+              <ListItemText primary={item.label} primaryTypographyProps={{ fontSize: 14 }} />
+            </ListItemButton>
+          ))}
+        </List>
+        <Divider />
+        <Box sx={{ px: 2, py: 1.5 }}>
+          <Typography variant="caption" color="text.secondary">
+            Misha House Billing · v1.0
+          </Typography>
+        </Box>
+      </Box>
+    </Drawer>
+    {open && (
+      <Box
+        role="button"
+        tabIndex={0}
+        onClick={() => onClose?.()}
+        onKeyDown={(e) => e.key === 'Escape' && onClose?.()}
+        aria-label="Close sidebar overlay"
+        sx={{
+          display: { xs: 'block', md: 'none' },
+          position: 'fixed', inset: 0, top, zIndex: (t) => t.zIndex.drawer - 1,
+          bgcolor: 'rgba(0,0,0,0.3)',
+        }}
+      />
+    )}
     </>
   );
 }

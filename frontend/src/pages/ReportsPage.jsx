@@ -3,18 +3,16 @@
  * Uses the same base filters as Home and adds Service Code + Export Settings.
  */
 import React, { useEffect, useMemo, useState } from 'react';
-import { Card, Table, Button, Checkbox, Row, Col, Space, Spin } from 'antd';
-import { FileExcelOutlined } from '@ant-design/icons';
+import {
+  Box, Paper, CardHeader, CardContent, Button, FormControlLabel, Checkbox,
+  Grid, Table, TableBody, TableCell, TableContainer, TableHead, TableRow,
+  TablePagination, CircularProgress, Typography,
+} from '@mui/material';
+import DescriptionIcon from '@mui/icons-material/Description';
 import * as XLSX from 'xlsx';
 import CustomerSearch from '../components/CustomerSearch';
 import { API_BASE, getAuthHeaders, handle401Error } from '../utils/api';
 import { formatMMDDYYYY } from '../utils/dates';
-
-function extractServiceCode(value) {
-  if (!value) return '';
-  const m = String(value).toUpperCase().match(/\bH\d{4}\b/);
-  return m ? m[0] : '';
-}
 
 function normalizeForSearch(v) {
   return String(v || '')
@@ -41,7 +39,8 @@ export default function ReportsPage() {
   const [loading, setLoading] = useState(false);
   const [rows, setRows] = useState([]);
   const [selectedCustomerIds, setSelectedCustomerIds] = useState([]);
-  const [pagination, setPagination] = useState({ current: 1, pageSize: 20 });
+  const [page, setPage] = useState(0);
+  const [rowsPerPage, setRowsPerPage] = useState(20);
 
   // Fetch all entries (one row per entry) with server-side base filters (status/name/dob/date range).
   useEffect(() => {
@@ -169,44 +168,14 @@ export default function ReportsPage() {
     return { billed, paid, due: billed - paid };
   }, [filteredRows]);
 
-  const tableColumns = useMemo(() => ([
-    {
-      title: 'Customer',
-      key: 'customer',
-      render: (_, r) => `${(r.first_name || '').trim()} ${(r.last_name || '').trim()}`.trim() || '—',
-    },
-    { title: 'DOB', key: 'dob', render: (_, r) => formatMMDDYYYY(r.date_of_birth || '') || '—' },
-    { title: 'Service Name', key: 'svc', render: (_, r) => (r.service_name || r.serviceName || '—') },
-    {
-      title: 'Period',
-      key: 'period',
-      render: (_, r) => {
-        const s = formatMMDDYYYY(r.start_date || r.startDate || '') || '';
-        const e = formatMMDDYYYY(r.end_date || r.endDate || '') || '';
-        if (!s && !e) return '—';
-        if (s && e) return `${s} - ${e}`;
-        return s || e;
-      },
-    },
-    {
-      title: 'Billed',
-      key: 'billed',
-      align: 'right',
-      render: (_, r) => `$${safeNumber(r.amount_billed ?? r.amountBilled).toFixed(2)}`,
-    },
-    {
-      title: 'Paid',
-      key: 'paid',
-      align: 'right',
-      render: (_, r) => `$${safeNumber(r.amount_paid ?? r.amountPaid).toFixed(2)}`,
-    },
-    {
-      title: 'Due',
-      key: 'due',
-      align: 'right',
-      render: (_, r) => `$${(safeNumber(r.amount_billed ?? r.amountBilled) - safeNumber(r.amount_paid ?? r.amountPaid)).toFixed(2)}`,
-    },
-  ]), []);
+  const toggleField = (key) => {
+    setSelectedFieldKeys((prev) => {
+      const required = exportFieldDefs.filter((f) => f.required).map((f) => f.key);
+      const has = prev.includes(key);
+      const next = has ? prev.filter((k) => k !== key) : [...prev, key];
+      return Array.from(new Set([...next, ...required]));
+    });
+  };
 
   const exportToExcel = () => {
     const fieldsInOrder = exportFieldDefs.filter((f) => selectedFieldKeys.includes(f.key));
@@ -281,8 +250,10 @@ export default function ReportsPage() {
     XLSX.writeFile(wb, filename);
   };
 
+  const pagedRows = filteredRows.slice(page * rowsPerPage, page * rowsPerPage + rowsPerPage);
+
   return (
-    <div className="w-full max-w-full mx-auto p-4 md:p-8 box-border overflow-x-hidden">
+    <Box sx={{ width: '100%', maxWidth: '100%', mx: 'auto', p: { xs: 2, md: 4 }, boxSizing: 'border-box', overflowX: 'hidden' }}>
       <CustomerSearch
         onSearch={(f) => {
           setFilters({
@@ -297,83 +268,128 @@ export default function ReportsPage() {
         status={filters.status || 'active'}
         onStatusChange={(s) => setFilters((prev) => ({ ...prev, status: s }))}
         serviceName={serviceName}
-        onServiceNameChange={(val) => {
-          setServiceName(val);
-          setPagination((p) => ({ ...p, current: 1 }));
-        }}
+        onServiceNameChange={(val) => { setServiceName(val); setPage(0); }}
         customerOptions={customerOptions}
         selectedCustomerIds={selectedCustomerIds}
-        onSelectedCustomerIdsChange={(vals) => {
-          setSelectedCustomerIds(vals);
-          setPagination((p) => ({ ...p, current: 1 }));
-        }}
+        onSelectedCustomerIdsChange={(vals) => { setSelectedCustomerIds(vals); setPage(0); }}
       />
 
-      <Card className="mb-4 shadow-sm border border-slate-200" title="Export Settings" extra={
-        <Space>
-          <Button
-            icon={<FileExcelOutlined />}
-            type="primary"
-            onClick={exportToExcel}
-            disabled={loading || filteredRows.length === 0}
-          >
-            Export Excel
-          </Button>
-        </Space>
-      }>
-        <div className="text-xs text-slate-500 mb-2">
-          Customer Name is mandatory. Selected fields become the exported Excel columns.
-        </div>
-        <Checkbox.Group
-          value={selectedFieldKeys}
-          onChange={(vals) => {
-            const required = exportFieldDefs.filter((f) => f.required).map((f) => f.key);
-            const next = Array.from(new Set([...(vals || []), ...required]));
-            setSelectedFieldKeys(next);
-          }}
-        >
-          <Row gutter={[12, 8]}>
+      <Paper variant="outlined" sx={{ mb: 3 }}>
+        <CardHeader
+          title={<Typography variant="h6" fontWeight={600}>Export Settings</Typography>}
+          action={
+            <Button
+              variant="contained" startIcon={<DescriptionIcon />}
+              onClick={exportToExcel}
+              disabled={loading || filteredRows.length === 0}
+            >
+              Export Excel
+            </Button>
+          }
+        />
+        <CardContent sx={{ pt: 0 }}>
+          <Typography variant="caption" color="text.secondary" sx={{ display: 'block', mb: 1.5 }}>
+            Customer Name is mandatory. Selected fields become the exported Excel columns.
+          </Typography>
+          <Grid container spacing={1}>
             {exportFieldDefs.map((f) => (
-              <Col xs={24} sm={12} md={8} lg={6} key={f.key}>
-                <Checkbox value={f.key} disabled={Boolean(f.required)}>
-                  {f.label}{f.required ? ' (required)' : ''}
-                </Checkbox>
-              </Col>
+              <Grid key={f.key} size={{ xs: 12, sm: 6, md: 4, lg: 3 }}>
+                <FormControlLabel
+                  control={
+                    <Checkbox
+                      size="small"
+                      checked={selectedFieldKeys.includes(f.key)}
+                      disabled={Boolean(f.required)}
+                      onChange={() => toggleField(f.key)}
+                    />
+                  }
+                  label={`${f.label}${f.required ? ' (required)' : ''}`}
+                />
+              </Grid>
             ))}
-          </Row>
-        </Checkbox.Group>
-        <div className="mt-3 flex gap-2 flex-wrap">
-          <Button size="small" onClick={() => setSelectedFieldKeys((prev) => Array.from(new Set(['customerName', ...allOptionalFieldKeys])))}>
-            Select all
-          </Button>
-          <Button size="small" onClick={() => setSelectedFieldKeys(['customerName', 'serviceName', 'startDate', 'endDate', 'amountBilled', 'amountPaid', 'due'])}>
-            Reset defaults
-          </Button>
-        </div>
-      </Card>
+          </Grid>
+          <Box sx={{ mt: 1.5, display: 'flex', gap: 1, flexWrap: 'wrap' }}>
+            <Button size="small" variant="outlined" onClick={() => setSelectedFieldKeys(Array.from(new Set(['customerName', ...allOptionalFieldKeys])))}>
+              Select all
+            </Button>
+            <Button size="small" variant="outlined" onClick={() => setSelectedFieldKeys(['customerName', 'serviceName', 'startDate', 'endDate', 'amountBilled', 'amountPaid', 'due'])}>
+              Reset defaults
+            </Button>
+          </Box>
+        </CardContent>
+      </Paper>
 
-      <Card className="shadow-sm border border-slate-200" title="Report Results" extra={
-        <span className="text-xs text-slate-600">
-          Rows: {filteredRows.length} · Billed: ${reportTotals.billed.toFixed(2)} · Paid: ${reportTotals.paid.toFixed(2)} · Due: ${reportTotals.due.toFixed(2)}
-        </span>
-      }>
-        <Spin spinning={loading} tip="Loading report…">
-          <Table
-            rowKey={(r) => `${r.id}-${r.entry_id ?? r.entryId ?? r.service_id ?? ''}-${r.batch_id ?? ''}`}
-            dataSource={filteredRows}
-            columns={tableColumns}
-            pagination={{
-              ...pagination,
-              showSizeChanger: true,
-              pageSizeOptions: ['20', '50', '100', '200'],
-              onChange: (page, pageSize) => setPagination({ current: page, pageSize: pageSize || 20 }),
-            }}
-            size="small"
-            bordered
+      <Paper variant="outlined">
+        <CardHeader
+          title={<Typography variant="h6" fontWeight={600}>Report Results</Typography>}
+          action={
+            <Typography variant="caption" color="text.secondary">
+              Rows: {filteredRows.length} · Billed: ${reportTotals.billed.toFixed(2)} · Paid: ${reportTotals.paid.toFixed(2)} · Due: ${reportTotals.due.toFixed(2)}
+            </Typography>
+          }
+        />
+        <CardContent sx={{ pt: 0, position: 'relative' }}>
+          {loading && (
+            <Box sx={{
+              position: 'absolute', inset: 0, display: 'flex', alignItems: 'center', justifyContent: 'center',
+              bgcolor: 'rgba(255,255,255,0.7)', zIndex: 1,
+            }}>
+              <CircularProgress size={28} />
+            </Box>
+          )}
+          <TableContainer sx={{ overflowX: 'auto' }}>
+            <Table size="small" sx={{ minWidth: 800 }}>
+              <TableHead>
+                <TableRow>
+                  <TableCell>Customer</TableCell>
+                  <TableCell>DOB</TableCell>
+                  <TableCell>Service Name</TableCell>
+                  <TableCell>Period</TableCell>
+                  <TableCell align="right">Billed</TableCell>
+                  <TableCell align="right">Paid</TableCell>
+                  <TableCell align="right">Due</TableCell>
+                </TableRow>
+              </TableHead>
+              <TableBody>
+                {pagedRows.map((r) => {
+                  const s = formatMMDDYYYY(r.start_date || r.startDate || '') || '';
+                  const e = formatMMDDYYYY(r.end_date || r.endDate || '') || '';
+                  const period = !s && !e ? '—' : (s && e ? `${s} - ${e}` : (s || e));
+                  return (
+                    <TableRow key={`${r.id}-${r.entry_id ?? r.entryId ?? r.service_id ?? ''}-${r.batch_id ?? ''}`} hover>
+                      <TableCell>{`${(r.first_name || '').trim()} ${(r.last_name || '').trim()}`.trim() || '—'}</TableCell>
+                      <TableCell>{formatMMDDYYYY(r.date_of_birth || '') || '—'}</TableCell>
+                      <TableCell>{r.service_name || r.serviceName || '—'}</TableCell>
+                      <TableCell>{period}</TableCell>
+                      <TableCell align="right">${safeNumber(r.amount_billed ?? r.amountBilled).toFixed(2)}</TableCell>
+                      <TableCell align="right">${safeNumber(r.amount_paid ?? r.amountPaid).toFixed(2)}</TableCell>
+                      <TableCell align="right">
+                        ${(safeNumber(r.amount_billed ?? r.amountBilled) - safeNumber(r.amount_paid ?? r.amountPaid)).toFixed(2)}
+                      </TableCell>
+                    </TableRow>
+                  );
+                })}
+                {pagedRows.length === 0 && !loading && (
+                  <TableRow>
+                    <TableCell colSpan={7} align="center" sx={{ color: 'text.secondary', py: 4 }}>
+                      No records found.
+                    </TableCell>
+                  </TableRow>
+                )}
+              </TableBody>
+            </Table>
+          </TableContainer>
+          <TablePagination
+            component="div"
+            count={filteredRows.length}
+            page={page}
+            onPageChange={(_, p) => setPage(p)}
+            rowsPerPage={rowsPerPage}
+            onRowsPerPageChange={(e) => { setRowsPerPage(parseInt(e.target.value, 10)); setPage(0); }}
+            rowsPerPageOptions={[20, 50, 100, 200]}
           />
-        </Spin>
-      </Card>
-    </div>
+        </CardContent>
+      </Paper>
+    </Box>
   );
 }
-

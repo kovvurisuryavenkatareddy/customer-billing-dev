@@ -1,9 +1,16 @@
 /**
- * Service Management: Card, Table, Modal, Popconfirm, Spin, Empty.
+ * Service Management: Table, Dialog, delete confirmation.
  */
 import React, { useState, useEffect } from 'react';
-import { Card, Table, Button, Modal, Popconfirm, Form, Input, Alert, Spin, Empty } from 'antd';
-import { PlusOutlined, EditOutlined, DeleteOutlined, SettingOutlined } from '@ant-design/icons';
+import {
+  Box, Paper, CardHeader, CardContent, Table, TableBody, TableCell, TableContainer,
+  TableHead, TableRow, Button, Dialog, DialogTitle, DialogContent, DialogActions,
+  TextField, Alert, CircularProgress, Typography,
+} from '@mui/material';
+import AddIcon from '@mui/icons-material/Add';
+import EditIcon from '@mui/icons-material/Edit';
+import DeleteIcon from '@mui/icons-material/Delete';
+import SettingsIcon from '@mui/icons-material/Settings';
 import { API_BASE, getAuthHeaders } from '../utils/api';
 
 export default function ServicesPage() {
@@ -14,7 +21,7 @@ export default function ServicesPage() {
   const [editingService, setEditingService] = useState(null);
   const [deletePendingId, setDeletePendingId] = useState(null);
   const [deleting, setDeleting] = useState(false);
-  const [form] = Form.useForm();
+  const [formValues, setFormValues] = useState({ name: '', rate_per_day: '', default_days: '' });
 
   useEffect(() => {
     fetchServices();
@@ -35,6 +42,12 @@ export default function ServicesPage() {
     }
   };
 
+  const handleFormSubmit = async (e) => {
+    e.preventDefault();
+    if (editingService) await handleEditService(formValues);
+    else await handleAddService(formValues);
+  };
+
   const handleAddService = async (values) => {
     try {
       window.showToast?.({ key: 'services-save', type: 'loading', message: 'Adding service…', duration: 0 });
@@ -49,7 +62,7 @@ export default function ServicesPage() {
       });
       if (!response.ok) throw new Error('Failed to add service');
       await fetchServices();
-      form.resetFields();
+      setFormValues({ name: '', rate_per_day: '', default_days: '' });
       setShowAddForm(false);
       window.showToast?.({ key: 'services-save', message: 'Service added', type: 'success' });
     } catch (err) {
@@ -73,7 +86,7 @@ export default function ServicesPage() {
       });
       if (!response.ok) throw new Error('Failed to update service');
       await fetchServices();
-      form.resetFields();
+      setFormValues({ name: '', rate_per_day: '', default_days: '' });
       setEditingService(null);
       window.showToast?.({ key: 'services-save', message: 'Service updated', type: 'success' });
     } catch (err) {
@@ -114,168 +127,146 @@ export default function ServicesPage() {
 
   const startEdit = (service) => {
     setEditingService(service);
-    form.setFieldsValue({
-      name: service.name,
-      rate_per_day: service.rate_per_day,
-      default_days: service.default_days,
+    setFormValues({
+      name: service.name || '',
+      rate_per_day: service.rate_per_day ?? '',
+      default_days: service.default_days ?? '',
     });
     setShowAddForm(false);
   };
 
   const cancelEdit = () => {
-    form.resetFields();
+    setFormValues({ name: '', rate_per_day: '', default_days: '' });
     setShowAddForm(false);
     setEditingService(null);
   };
 
-  const columns = [
-    { title: 'Service Name', dataIndex: 'name', key: 'name', ellipsis: true },
-    {
-      title: 'Rate per Day',
-      dataIndex: 'rate_per_day',
-      key: 'rate_per_day',
-      width: 120,
-      align: 'right',
-      render: (val) => (val != null ? `$${Number(val).toFixed(2)}` : '–'),
-    },
-    {
-      title: 'Default Days',
-      dataIndex: 'default_days',
-      key: 'default_days',
-      width: 120,
-      align: 'right',
-      render: (val) => (val != null ? val : '–'),
-    },
-    {
-      title: 'Actions',
-      key: 'actions',
-      width: 160,
-      render: (_, record) => (
-        <div className="flex gap-2">
-          <Button type="link" size="small" icon={<EditOutlined />} onClick={() => startEdit(record)}>
-            Edit
-          </Button>
-          <Popconfirm
-            title="Delete this service?"
-            description="This action cannot be undone."
-            onConfirm={performDeleteService}
-            okButtonProps={{ danger: true, loading: deleting }}
-            onCancel={() => setDeletePendingId(null)}
-          >
-            <Button
-              type="link"
-              size="small"
-              danger
-              icon={<DeleteOutlined />}
-              onClick={() => setDeletePendingId(record.id)}
-            >
-              Delete
-            </Button>
-          </Popconfirm>
-        </div>
-      ),
-    },
-  ];
-
   if (loading) {
     return (
-      <div className="max-w-4xl mx-auto p-4 md:p-6">
-        <Card className="shadow-sm">
-          <div className="py-20 flex flex-col items-center justify-center">
-            <Spin size="large" tip="Loading services..." />
-          </div>
-        </Card>
-      </div>
+      <Box sx={{ maxWidth: 900, mx: 'auto', p: { xs: 2, md: 3 } }}>
+        <Paper variant="outlined">
+          <Box sx={{ py: 8, display: 'flex', justifyContent: 'center' }}>
+            <CircularProgress />
+          </Box>
+        </Paper>
+      </Box>
     );
   }
 
   return (
-    <div className="max-w-4xl mx-auto p-4 md:p-6">
-      <Card
-        title={
-          <span className="flex items-center gap-2">
-            <SettingOutlined className="text-[#007bff]" />
-            <span className="text-xl font-semibold">Service Management</span>
-          </span>
-        }
-        className="shadow-sm"
-        extra={
-          <Button
-            type="primary"
-            icon={<PlusOutlined />}
-            onClick={() => {
-              setShowAddForm(true);
-              form.resetFields();
-              setEditingService(null);
-            }}
-          >
-            Add Service
-          </Button>
-        }
-      >
-        <p className="text-gray-500 mb-4 mt-0">
-          Manage service types, rates per day, and default days. These are used when adding or editing customers.
-        </p>
-
-        {error && (
-          <Alert
-            type="error"
-            message={error}
-            showIcon
-            className="mb-4"
-            closable
-            onClose={() => setError(null)}
-          />
-        )}
-
-        <Table
-          rowKey="id"
-          columns={columns}
-          dataSource={services}
-          pagination={false}
-          size="middle"
-          locale={{
-            emptyText: (
-              <Empty
-                image={Empty.PRESENTED_IMAGE_SIMPLE}
-                description="No services yet. Add one to get started."
-              />
-            ),
-          }}
-        />
-      </Card>
-
-      <Modal
-        open={showAddForm || !!editingService}
-        title={editingService ? 'Edit Service' : 'Add New Service'}
-        onCancel={cancelEdit}
-        footer={null}
-        destroyOnClose
-        width={400}
-      >
-        <Form
-          form={form}
-          layout="vertical"
-          onFinish={editingService ? handleEditService : handleAddService}
-          initialValues={{ name: '', rate_per_day: '', default_days: '' }}
-        >
-          <Form.Item name="name" label="Service Name" rules={[{ required: true, message: 'Required' }]}>
-            <Input placeholder="e.g. Respite Care" />
-          </Form.Item>
-          <Form.Item name="rate_per_day" label="Rate per Day ($)" rules={[{ required: true, message: 'Required' }]}>
-            <Input type="number" min={0} step={0.01} placeholder="0.00" />
-          </Form.Item>
-          <Form.Item name="default_days" label="Default Days" rules={[{ required: true, message: 'Required' }]}>
-            <Input type="number" min={1} placeholder="1" />
-          </Form.Item>
-          <Form.Item className="mb-0 mt-6">
-            <Button type="primary" htmlType="submit" className="mr-2">
-              {editingService ? 'Update' : 'Add Service'}
+    <Box sx={{ maxWidth: 900, mx: 'auto', p: { xs: 2, md: 3 } }}>
+      <Paper variant="outlined">
+        <CardHeader
+          title={
+            <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
+              <SettingsIcon sx={{ color: '#007bff' }} />
+              <Typography variant="h6" fontWeight={600}>Service Management</Typography>
+            </Box>
+          }
+          action={
+            <Button
+              variant="contained" startIcon={<AddIcon />}
+              onClick={() => { setShowAddForm(true); setFormValues({ name: '', rate_per_day: '', default_days: '' }); setEditingService(null); }}
+            >
+              Add Service
             </Button>
+          }
+        />
+        <CardContent sx={{ pt: 0 }}>
+          <Typography color="text.secondary" sx={{ mb: 2 }}>
+            Manage service types, rates per day, and default days. These are used when adding or editing customers.
+          </Typography>
+
+          {error && (
+            <Alert severity="error" onClose={() => setError(null)} sx={{ mb: 2 }}>{error}</Alert>
+          )}
+
+          <TableContainer>
+            <Table size="medium">
+              <TableHead>
+                <TableRow>
+                  <TableCell>Service Name</TableCell>
+                  <TableCell align="right" sx={{ width: 120 }}>Rate per Day</TableCell>
+                  <TableCell align="right" sx={{ width: 120 }}>Default Days</TableCell>
+                  <TableCell sx={{ width: 160 }}>Actions</TableCell>
+                </TableRow>
+              </TableHead>
+              <TableBody>
+                {services.map((record) => (
+                  <TableRow key={record.id} hover>
+                    <TableCell sx={{ maxWidth: 260, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                      {record.name}
+                    </TableCell>
+                    <TableCell align="right">
+                      {record.rate_per_day != null ? `$${Number(record.rate_per_day).toFixed(2)}` : '–'}
+                    </TableCell>
+                    <TableCell align="right">{record.default_days != null ? record.default_days : '–'}</TableCell>
+                    <TableCell>
+                      <Box sx={{ display: 'flex', gap: 0.5 }}>
+                        <Button size="small" startIcon={<EditIcon fontSize="small" />} onClick={() => startEdit(record)}>
+                          Edit
+                        </Button>
+                        <Button size="small" color="error" startIcon={<DeleteIcon fontSize="small" />} onClick={() => setDeletePendingId(record.id)}>
+                          Delete
+                        </Button>
+                      </Box>
+                    </TableCell>
+                  </TableRow>
+                ))}
+                {services.length === 0 && (
+                  <TableRow>
+                    <TableCell colSpan={4} align="center" sx={{ color: 'text.secondary', py: 4 }}>
+                      No services yet. Add one to get started.
+                    </TableCell>
+                  </TableRow>
+                )}
+              </TableBody>
+            </Table>
+          </TableContainer>
+        </CardContent>
+      </Paper>
+
+      {/* Add / Edit dialog */}
+      <Dialog open={showAddForm || !!editingService} onClose={cancelEdit} maxWidth="xs" fullWidth>
+        <DialogTitle>{editingService ? 'Edit Service' : 'Add New Service'}</DialogTitle>
+        <Box component="form" onSubmit={handleFormSubmit}>
+          <DialogContent dividers sx={{ display: 'flex', flexDirection: 'column', gap: 2 }}>
+            <TextField
+              required fullWidth label="Service Name" placeholder="e.g. Respite Care"
+              value={formValues.name}
+              onChange={(e) => setFormValues((v) => ({ ...v, name: e.target.value }))}
+            />
+            <TextField
+              required fullWidth type="number" label="Rate per Day ($)" placeholder="0.00"
+              value={formValues.rate_per_day}
+              onChange={(e) => setFormValues((v) => ({ ...v, rate_per_day: e.target.value }))}
+              slotProps={{ htmlInput: { min: 0, step: 0.01 } }}
+            />
+            <TextField
+              required fullWidth type="number" label="Default Days" placeholder="1"
+              value={formValues.default_days}
+              onChange={(e) => setFormValues((v) => ({ ...v, default_days: e.target.value }))}
+              slotProps={{ htmlInput: { min: 1 } }}
+            />
+          </DialogContent>
+          <DialogActions>
             <Button onClick={cancelEdit}>Cancel</Button>
-          </Form.Item>
-        </Form>
-      </Modal>
-    </div>
+            <Button type="submit" variant="contained">{editingService ? 'Update' : 'Add Service'}</Button>
+          </DialogActions>
+        </Box>
+      </Dialog>
+
+      {/* Delete confirmation dialog */}
+      <Dialog open={!!deletePendingId} onClose={() => setDeletePendingId(null)} maxWidth="xs" fullWidth>
+        <DialogTitle>Delete this service?</DialogTitle>
+        <DialogContent dividers>
+          <Typography color="text.secondary">This action cannot be undone.</Typography>
+        </DialogContent>
+        <DialogActions>
+          <Button onClick={() => setDeletePendingId(null)} disabled={deleting}>Cancel</Button>
+          <Button color="error" variant="contained" onClick={performDeleteService} loading={deleting}>Delete</Button>
+        </DialogActions>
+      </Dialog>
+    </Box>
   );
 }
