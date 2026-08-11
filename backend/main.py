@@ -114,3 +114,4 @@ if __name__ == '__main__':
     # No need for manual initialization since we're using Postgres
     print("Starting FastAPI server with Postgres backend...")
     uvicorn.run('main:app', host='0.0.0.0', port=8000, reload=True)
+
