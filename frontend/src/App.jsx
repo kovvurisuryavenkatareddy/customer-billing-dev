@@ -13,6 +13,7 @@ import ReportsPage from './pages/ReportsPage';
 import { Routes, Route, useLocation } from 'react-router-dom';
 import { useNavigate, Navigate } from 'react-router-dom';
 import { setNavigator } from './utils/router';
+import { refreshToken } from './utils/api';
 
 function getInitialAuth() {
   const tokenRaw = localStorage.getItem('token');
@@ -72,6 +73,35 @@ function App() {
     window.addEventListener('sessionExpired', onSessionExpired);
     return () => window.removeEventListener('sessionExpired', onSessionExpired);
   }, [navigate]);
+
+  // Keep the session alive while the user is actively working: refresh the
+  // token on an interval, and again on tab refocus if it's been a while
+  // (e.g. laptop was asleep), so a long working session never hits expiry.
+  useEffect(() => {
+    if (!isAuthenticated) return undefined;
+
+    const REFRESH_INTERVAL_MS = 20 * 60 * 1000; // 20 minutes
+    let lastRefresh = Date.now();
+
+    const doRefresh = () => {
+      lastRefresh = Date.now();
+      refreshToken();
+    };
+
+    const intervalId = setInterval(doRefresh, REFRESH_INTERVAL_MS);
+
+    const onVisibilityChange = () => {
+      if (document.visibilityState === 'visible' && Date.now() - lastRefresh > REFRESH_INTERVAL_MS) {
+        doRefresh();
+      }
+    };
+    document.addEventListener('visibilitychange', onVisibilityChange);
+
+    return () => {
+      clearInterval(intervalId);
+      document.removeEventListener('visibilitychange', onVisibilityChange);
+    };
+  }, [isAuthenticated]);
 
   const handleNavigate = (page) => {
     setCurrentPage(page);

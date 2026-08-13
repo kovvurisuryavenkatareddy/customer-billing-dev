@@ -21,6 +21,30 @@ export function getAuthHeaders() {
   return headers;
 }
 
+// Ask the backend for a fresh token (renewed expiry) using the current one.
+// Called periodically while the user is active so a long working session
+// never runs into the token's expiry. Silently no-ops on failure — the
+// existing token keeps working until it actually expires.
+export async function refreshToken() {
+  const tokenRaw = localStorage.getItem('token');
+  const token = (tokenRaw && tokenRaw !== 'undefined' && tokenRaw !== 'null') ? tokenRaw : '';
+  if (!token) return false;
+  try {
+    const response = await fetch(`${API_BASE}/auth/refresh`, {
+      method: 'POST',
+      headers: getAuthHeaders(),
+    });
+    if (!response.ok) return false;
+    const data = await response.json();
+    if (!data?.access_token) return false;
+    localStorage.setItem('token', data.access_token);
+    if (data.user) localStorage.setItem('user', JSON.stringify(data.user));
+    return true;
+  } catch (e) {
+    return false;
+  }
+}
+
 // Only run logout/redirect once when multiple 401s occur in quick succession (e.g. parallel requests).
 let _401Handling = false;
 export function handle401Error() {
@@ -70,6 +94,21 @@ if (typeof window !== 'undefined' && typeof window.fetch === 'function') {
       const isAuthEndpoint = reqUrl.includes('/auth/login') || reqUrl.includes('/auth/refresh') || reqUrl.includes('/auth/register');
 
       if (response && response.status === 401 && tokenAtRequest && !isAuthEndpoint) {
+        // A 401 can be a transient blip (e.g. backend restarting) rather than
+        // a truly expired session. Try one silent refresh-and-retry before
+        // logging the user out. Only safe to retry when `input` is a plain
+        // URL string with a plain-object init (the common case in this app) —
+        // a Request object's body can't be re-read, so skip retry there.
+        if (typeof input === 'string') {
+          const refreshed = await refreshToken();
+          if (refreshed) {
+            const retryInit = { ...init, headers: { ...(init.headers || {}), ...getAuthHeaders() } };
+            const retryResponse = await originalFetch(input, retryInit);
+            if (retryResponse.status !== 401) {
+              return retryResponse;
+            }
+          }
+        }
         try {
           handle401Error();
         } catch (e) {

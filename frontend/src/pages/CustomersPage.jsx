@@ -214,33 +214,6 @@ export default function CustomersPage({ showAddForm = false, onNavigate }) {
     if (data) setCustomers(data);
   }
 
-  // Remove a saved service entry via API — called from the Remove button inside the edit form
-  async function handleRemoveService(entryId, onSuccess) {
-    const customerId = editingItem?.customer?.id;
-    if (!customerId || !entryId) {
-      window.showToast?.({ type: 'error', message: 'Cannot remove: missing entry ID.' });
-      return;
-    }
-    try {
-      const res = await fetch(`${API_BASE}/customers/${customerId}/services/${entryId}`, {
-        method: 'DELETE',
-        headers: getAuthHeaders(),
-      });
-      if (res.status === 401) { handle401Error(); return; }
-      if (!res.ok) {
-        const errText = await res.text();
-        throw new Error(`Delete failed: ${res.status} - ${errText}`);
-      }
-      window.showToast?.({ type: 'success', message: 'Service removed successfully.', duration: 3000 });
-      // Update local editCustomerEntries so the form reflects the removal
-      setEditCustomerEntries(prev => (prev || []).filter(e => e.id !== entryId));
-      if (typeof onSuccess === 'function') onSuccess();
-    } catch (err) {
-      console.error('Failed to remove service', err);
-      window.showToast?.({ type: 'error', message: 'Failed to remove service: ' + (err.message || 'Unknown error'), duration: 4000 });
-    }
-  }
-
   // When user clicks edit in list, receive { customer, service }
   function handleEdit(item) {
     setEditingItem(item);
@@ -333,63 +306,50 @@ export default function CustomersPage({ showAddForm = false, onNavigate }) {
     const cust = editingItem?.customer;
     if (!cust?.id) return;
     setSavingEditCustomer(true);
-    const existingEntryIds = new Set((editCustomerEntries || []).map((e) => Number(e.id)).filter(Boolean));
-    
+
     // OPTIMISTIC: close modal immediately
     setEditingItem(null);
     setEditCustomerEntries(null);
-    
+
     try {
       if (window.showToast) {
         window.showToast({ key: 'edit-customer', type: 'loading', message: 'Saving changes…', duration: 0 });
       }
-      const custRes = await fetch(`${API_BASE}/customers/${cust.id}`, {
+
+      const servicesList = (payload.services || []).map((s) => ({
+        id: s.id != null && Number(s.id) < 1e12 ? Number(s.id) : null, // temp ids (Date.now()) are new rows
+        serviceName: s.serviceName,
+        days: Number(s.days) || 0,
+        // H0038 (units-based): units drives amountBilled and is stored on
+        // its own column, independent of days.
+        units: isUnitsServiceName(s.serviceName) ? (Number(s.units) || 0) : undefined,
+        ratePerDay: s.ratePerDay,
+        amountBilled: s.amountBilled ?? 0,
+        amountPaid: s.amountPaid === '' ? 0 : Number(s.amountPaid),
+        dateOfPayment: s.dateOfPayment || null,
+        startDate: s.startDate || null,
+        endDate: s.endDate || null,
+        dateSubmitted: s.dateSubmitted || null,
+        denialCodes: s.denialCodes && s.denialCodes.length ? s.denialCodes : null,
+      }));
+
+      // Single call: updates the customer, upserts every service line, and
+      // deletes any explicitly-removed ones — all in one backend transaction.
+      const res = await fetch(`${API_BASE}/customers/${cust.id}/services`, {
         method: 'PUT',
         headers: getAuthHeaders(),
-        body: JSON.stringify({ customer: payload.customer }),
+        body: JSON.stringify({
+          customer: payload.customer,
+          services: servicesList,
+          removedServiceIds: (payload.removedServiceIds || []).map(Number),
+        }),
       });
-      if (custRes.status === 401) {
+      if (res.status === 401) {
         handle401Error();
         return;
       }
-      if (!custRes.ok) throw new Error(`Customer update failed: ${custRes.status}`);
-      const servicesList = payload.services || [];
-      await Promise.all(servicesList.map(async (s) => {
-        const serviceBody = {
-          serviceName: s.serviceName,
-          days: Number(s.days) || 0,
-          // H0038 (units-based): units drives amountBilled and is stored on
-          // its own column, independent of days.
-          units: isUnitsServiceName(s.serviceName) ? (Number(s.units) || 0) : undefined,
-          ratePerDay: s.ratePerDay,
-          amountBilled: s.amountBilled ?? 0,
-          amountPaid: s.amountPaid === '' ? 0 : Number(s.amountPaid),
-          dateOfPayment: s.dateOfPayment || null,
-          startDate: s.startDate || null,
-          endDate: s.endDate || null,
-          dateSubmitted: s.dateSubmitted || null,
-          denialCodes: s.denialCodes && s.denialCodes.length ? s.denialCodes : null,
-        };
-        const entryId = s.id != null ? Number(s.id) : null;
-        const isExisting = entryId && existingEntryIds.has(entryId);
-        if (isExisting) {
-          const res = await fetch(`${API_BASE}/customers/${cust.id}/services/${entryId}`, {
-            method: 'PUT',
-            headers: getAuthHeaders(),
-            body: JSON.stringify({ service: serviceBody }),
-          });
-          if (res.status === 401) { handle401Error(); throw new Error('Unauthorized'); }
-          if (!res.ok) throw new Error(`Service update failed: ${res.status}`);
-        } else {
-          const res = await fetch(`${API_BASE}/customers/${cust.id}/services`, {
-            method: 'POST',
-            headers: getAuthHeaders(),
-            body: JSON.stringify({ service: serviceBody }),
-          });
-          if (res.status === 401) { handle401Error(); throw new Error('Unauthorized'); }
-          if (!res.ok) throw new Error(`Add service failed: ${res.status}`);
-        }
-      }));
+      if (!res.ok) throw new Error(`Save failed: ${res.status}`);
+
       if (window.showToast) {
         window.showToast({ key: 'edit-customer', message: 'Customer updated successfully.', type: 'success', duration: 3000 });
       }
@@ -825,7 +785,6 @@ export default function CustomersPage({ showAddForm = false, onNavigate }) {
                     }}
                     allowMultipleServicesInEdit={true}
                     useCollapsibleServices={true}
-                    onRemoveService={handleRemoveService}
                   />
                 )}
               </Box>

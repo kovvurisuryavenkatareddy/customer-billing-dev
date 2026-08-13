@@ -46,7 +46,6 @@ export default function CustomerForm({
   hideCustomerFields = false,
   allowMultipleServicesInEdit = false,
   useCollapsibleServices = false,
-  onRemoveService = null,
   onDraftChange = null,
   hideActions = false,
 } = {}) {
@@ -62,6 +61,10 @@ export default function CustomerForm({
   const [services, setServices] = useState([]);
   const [errors, setErrors] = useState([]);
   const [customerId, setCustomerId] = useState(null);
+  // Entries removed by the user but not yet persisted — sent to the server
+  // only when the form is actually submitted, so closing without saving
+  // leaves the server untouched.
+  const [removedServiceIds, setRemovedServiceIds] = useState([]);
 
   // Helper: get rate for selected service (from services prop)
   const getRateForService = useCallback((type) => {
@@ -116,20 +119,16 @@ export default function CustomerForm({
     setServices([...services, newService]);
   };
 
-  // Remove service from list
+  // Remove service from list — local only. Saved entries (numeric id from the
+  // server) are queued in removedServiceIds and only actually deleted when
+  // the form is submitted; unsaved rows (temp Date.now() id) just vanish.
   const removeService = (serviceId) => {
     const service = services.find(s => s.id === serviceId);
-    // If this is a saved entry (numeric id that came from the server), call the API
     const isSavedEntry = service && typeof service.id === 'number' && service.id < 1e12; // temp IDs use Date.now() which is > 1e12
-    if (isSavedEntry && typeof onRemoveService === 'function') {
-      onRemoveService(service.id, () => {
-        // Remove from local state only after API confirms
-        setServices(services.filter(s => s.id !== serviceId));
-      });
-    } else {
-      // New unsaved row — just remove from local state
-      setServices(services.filter(s => s.id !== serviceId));
+    if (isSavedEntry) {
+      setRemovedServiceIds(prev => (prev.includes(service.id) ? prev : [...prev, service.id]));
     }
+    setServices(services.filter(s => s.id !== serviceId));
   };
 
   // Update service in list
@@ -216,6 +215,7 @@ export default function CustomerForm({
   // If an initial object is provided (editing), populate the fields
   useEffect(() => {
     if (!initial) return;
+    setRemovedServiceIds([]);
     const c = initial.customer || initial;
 
     if (c) {
@@ -418,6 +418,7 @@ export default function CustomerForm({
         denialCodes: services[0]?.denialCodes && services[0].denialCodes.length > 0 ? services[0].denialCodes : null,
       },
       services: servicesPayload,
+      removedServiceIds,
       isResubmission: isResubmission,
     };
 
@@ -473,6 +474,7 @@ export default function CustomerForm({
         fIdNumber: fIdNumber.trim() || null,
       },
       services: servicesPayload,
+      removedServiceIds,
       isResubmission,
     });
   }, [
@@ -486,6 +488,7 @@ export default function CustomerForm({
     idNumber,
     fIdNumber,
     services,
+    removedServiceIds,
     isResubmission,
     isUnitsServiceType,
     getRateForService,

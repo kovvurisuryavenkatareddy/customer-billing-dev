@@ -298,6 +298,31 @@ def get_current_user_info(current_user: dict = Depends(get_current_user)):
     }
 
 
+@router.post("/refresh", response_model=Token)
+def refresh_token(current_user: dict = Depends(get_current_user)):
+    """Issue a fresh token with a renewed expiry for an already-valid session.
+    Called periodically by the frontend while the user is active, so a long
+    working session never runs into the token's expiry.
+    """
+    access_token = create_access_token(
+        data={"user_id": current_user["id"], "email": current_user["email"]}
+    )
+
+    user_response = {
+        "id": current_user["id"],
+        "email": current_user["email"],
+        "first_name": current_user["first_name"],
+        "last_name": current_user["last_name"],
+        "created_at": current_user["created_at"]
+    }
+
+    return {
+        "access_token": access_token,
+        "token_type": "bearer",
+        "user": user_response
+    }
+
+
 @router.post("/logout")
 def logout(current_user: dict = Depends(get_current_user)):
     """Logout user (client should discard token)"""
