@@ -2,7 +2,8 @@ import React, { useState, useEffect, useCallback } from 'react';
 import {
   Box, TextField, MenuItem, Button,
   Accordion, AccordionSummary, AccordionDetails, Autocomplete,
-  Typography, Alert, Paper,
+  Typography, Alert, Paper, Dialog, DialogTitle, DialogContent, DialogActions,
+  Table, TableHead, TableBody, TableRow, TableCell, TableContainer, Divider,
 } from '@mui/material';
 import ExpandMoreIcon from '@mui/icons-material/ExpandMore';
 import { DatePicker } from '@mui/x-date-pickers/DatePicker';
@@ -22,6 +23,13 @@ function strToDayjs(mmddyyyy) {
 function dayjsToStr(d) {
   if (!d || !d.isValid?.()) return '';
   return formatMMDDYYYY(d.format('YYYY-MM-DD'));
+}
+
+// Puts the $ before the digits, not before the minus sign — plain
+// `$${n.toFixed(2)}` renders a negative amount as "$-22.00".
+function formatCurrency(n) {
+  const num = Number(n) || 0;
+  return num < 0 ? `-$${Math.abs(num).toFixed(2)}` : `$${num.toFixed(2)}`;
 }
 
 // Exported helper to create an initial form state (useful for parent components or tests)
@@ -48,6 +56,10 @@ export default function CustomerForm({
   useCollapsibleServices = false,
   onDraftChange = null,
   hideActions = false,
+  // Lump-sum "Paid" log — only present when editing an already-saved customer.
+  paymentLogs = [],
+  onAddPayment = null,
+  onDeletePayment = null,
 } = {}) {
   // Customer basic info state
   const [firstName, setFirstName] = useState('');
@@ -201,8 +213,47 @@ export default function CustomerForm({
 
   // Calculate total amounts for all services
   const totalAmountBilled = services.reduce((sum, service) => sum + (service.amountBilled || 0), 0);
-  const totalAmountPaid = services.reduce((sum, service) => sum + parseFloat(service.amountPaid || 0), 0);
+  const perServicePaidTotal = services.reduce((sum, service) => sum + parseFloat(service.amountPaid || 0), 0);
+  // Once the customer has any lump-sum "Paid" log entries, they become the
+  // source of truth for Total Paid — the per-service Amount Paid fields stay
+  // visible per row for reference but stop feeding the aggregate.
+  const loggedPaidTotal = paymentLogs.reduce((sum, p) => sum + (parseFloat(p.amount) || 0), 0);
+  const hasPaymentLogs = paymentLogs.length > 0;
+  const totalAmountPaid = hasPaymentLogs ? loggedPaidTotal : perServicePaidTotal;
   const totalDue = totalAmountBilled - totalAmountPaid;
+
+  // "Paid" button — lump-sum payment dialog
+  const [paymentDialogOpen, setPaymentDialogOpen] = useState(false);
+  const [paymentAmount, setPaymentAmount] = useState('');
+  const [paymentDate, setPaymentDate] = useState(dayjs());
+  const [paymentSubmitting, setPaymentSubmitting] = useState(false);
+  const [paymentError, setPaymentError] = useState('');
+
+  const openPaymentDialog = () => {
+    setPaymentAmount('');
+    setPaymentDate(dayjs());
+    setPaymentError('');
+    setPaymentDialogOpen(true);
+  };
+
+  const submitPayment = async () => {
+    const amt = Number(paymentAmount);
+    if (!paymentAmount || Number.isNaN(amt) || amt <= 0) {
+      setPaymentError('Enter an amount greater than 0.');
+      return;
+    }
+    if (typeof onAddPayment !== 'function') return;
+    setPaymentSubmitting(true);
+    setPaymentError('');
+    try {
+      await onAddPayment(amt, paymentDate ? paymentDate.format('YYYY-MM-DD') : null);
+      setPaymentDialogOpen(false);
+    } catch (err) {
+      setPaymentError(err?.message || 'Failed to log payment.');
+    } finally {
+      setPaymentSubmitting(false);
+    }
+  };
 
   // Initialize with one service row only when adding services for an existing customer.
   // When adding a new customer (!initial && !hideCustomerFields), services are optional — start with none.
@@ -648,10 +699,10 @@ export default function CustomerForm({
 
         <Paper variant="outlined" sx={{ px: 2, py: 1.25, bgcolor: '#f8fafc' }}>
           <Box sx={{ display: 'flex', flexWrap: 'wrap', alignItems: 'center', justifyContent: 'space-between', gap: 1, fontSize: 14 }}>
-            <span><strong>Billed:</strong> ${(service.amountBilled || 0).toFixed(2)}</span>
-            <span><strong>Paid:</strong> ${(parseFloat(service.amountPaid) || 0).toFixed(2)}</span>
+            <span><strong>Billed:</strong> {formatCurrency(service.amountBilled)}</span>
+            <span><strong>Paid:</strong> {formatCurrency(service.amountPaid)}</span>
             <Box component="span" sx={{ color: ((service.amountBilled || 0) - (parseFloat(service.amountPaid) || 0)) > 0 ? '#e74c3c' : '#64748b' }}>
-              <strong>Due:</strong> ${((service.amountBilled || 0) - (parseFloat(service.amountPaid) || 0)).toFixed(2)}
+              <strong>Due:</strong> {formatCurrency((service.amountBilled || 0) - (parseFloat(service.amountPaid) || 0))}
             </Box>
           </Box>
         </Paper>
@@ -751,7 +802,7 @@ export default function CustomerForm({
               const periodPart = (start || end)
                 ? ` - ${start && end ? `${start} to ${end}` : (start || end)}`
                 : '';
-              const header = `${index + 1} - ${svcLabel}${periodPart} - Billed Amt: $${billed.toFixed(2)} - Due Amt: $${due.toFixed(2)}`;
+              const header = `${index + 1} - ${svcLabel}${periodPart} - Billed Amt: ${formatCurrency(billed)} - Due Amt: ${formatCurrency(due)}`;
 
               return (
                 <Accordion
@@ -777,12 +828,85 @@ export default function CustomerForm({
           {/* Grand Total */}
           <Paper variant="outlined" sx={{ px: 2, py: 1.5, borderRadius: 3, bgcolor: '#eff6ff', color: '#1e3a8a', fontWeight: 600 }}>
             <Box sx={{ display: 'flex', flexWrap: 'wrap', alignItems: 'center', justifyContent: 'space-between', gap: 1, fontSize: 14 }}>
-              <span>Grand Total: ${totalAmountBilled.toFixed(2)}</span>
-              <span>Total Paid: ${totalAmountPaid.toFixed(2)}</span>
-              <Box component="span" sx={{ color: totalDue > 0 ? '#b91c1c' : '#1e3a8a' }}>Total Due: ${totalDue.toFixed(2)}</Box>
+              <span>Grand Total: {formatCurrency(totalAmountBilled)}</span>
+              <span>Total Paid: {formatCurrency(totalAmountPaid)}</span>
+              <Box component="span" sx={{ color: totalDue > 0 ? '#b91c1c' : '#1e3a8a' }}>Total Due: {formatCurrency(totalDue)}</Box>
             </Box>
           </Paper>
+
+          {/* Payment History — kept visually separate from the services list */}
+          {typeof onAddPayment === 'function' && paymentLogs.length > 0 && (
+            <Paper variant="outlined" sx={{ mt: 2, borderRadius: 3, overflow: 'hidden' }}>
+              <Box sx={{ px: 2, py: 1.25, bgcolor: '#f8fafc' }}>
+                <Typography variant="subtitle2" fontWeight={700} color="text.secondary">
+                  Payment History
+                </Typography>
+              </Box>
+              <Divider />
+              <TableContainer sx={{ maxHeight: 220 }}>
+                <Table size="small" stickyHeader>
+                  <TableHead>
+                    <TableRow>
+                      <TableCell sx={{ fontWeight: 700 }}>Date</TableCell>
+                      <TableCell sx={{ fontWeight: 700 }}>Amount</TableCell>
+                      <TableCell sx={{ fontWeight: 700 }} align="right">Action</TableCell>
+                    </TableRow>
+                  </TableHead>
+                  <TableBody>
+                    {paymentLogs.map((p) => (
+                      <TableRow key={p.id} hover>
+                        <TableCell>{formatMMDDYYYY(p.payment_date) || p.payment_date || ''}</TableCell>
+                        <TableCell>{formatCurrency(p.amount)}</TableCell>
+                        <TableCell align="right">
+                          {typeof onDeletePayment === 'function' && (
+                            <Button
+                              type="button"
+                              size="small"
+                              color="error"
+                              onClick={() => onDeletePayment(p.id)}
+                            >
+                              Remove
+                            </Button>
+                          )}
+                        </TableCell>
+                      </TableRow>
+                    ))}
+                  </TableBody>
+                </Table>
+              </TableContainer>
+            </Paper>
+          )}
         </Box>
+
+        {typeof onAddPayment === 'function' && (
+          <Dialog open={paymentDialogOpen} onClose={() => (paymentSubmitting ? null : setPaymentDialogOpen(false))} maxWidth="xs" fullWidth>
+            <DialogTitle>Log a Payment</DialogTitle>
+            <DialogContent>
+              <Box sx={{ display: 'flex', flexDirection: 'column', gap: 2, mt: 1 }}>
+                <DatePicker
+                  label="Date"
+                  value={paymentDate}
+                  onChange={(d) => setPaymentDate(d)}
+                  slotProps={{ textField: { fullWidth: true } }}
+                />
+                <TextField
+                  label="Amount"
+                  type="number"
+                  fullWidth
+                  autoFocus
+                  value={paymentAmount}
+                  onChange={(e) => setPaymentAmount(e.target.value)}
+                  slotProps={{ htmlInput: { min: 0, step: '0.01' } }}
+                />
+                {paymentError && <Alert severity="error">{paymentError}</Alert>}
+              </Box>
+            </DialogContent>
+            <DialogActions>
+              <Button type="button" onClick={() => setPaymentDialogOpen(false)} disabled={paymentSubmitting}>Cancel</Button>
+              <Button type="button" variant="contained" onClick={submitPayment} loading={paymentSubmitting}>Save Payment</Button>
+            </DialogActions>
+          </Dialog>
+        )}
 
         {/* Error Messages */}
         {errors.length > 0 && (
@@ -800,6 +924,11 @@ export default function CustomerForm({
             {onCancel && (
               <Button variant="outlined" color="inherit" onClick={() => onCancel()} disabled={submitting}>
                 {submitting ? 'Please wait…' : 'Cancel'}
+              </Button>
+            )}
+            {typeof onAddPayment === 'function' && (
+              <Button type="button" variant="outlined" onClick={openPaymentDialog} disabled={submitting}>
+                Paid
               </Button>
             )}
             <Button type="submit" variant="contained" loading={submitting}>

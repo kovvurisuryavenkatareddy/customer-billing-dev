@@ -71,6 +71,8 @@ export default function CustomersPage({ showAddForm = false, onNavigate }) {
   const [addFormKey, setAddFormKey] = useState(0);
   const [editCustomerEntries, setEditCustomerEntries] = useState(null);
   const [loadingEditEntries, setLoadingEditEntries] = useState(false);
+  // Lump-sum payment log ("Paid" button) for the customer being edited
+  const [paymentLogs, setPaymentLogs] = useState([]);
   const [quickEntryCustomers, setQuickEntryCustomers] = useState([]);
   const [showQuickEntry, setShowQuickEntry] = useState(false);
 
@@ -599,6 +601,62 @@ export default function CustomersPage({ showAddForm = false, onNavigate }) {
     return () => { mounted = false; };
   }, [editingItem?.customer?.id]);
 
+  // Fetch the lump-sum payment log ("Paid" button) alongside the service entries
+  useEffect(() => {
+    if (!editingItem?.customer?.id) {
+      setPaymentLogs([]);
+      return;
+    }
+    const id = editingItem.customer.id;
+    let mounted = true;
+    fetch(`${API_BASE}/customers/${id}/payments`, { headers: getAuthHeaders() })
+      .then((res) => {
+        if (res.status === 401) { handle401Error(); return null; }
+        if (!res.ok) throw new Error('Failed to fetch payments');
+        return res.json();
+      })
+      .then((data) => {
+        if (!mounted || !data) return;
+        setPaymentLogs(Array.isArray(data.payments) ? data.payments : []);
+      })
+      .catch(() => { if (mounted) setPaymentLogs([]); });
+    return () => { mounted = false; };
+  }, [editingItem?.customer?.id]);
+
+  // Log a lump-sum payment for the customer currently being edited
+  async function handleAddPayment(amount, date) {
+    const customerId = editingItem?.customer?.id;
+    if (!customerId) return;
+    const res = await fetch(`${API_BASE}/customers/${customerId}/payments`, {
+      method: 'POST',
+      headers: getAuthHeaders(),
+      body: JSON.stringify({ amount: Number(amount), date: date || null }),
+    });
+    if (res.status === 401) { handle401Error(); return; }
+    if (!res.ok) {
+      const errText = await res.text();
+      throw new Error(`Failed to log payment: ${res.status} - ${errText}`);
+    }
+    const data = await res.json();
+    setPaymentLogs((prev) => [data.payment, ...prev]);
+  }
+
+  // Remove a mistaken payment log entry for the customer currently being edited
+  async function handleDeletePayment(paymentId) {
+    const customerId = editingItem?.customer?.id;
+    if (!customerId || !paymentId) return;
+    const res = await fetch(`${API_BASE}/customers/${customerId}/payments/${paymentId}`, {
+      method: 'DELETE',
+      headers: getAuthHeaders(),
+    });
+    if (res.status === 401) { handle401Error(); return; }
+    if (!res.ok) {
+      const errText = await res.text();
+      throw new Error(`Failed to remove payment: ${res.status} - ${errText}`);
+    }
+    setPaymentLogs((prev) => prev.filter((p) => p.id !== paymentId));
+  }
+
   // Map API entries to form initial.services shape (use keys the form's useEffect expects)
   function mapEntriesToForm(entries) {
     if (!Array.isArray(entries)) return [];
@@ -785,6 +843,9 @@ export default function CustomersPage({ showAddForm = false, onNavigate }) {
                     }}
                     allowMultipleServicesInEdit={true}
                     useCollapsibleServices={true}
+                    paymentLogs={paymentLogs}
+                    onAddPayment={handleAddPayment}
+                    onDeletePayment={handleDeletePayment}
                   />
                 )}
               </Box>

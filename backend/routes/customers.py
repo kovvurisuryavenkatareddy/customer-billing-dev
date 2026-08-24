@@ -139,6 +139,11 @@ class BulkServicesPayload(BaseModel):
     removedServiceIds: Optional[List[int]] = None
 
 
+class PaymentLogPayload(BaseModel):
+    amount: float
+    date: Optional[str] = None  # ISO date string; defaults to today if omitted
+
+
 class ResubmissionPayload(BaseModel):
     originalEntryId: int
     service: Optional[ServiceModel] = None
@@ -333,6 +338,31 @@ def ensure_customer_entries_columns():
         conn.close()
 
 
+def ensure_customer_payments_table():
+    """Lump-sum payment log per customer — a running list of {date, amount}
+    logged via the 'Paid' button in the edit-customer dialog. Once a customer
+    has any rows here, they become the source of truth for that customer's
+    Total Paid, taking over from the sum of individual service amount_paid
+    fields (which stay visible per row for reference)."""
+    conn = get_db_connection()
+    cur = conn.cursor()
+    try:
+        cur.execute('''
+            CREATE TABLE IF NOT EXISTS customer_payments (
+                id SERIAL PRIMARY KEY,
+                customer_id INTEGER REFERENCES customers(id) ON DELETE CASCADE,
+                amount DOUBLE PRECISION NOT NULL,
+                payment_date TEXT,
+                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+            )
+        ''')
+        conn.commit()
+    except Exception as e:
+        logger.debug("ensure_customer_payments_table: %s", e)
+    finally:
+        conn.close()
+
+
 def ensure_all_tables():
     """
     Ensures all required tables exist. Call this before any database operation
@@ -344,6 +374,7 @@ def ensure_all_tables():
         ensure_customer_services_columns()
         ensure_customers_columns()
         ensure_customer_entries_columns()
+        ensure_customer_payments_table()
     except Exception as e:
         logger.error(f"Error ensuring tables: {e}")
         import traceback; traceback.print_exc()
@@ -1276,6 +1307,87 @@ def delete_customer_service(customer_id: int, service_id: int, current_user: dic
     return {'id': service_id, 'deleted': True}
 
 
+@router.get("/{customer_id}/payments")
+def list_customer_payments(customer_id: int, current_user: dict = Depends(get_current_user)):
+    """List the lump-sum payment log for a customer (the 'Paid' button in the
+    edit dialog), newest first, plus the running total."""
+    conn = get_db_connection()
+    cur = conn.cursor()
+    try:
+        cur.execute(
+            'SELECT id, amount, payment_date, created_at FROM customer_payments '
+            'WHERE customer_id = ? ORDER BY payment_date DESC, id DESC',
+            (customer_id,)
+        )
+        rows = cur.fetchall()
+        total = round(sum(float(r['amount']) for r in rows), 2)
+        return {'payments': rows, 'total': total}
+    finally:
+        conn.close()
+
+
+@router.post("/{customer_id}/payments", status_code=201)
+def add_customer_payment(customer_id: int, payload: PaymentLogPayload, current_user: dict = Depends(get_current_user)):
+    """Log a lump-sum payment for a customer. Entries accumulate (running
+    total) — this does not touch individual service amount_paid fields."""
+    if payload.amount is None or payload.amount <= 0:
+        raise HTTPException(status_code=400, detail='amount must be greater than 0')
+
+    conn = get_db_connection()
+    cur = conn.cursor()
+    try:
+        cur.execute('SELECT id FROM customers WHERE id = ?', (customer_id,))
+        if not cur.fetchone():
+            raise HTTPException(status_code=404, detail='customer not found')
+
+        payment_date = payload.date or datetime.utcnow().strftime('%Y-%m-%d')
+        cur.execute(
+            'INSERT INTO customer_payments (customer_id, amount, payment_date) '
+            'VALUES (?, ?, ?) RETURNING id, amount, payment_date, created_at',
+            (customer_id, payload.amount, payment_date)
+        )
+        new_row = cur.fetchone()
+        conn.commit()
+
+        cur.execute('SELECT COALESCE(SUM(amount),0) as total FROM customer_payments WHERE customer_id = ?', (customer_id,))
+        total = round(float(cur.fetchone()['total']), 2)
+        return {'payment': new_row, 'total': total}
+    except HTTPException:
+        conn.rollback()
+        raise
+    except Exception as exc:
+        conn.rollback()
+        logger.error(f"Failed to add payment for customer {customer_id}: {exc}")
+        raise HTTPException(status_code=500, detail=str(exc))
+    finally:
+        conn.close()
+
+
+@router.delete("/{customer_id}/payments/{payment_id}", status_code=200)
+def delete_customer_payment(customer_id: int, payment_id: int, current_user: dict = Depends(get_current_user)):
+    """Remove a mistaken payment log entry."""
+    conn = get_db_connection()
+    cur = conn.cursor()
+    try:
+        cur.execute('DELETE FROM customer_payments WHERE id = ? AND customer_id = ?', (payment_id, customer_id))
+        if cur.rowcount == 0:
+            raise HTTPException(status_code=404, detail='payment not found')
+        conn.commit()
+
+        cur.execute('SELECT COALESCE(SUM(amount),0) as total FROM customer_payments WHERE customer_id = ?', (customer_id,))
+        total = round(float(cur.fetchone()['total']), 2)
+        return {'deleted': True, 'total': total}
+    except HTTPException:
+        conn.rollback()
+        raise
+    except Exception as exc:
+        conn.rollback()
+        logger.error(f"Failed to delete payment {payment_id} for customer {customer_id}: {exc}")
+        raise HTTPException(status_code=500, detail=str(exc))
+    finally:
+        conn.close()
+
+
 @router.post("/{customer_id}/services", status_code=201)
 def add_customer_service(customer_id: int, payload: ServiceWrapper, current_user: dict = Depends(get_current_user)):
     """Add a new service line for an existing customer.
@@ -2004,7 +2116,9 @@ def get_all_entries(
                    e.date_submitted,
                    e.denial_codes,
                    e.is_resubmission,
-                   e.created_at as entry_created_at
+                   e.created_at as entry_created_at,
+                   (SELECT COALESCE(SUM(cp.amount), 0) FROM customer_payments cp WHERE cp.customer_id = c.id) as payments_total,
+                   (SELECT COUNT(*) FROM customer_payments cp WHERE cp.customer_id = c.id) as payments_count
             FROM customers c
             LEFT JOIN customer_entries e ON e.customer_id = c.id
         '''

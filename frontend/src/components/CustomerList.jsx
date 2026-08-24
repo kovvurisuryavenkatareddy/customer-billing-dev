@@ -9,8 +9,12 @@ import MoreVertIcon from '@mui/icons-material/MoreVert';
 import { formatMMDDYYYY } from '../utils/dates';
 import CustomerEntryModal from './CustomerEntryModal';
 
+// Puts the $ before the digits, not before the minus sign — a plain
+// `$${n.toLocaleString(...)}` renders a negative amount as "$-22.00".
 function formatCurrency(value) {
-  return (value || 0).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+  const num = value || 0;
+  const formatted = Math.abs(num).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+  return num < 0 ? `-$${formatted}` : `$${formatted}`;
 }
 
 const SORT_VALUE_GETTERS = {
@@ -44,16 +48,16 @@ const TotalsBar = ({ label, billed, paid, due, isAllPages }) => (
     <Box component="span" sx={{ color: '#475569', minWidth: 140, fontWeight: 600 }}>{label}</Box>
     <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
       <Box component="span" sx={{ color: '#64748b' }}>Billed</Box>
-      <Box component="span" sx={{ fontFamily: 'monospace', fontWeight: 600, color: '#1e293b' }}>${formatCurrency(billed)}</Box>
+      <Box component="span" sx={{ fontFamily: 'monospace', fontWeight: 600, color: '#1e293b' }}>{formatCurrency(billed)}</Box>
     </Box>
     <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, pl: 2, borderLeft: '1px solid #e2e8f0' }}>
       <Box component="span" sx={{ color: '#64748b' }}>Paid</Box>
-      <Box component="span" sx={{ fontFamily: 'monospace', fontWeight: 600, color: '#1e293b' }}>${formatCurrency(paid)}</Box>
+      <Box component="span" sx={{ fontFamily: 'monospace', fontWeight: 600, color: '#1e293b' }}>{formatCurrency(paid)}</Box>
     </Box>
     <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, pl: 2, borderLeft: '1px solid #e2e8f0' }}>
       <Box component="span" sx={{ color: '#64748b' }}>Due</Box>
       <Box component="span" sx={{ fontFamily: 'monospace', fontWeight: 600, color: due > 0 ? '#dc2626' : due < 0 ? '#d97706' : '#64748b' }}>
-        ${formatCurrency(due)}
+        {formatCurrency(due)}
       </Box>
     </Box>
   </Box>
@@ -137,7 +141,12 @@ export default function CustomerList({
       const first = entries[0];
       const daysSum = entries.reduce((s, e) => s + (Number(e.days) || 0), 0);
       const billedSum = entries.reduce((s, e) => s + (Number(e.amount_billed) || 0), 0);
-      const paidSum = entries.reduce((s, e) => s + (Number(e.amount_paid) || 0), 0);
+      const perServicePaidSum = entries.reduce((s, e) => s + (Number(e.amount_paid) || 0), 0);
+      // Once a customer has any lump-sum "Paid" log entries (logged via the
+      // edit-customer dialog), they replace the per-service Amount Paid sum
+      // as the source of truth — same rule used in the edit dialog itself.
+      const paymentsCount = Number(first.payments_count) || 0;
+      const paidSum = paymentsCount > 0 ? (Number(first.payments_total) || 0) : perServicePaidSum;
       const serviceNames = [...new Set(entries.map(e => e.service_name || e.serviceName || '—').filter(Boolean))];
       const serviceName = serviceNames.length === 0
         ? 'No service'
@@ -346,12 +355,12 @@ export default function CustomerList({
                   </TableCell>
                   <TableCell align="right">
                     <Box component="span" sx={{ fontWeight: 600, fontFamily: 'monospace' }}>
-                      ${record.amountBilled.toFixed(2)}
+                      {formatCurrency(record.amountBilled)}
                     </Box>
                   </TableCell>
                   <TableCell align="right">
                     <Box component="span" sx={{ fontWeight: 600, fontFamily: 'monospace' }}>
-                      ${record.amountPaid.toFixed(2)}
+                      {formatCurrency(record.amountPaid)}
                     </Box>
                   </TableCell>
                   <TableCell align="right">
@@ -359,7 +368,7 @@ export default function CustomerList({
                       color: (record.amountBilled - record.amountPaid) > 0 ? '#e74c3c' : '#95a5a6',
                       fontWeight: 600, fontFamily: 'monospace',
                     }}>
-                      ${(record.amountBilled - record.amountPaid).toFixed(2)}
+                      {formatCurrency(record.amountBilled - record.amountPaid)}
                     </Box>
                   </TableCell>
                   <TableCell align="center">

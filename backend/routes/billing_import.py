@@ -21,36 +21,70 @@ security = HTTPBearer()
 
 
 # ---------------------------------------------------------------------------
-# Service column mapping  (1-based col index -> (service_code, rate, col_type))
+# Service column mapping  (1-based col index -> (service_code, col_type))
 # col_type 'date'  -> dates collected across all rows, consecutive merged
 # col_type 'units' -> cell format "M/D-N"; N = unit count (no date merging)
 # Auth columns (9, 11): dates imported; plain numbers (e.g. 35, 10) are ignored.
+#
+# Rates are NOT stored here — they're read live from the `services` table
+# (see _get_service_rates) so an admin-edited rate takes effect on the next
+# import without a code change. If a mapped service has no row in `services`,
+# the import fails fast with a clear error rather than guessing a rate.
 # ---------------------------------------------------------------------------
 SERVICE_COLS = {
-    7:  ('H0005',  220.65, 'date'),   # G: OP GROUP DATES
-    8:  ('H0004',  124.24, 'date'),   # H: OP INDIVIDUAL SESSIONS
-    10: ('H0015',  194.23, 'date'),   # J: IOP GROUP DATES
-    12: ('H2036',   32.38, 'date'),   # L: PHP GROUP DATES
-    13: ('UA',     326.27, 'date'),   # M: URINALYSIS
-    15: ('H0024',   10.22, 'date'),   # O: PEER GROUP DATES
-    16: ('H0038',   18.77, 'units'),  # P: PEER INDIVIDUAL UNITS
+    7:  ('H0005','date'),   # G: OP GROUP DATES
+    8:  ('H0004', 'date'),   # H: OP INDIVIDUAL SESSIONS
+    10: ('H0015', 'date'),   # J: IOP GROUP DATES
+    12: ('H2036', 'date'),   # L: PHP GROUP DATES
+    13: ('UA',    'date'),   # M: URINALYSIS
+    15: ('H0024', 'date'),   # O: PEER GROUP DATES
+    16: ('H0038', 'units'),  # P: PEER INDIVIDUAL UNITS
     # I(9)=IOP AUTH UNITS, K(11)=PHP AUTH UNITS, N(14)=Peer Group Units,
     # Q(17)=Peer Individual Session — not mapped, data ignored
 }
 
 
-def _build_service_by_name() -> Dict[str, Tuple[float, str]]:
-    """Lookup for fix-invalid; prefers 'units' col_type when a code appears twice."""
-    lookup: Dict[str, Tuple[float, str]] = {}
-    for _, (code, rate, col_type) in SERVICE_COLS.items():
-        if code not in lookup:
-            lookup[code] = (rate, col_type)
-        elif col_type == 'units':
-            lookup[code] = (rate, col_type)
+def _build_service_col_types() -> Dict[str, str]:
+    """service_code -> col_type ('date' | 'units'), for the fix-invalid flow."""
+    lookup: Dict[str, str] = {}
+    for _, (code, col_type) in SERVICE_COLS.items():
+        if code not in lookup or col_type == 'units':
+            lookup[code] = col_type
     return lookup
 
 
-SERVICE_BY_NAME: Dict[str, Tuple[float, str]] = _build_service_by_name()
+SERVICE_COL_TYPES: Dict[str, str] = _build_service_col_types()
+
+
+def _get_service_rates(cur) -> Dict[str, float]:
+    """Current rate_per_day per service, read live from the `services` table —
+    the single source of truth for billing rates (edited on the Services page).
+    """
+    rates: Dict[str, float] = {}
+    cur.execute('SELECT name, rate_per_day FROM services')
+    for row in cur.fetchall():
+        name = row['name'] if isinstance(row, dict) else row[0]
+        rate = row['rate_per_day'] if isinstance(row, dict) else row[1]
+        if name is not None and rate is not None:
+            rates[name] = float(rate)
+    return rates
+
+
+def _require_rates_for_mapped_services(rates: Dict[str, float]) -> None:
+    """Fail fast with a clear error if any SERVICE_COLS-mapped service has no
+    rate configured in the `services` table, instead of silently billing $0.
+    """
+    mapped_codes = {code for _, (code, _col_type) in SERVICE_COLS.items()}
+    missing = sorted(code for code in mapped_codes if code not in rates)
+    if missing:
+        raise HTTPException(
+            status_code=400,
+            detail=(
+                "Missing rate_per_day in the Services table for: "
+                f"{', '.join(missing)}. Add/fix these on the Services page, then retry the import."
+            ),
+        )
+
 
 ERR_MONTH_ORDER = (
     'Start month is after end month — add year (e.g. 3/15/2025-2/20/2026)'
@@ -297,27 +331,83 @@ def _parse_h0038_cell(raw_val, year: int, rate: float) -> Tuple[List[Dict[str, A
 
 
 # ---------------------------------------------------------------------------
+# Member block detection
+# ---------------------------------------------------------------------------
+
+def _find_member_blocks(ws) -> List[Tuple[int, List[int]]]:
+    """
+    Scan a worksheet and group rows into member blocks.
+
+    A member block starts at any row where col A holds a positive integer
+    (the spreadsheet's member number — NOT the application's customer/user
+    identity, see _resolve_customer) and runs up to — but not including —
+    the next such row, or the end of the sheet. Blank rows, and rows whose
+    customer/billing data is offset from the member-number row by any number
+    of rows, all stay inside the same block; only another valid member-number
+    row (or the end of the sheet) closes it.
+
+    Returns a list of (start_row, group_rows) tuples, one per member block,
+    in sheet order.
+    """
+    member_number_rows = []
+    for r in range(1, ws.max_row + 1):
+        a_val = ws.cell(r, 1).value
+        if a_val is None:
+            continue
+        try:
+            if int(float(str(a_val))) > 0:
+                member_number_rows.append(r)
+        except (ValueError, TypeError):
+            pass
+
+    blocks = []
+    for i, start_row in enumerate(member_number_rows):
+        end_row = member_number_rows[i + 1] - 1 if i + 1 < len(member_number_rows) else ws.max_row
+        blocks.append((start_row, list(range(start_row, end_row + 1))))
+    return blocks
+
+
+# ---------------------------------------------------------------------------
 # Customer extraction helpers
 # ---------------------------------------------------------------------------
 
 def _extract_customer_info(start_row: int, group_rows: List[int], ws):
     """
-    Header row: col B=last_name, col C=first_name, col D=F-diagnosis (F ID), col F=assessment
-    Sub-rows:   col B = MD ID ('MD...') | DOB (datetime) | other metadata
-    """
-    last_name  = str(ws.cell(start_row, 2).value or '').strip().upper()
-    first_name = str(ws.cell(start_row, 3).value or '').strip().upper()
-    # F ID = diagnosis code from col D (e.g. F11.20)
-    f_id       = str(ws.cell(start_row, 4).value or '').strip() or None
-    assess_val = ws.cell(start_row, 6).value
-    assessment_date = assess_val.strftime('%Y-%m-%d') if isinstance(assess_val, datetime) else None
+    Search the ENTIRE member block for identifying fields — their row position
+    is NOT guaranteed to be start_row (the member-number row). A member's
+    name/diagnosis/assessment can appear several rows later, e.g. after blank
+    rows, if the spreadsheet's layout varies between members.
 
+    Name row (found anywhere in the block): col B=last_name, col C=first_name,
+    col D=F-diagnosis (F ID), col F=assessment. The first row in the block
+    where both B and C hold non-empty, non-MD-id string values is taken as
+    the name row — for the common case this is start_row itself, preserving
+    existing behavior for spreadsheets that already work.
+
+    Sub-rows (anywhere in the block): col B = MD ID ('MD...') | DOB (datetime).
+    """
+    last_name = first_name = ''
+    f_id: Optional[str] = None
+    assessment_date: Optional[str] = None
     md_id = dob = None
 
-    for r in group_rows[1:]:
+    for r in group_rows:
         b = ws.cell(r, 2).value
-        if b is None:
-            continue
+        c = ws.cell(r, 3).value
+
+        if not last_name and isinstance(b, str) and isinstance(c, str):
+            b_val = b.strip()
+            c_val = c.strip()
+            if b_val and c_val and not re.match(r'^MD\d+$', b_val, re.IGNORECASE):
+                last_name = b_val.upper()
+                first_name = c_val.upper()
+                d_val = ws.cell(r, 4).value
+                f_id = str(d_val).strip() if d_val not in (None, '') else None
+                assess_val = ws.cell(r, 6).value
+                if isinstance(assess_val, datetime):
+                    assessment_date = assess_val.strftime('%Y-%m-%d')
+                continue  # this row's B/C already consumed as the name
+
         if isinstance(b, datetime):
             if dob is None:
                 dob = b.strftime('%Y-%m-%d')
@@ -396,18 +486,23 @@ def _resolve_customer(cur, last_name: str, first_name: str,
 # ---------------------------------------------------------------------------
 
 def _collect_service_entries(
-    group_rows: List[int], ws, year: int
+    group_rows: List[int], ws, year: int, rates: Dict[str, float]
 ) -> Tuple[List[Dict[str, Any]], List[Dict[str, Any]]]:
     """
     Returns (valid_entries, invalid_entries).
     invalid_entries includes any non-empty, non-numeric string that couldn't be parsed —
     e.g. "Accepted", "Approved", "3654/12122/2025".
     Plain numbers (auth unit counts) are silently ignored.
+
+    `rates` (service name -> rate_per_day) is the live lookup from the
+    `services` table — the caller must have already verified every mapped
+    service has a rate (see _require_rates_for_mapped_services).
     """
     entries: List[Dict[str, Any]] = []
     invalid_entries: List[Dict[str, Any]] = []
 
-    for col_idx, (svc_code, rate, col_type) in SERVICE_COLS.items():
+    for col_idx, (svc_code, col_type) in SERVICE_COLS.items():
+        rate = rates[svc_code]
         raw_vals = [
             ws.cell(r, col_idx).value
             for r in group_rows
@@ -510,6 +605,12 @@ def _process_workbook(wb, filename: str, source_type: str = 'excel') -> Dict[str
     total_entries   = 0
     errors          = []
     customer_logs   = []
+    rates           = _get_service_rates(cur)
+    try:
+        _require_rates_for_mapped_services(rates)
+    except HTTPException:
+        conn.close()
+        raise
 
     iop_sheets = [s for s in wb.sheetnames if 'IOP' in s.upper()]
     if not iop_sheets:
@@ -521,21 +622,7 @@ def _process_workbook(wb, filename: str, source_type: str = 'excel') -> Dict[str
     for sheet_name in iop_sheets:
         ws = wb[sheet_name]
 
-        # Customer header rows = col A has a positive integer
-        customer_starts = []
-        for r in range(1, ws.max_row + 1):
-            a_val = ws.cell(r, 1).value
-            if a_val is None:
-                continue
-            try:
-                if int(float(str(a_val))) > 0:
-                    customer_starts.append(r)
-            except (ValueError, TypeError):
-                pass
-
-        for i, start_row in enumerate(customer_starts):
-            end_row    = customer_starts[i + 1] - 1 if i + 1 < len(customer_starts) else ws.max_row
-            group_rows = list(range(start_row, end_row + 1))
+        for start_row, group_rows in _find_member_blocks(ws):
             last_name = first_name = ''
 
             try:
@@ -545,10 +632,23 @@ def _process_workbook(wb, filename: str, source_type: str = 'excel') -> Dict[str
                 )
 
                 if not last_name:
+                    reason = (
+                        f"Skipping member block (rows {group_rows[0]}-{group_rows[-1]}, "
+                        f"sheet '{sheet_name}'): no customer name found anywhere in the block. "
+                        f"Detected — memberId: {md_id or 'none'}, dob: {dob or 'none'}."
+                    )
+                    logger.warning(reason)
+                    customer_logs.append({
+                        'customer_name':   f"Unidentified member (rows {group_rows[0]}-{group_rows[-1]})",
+                        'customer_id':     None,
+                        'is_new_customer': False,
+                        'is_error':        True,
+                        'error_message':   reason,
+                    })
                     continue
 
                 year                          = _infer_year(group_rows, ws)
-                service_entries, invalid_entries = _collect_service_entries(group_rows, ws, year)
+                service_entries, invalid_entries = _collect_service_entries(group_rows, ws, year, rates)
 
                 if not service_entries and not invalid_entries:
                     continue
@@ -829,13 +929,19 @@ class FixInvalidPayload(BaseModel):
 
 
 def _parse_raw_to_entries(
-    service_name: str, raw_value: str, year: int
+    service_name: str, raw_value: str, year: int, rates: Dict[str, float]
 ) -> Tuple[List[Dict[str, Any]], Optional[str]]:
-    """Parse a corrected cell string into DB-ready entry dicts."""
-    meta = SERVICE_BY_NAME.get(service_name)
-    if not meta:
+    """Parse a corrected cell string into DB-ready entry dicts.
+
+    `rates` is the live rate_per_day lookup from the `services` table — the
+    only source of truth for billing rates.
+    """
+    col_type = SERVICE_COL_TYPES.get(service_name)
+    if not col_type:
         return [], f'Unknown service: {service_name}'
-    rate, col_type = meta
+    rate = rates.get(service_name)
+    if rate is None:
+        return [], f"No rate_per_day configured for '{service_name}' — set it on the Services page first."
     sv = str(raw_value).strip()
     if not sv:
         return [], 'Value is required'
@@ -957,6 +1063,7 @@ def fix_invalid_import_entries(
             raise HTTPException(status_code=404, detail='Customer not found')
 
         year = payload.year or datetime.utcnow().year
+        rates = _get_service_rates(cur)
         still_invalid: List[Dict[str, Any]] = []
         parse_errors: List[Dict[str, Any]] = []
         resolved_keys = set()
@@ -965,7 +1072,7 @@ def fix_invalid_import_entries(
         for fix in payload.fixes:
             orig = (fix.original_raw_value or fix.raw_value).strip()
             resolved_keys.add((fix.service_name, orig))
-            parsed, err = _parse_raw_to_entries(fix.service_name, fix.raw_value, year)
+            parsed, err = _parse_raw_to_entries(fix.service_name, fix.raw_value, year, rates)
             if err:
                 parse_errors.append({
                     'service_name': fix.service_name,
