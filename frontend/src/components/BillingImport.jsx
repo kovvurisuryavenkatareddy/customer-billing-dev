@@ -449,26 +449,12 @@ export default function BillingImport() {
   const [syncUrl, setSyncUrl] = useState('');
   const [syncing, setSyncing] = useState(false);
   const [syncResult, setSyncResult] = useState(null);
-  // Once a link is saved/synced, hide the raw URL input behind a compact
-  // "connected" state so the pasted link doesn't just sit there confusingly.
+  // Once a sync succeeds, hide the raw URL input behind a compact "connected"
+  // state (in-memory only for this session — nothing is saved server-side,
+  // so a page refresh always starts with a blank field).
   const [syncUrlConfigured, setSyncUrlConfigured] = useState(false);
 
-  useEffect(() => { loadHistory(); loadSyncConfig(); }, []);
-
-  async function loadSyncConfig() {
-    try {
-      const res = await fetch(`${API_BASE}/billing/sync/config`, { headers: getAuthHeaders() });
-      if (res.ok) {
-        const data = await res.json();
-        if (data?.sync_url) {
-          setSyncUrl(data.sync_url);
-          setSyncUrlConfigured(true);
-        }
-      }
-    } catch (e) {
-      console.warn('Could not load sync config', e);
-    }
-  }
+  useEffect(() => { loadHistory(); }, []);
 
   async function handleSync() {
     const url = syncUrl.trim();
@@ -844,7 +830,7 @@ export default function BillingImport() {
           )}
 
           <Typography variant="caption" color="text.disabled" sx={{ display: 'block', mt: 1 }}>
-            The sheet must be shared as "Anyone with the link" (Viewer). The link is saved automatically for next time.
+            The sheet must be shared as "Anyone with the link" (Viewer). The link isn't saved — it's cleared on refresh or when you click Clear.
           </Typography>
         </Paper>
       )}

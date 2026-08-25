@@ -1270,106 +1270,29 @@ def _fetch_workbook_from_url(url: str):
     return wb, _filename_from_response(resp, fallback)
 
 
-def _ensure_sync_settings_table(cur, conn):
-    cur.execute("""
-        CREATE TABLE IF NOT EXISTS billing_sync_settings (
-            id INTEGER PRIMARY KEY DEFAULT 1,
-            sync_url TEXT,
-            updated_at TIMESTAMP DEFAULT NOW()
-        )
-    """)
-    conn.commit()
-
-
-def _get_saved_sync_url(cur) -> Optional[str]:
-    cur.execute("SELECT sync_url FROM billing_sync_settings WHERE id = 1")
-    row = cur.fetchone()
-    return (row['sync_url'] if row else None) or None
-
-
-class SyncConfigPayload(BaseModel):
-    sync_url: str = Field(..., min_length=1)
-
-
-@router.get("/sync/config")
-def get_sync_config(
-    credentials: HTTPAuthorizationCredentials = Depends(security),
-):
-    """Return the saved Google Sheets/Drive sync URL (shared across users)."""
-    conn = get_db_connection()
-    cur = conn.cursor()
-    try:
-        _ensure_sync_settings_table(cur, conn)
-        return {'sync_url': _get_saved_sync_url(cur)}
-    finally:
-        conn.close()
-
-
-@router.put("/sync/config")
-def save_sync_config(
-    payload: SyncConfigPayload = Body(...),
-    credentials: HTTPAuthorizationCredentials = Depends(security),
-):
-    """Persist the Google Sheets/Drive sync URL for later one-click syncs."""
-    url = payload.sync_url.strip()
-    # Validate it resolves to a downloadable link before saving.
-    _google_download_url(url)
-    conn = get_db_connection()
-    cur = conn.cursor()
-    try:
-        _ensure_sync_settings_table(cur, conn)
-        cur.execute(
-            """INSERT INTO billing_sync_settings (id, sync_url, updated_at)
-               VALUES (1, ?, NOW())
-               ON CONFLICT (id) DO UPDATE SET sync_url = EXCLUDED.sync_url,
-                                              updated_at = NOW()""",
-            (url,)
-        )
-        conn.commit()
-        return {'sync_url': url}
-    finally:
-        conn.close()
-
-
 class SyncNowPayload(BaseModel):
-    sync_url: Optional[str] = None
+    sync_url: str = Field(..., min_length=1)
 
 
 @router.post("/sync", status_code=status.HTTP_201_CREATED)
 def sync_from_url(
-    payload: SyncNowPayload = Body(default=None),
+    payload: SyncNowPayload = Body(...),
     credentials: HTTPAuthorizationCredentials = Depends(security),
 ):
     """Download the linked Google Sheet/Drive file and import it.
 
-    Uses `payload.sync_url` when provided (and saves it), otherwise falls back
-    to the previously-saved URL. Re-running only adds newly-changed rows.
+    The URL is never persisted server-side — the caller must pass it on every
+    sync (the frontend keeps it in memory only, per-session, and clears it
+    when the user clicks Clear). Re-running only adds newly-changed rows.
     """
-    conn = get_db_connection()
-    cur = conn.cursor()
-    try:
-        _ensure_sync_settings_table(cur, conn)
-        url = (payload.sync_url.strip() if payload and payload.sync_url else None)
-        if url:
-            # Validate then persist so the next sync needs no URL.
-            _google_download_url(url)
-            cur.execute(
-                """INSERT INTO billing_sync_settings (id, sync_url, updated_at)
-                   VALUES (1, ?, NOW())
-                   ON CONFLICT (id) DO UPDATE SET sync_url = EXCLUDED.sync_url,
-                                                  updated_at = NOW()""",
-                (url,)
-            )
-            conn.commit()
-        else:
-            url = _get_saved_sync_url(cur)
-        if not url:
-            raise HTTPException(
-                status_code=400,
-                detail='No sync URL configured. Paste a Google Sheets/Drive link first.'
-            )
-    finally:
-        conn.close()
+    url = payload.sync_url.strip()
+    if not url:
+        raise HTTPException(
+            status_code=400,
+            detail='No sync URL provided. Paste a Google Sheets/Drive link first.'
+        )
+    # Validate it resolves to a downloadable link before attempting the download.
+    _google_download_url(url)
 
     wb, filename = _fetch_workbook_from_url(url)
     result = _process_workbook(wb, filename, source_type='google', source_url=url)
