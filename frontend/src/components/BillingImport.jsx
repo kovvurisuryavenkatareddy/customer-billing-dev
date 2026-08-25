@@ -778,8 +778,12 @@ export default function BillingImport() {
               >
                 {syncUrl}
               </MuiLink>
-              <Button size="small" onClick={() => setSyncUrlConfigured(false)} sx={{ whiteSpace: 'nowrap' }}>
-                Change Link
+              <Button
+                size="small"
+                onClick={() => { setSyncUrl(''); setSyncUrlConfigured(false); }}
+                sx={{ whiteSpace: 'nowrap' }}
+              >
+                Clear
               </Button>
               <Button
                 variant="contained"
