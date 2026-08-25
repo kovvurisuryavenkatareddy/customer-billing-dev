@@ -8,7 +8,7 @@ import {
   Accordion, AccordionSummary, AccordionDetails, TextField, Table, TableBody,
   TableCell, TableContainer, TableHead, TableRow, TablePagination, IconButton,
   CircularProgress, Chip, Tooltip, Typography, Dialog, DialogTitle, DialogContent,
-  DialogActions, Collapse,
+  DialogActions, Collapse, Link as MuiLink,
 } from '@mui/material';
 import UploadIcon from '@mui/icons-material/Upload';
 import DescriptionIcon from '@mui/icons-material/Description';
@@ -281,19 +281,35 @@ function FileCell({ record }) {
   const isGoogle = record.source_type === 'google';
   const name = record.filename || 'Untitled';
   return (
-    <Tooltip title={`${isGoogle ? 'Google Sync' : 'Excel upload'} — ${name}`}>
-      <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.75, minWidth: 0 }}>
-        {isGoogle
-          ? <GoogleIcon fontSize="small" sx={{ color: '#0f9d58', flexShrink: 0 }} />
-          : <DescriptionIcon fontSize="small" sx={{ color: '#1d6f42', flexShrink: 0 }} />}
-        {isGoogle && (
-          <Chip size="small" color="success" label="Google Sync" sx={{ fontSize: 10, height: 18, flexShrink: 0 }} />
-        )}
-        <Box component="span" sx={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
-          {name}
+    <Box sx={{ minWidth: 0 }}>
+      <Tooltip title={`${isGoogle ? 'Google Sync' : 'Excel upload'} — ${name}`}>
+        <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.75, minWidth: 0 }}>
+          {isGoogle
+            ? <GoogleIcon fontSize="small" sx={{ color: '#0f9d58', flexShrink: 0 }} />
+            : <DescriptionIcon fontSize="small" sx={{ color: '#1d6f42', flexShrink: 0 }} />}
+          {isGoogle && (
+            <Chip size="small" color="success" label="Google Sync" sx={{ fontSize: 10, height: 18, flexShrink: 0 }} />
+          )}
+          <Box component="span" sx={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+            {name}
+          </Box>
         </Box>
-      </Box>
-    </Tooltip>
+      </Tooltip>
+      {isGoogle && record.source_url && (
+        <MuiLink
+          href={record.source_url}
+          target="_blank"
+          rel="noopener noreferrer"
+          onClick={(e) => e.stopPropagation()}
+          sx={{
+            display: 'block', fontSize: 11, mt: 0.25, ml: 3,
+            overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', maxWidth: 260,
+          }}
+        >
+          {record.source_url}
+        </MuiLink>
+      )}
+    </Box>
   );
 }
 
@@ -433,6 +449,9 @@ export default function BillingImport() {
   const [syncUrl, setSyncUrl] = useState('');
   const [syncing, setSyncing] = useState(false);
   const [syncResult, setSyncResult] = useState(null);
+  // Once a link is saved/synced, hide the raw URL input behind a compact
+  // "connected" state so the pasted link doesn't just sit there confusingly.
+  const [syncUrlConfigured, setSyncUrlConfigured] = useState(false);
 
   useEffect(() => { loadHistory(); loadSyncConfig(); }, []);
 
@@ -441,7 +460,10 @@ export default function BillingImport() {
       const res = await fetch(`${API_BASE}/billing/sync/config`, { headers: getAuthHeaders() });
       if (res.ok) {
         const data = await res.json();
-        if (data?.sync_url) setSyncUrl(data.sync_url);
+        if (data?.sync_url) {
+          setSyncUrl(data.sync_url);
+          setSyncUrlConfigured(true);
+        }
       }
     } catch (e) {
       console.warn('Could not load sync config', e);
@@ -472,6 +494,7 @@ export default function BillingImport() {
         message: data.message || 'Sync complete.',
         data,
       });
+      setSyncUrlConfigured(true);
       const newHistory = await loadHistory();
       if (newHistory.length > 0) {
         setExpandedHistoryKeys([String(newHistory[0].id)]);
@@ -741,26 +764,57 @@ export default function BillingImport() {
             update the sheet.
           </Typography>
 
-          <Box sx={{ display: 'flex', gap: 1, mb: 1.5 }}>
-            <TextField
-              fullWidth
-              value={syncUrl}
-              onChange={(e) => setSyncUrl(e.target.value)}
-              onKeyDown={(e) => e.key === 'Enter' && handleSync()}
-              disabled={syncing}
-              placeholder="https://docs.google.com/spreadsheets/d/…  or  https://drive.google.com/file/d/…"
-              slotProps={{ input: { startAdornment: <GoogleIcon fontSize="small" sx={{ color: 'text.disabled', mr: 1 }} /> } }}
-            />
-            <Button
-              variant="contained"
-              startIcon={<SyncIcon sx={syncing ? { animation: 'spin 1s linear infinite', '@keyframes spin': { to: { transform: 'rotate(360deg)' } } } : undefined} />}
-              onClick={handleSync}
-              loading={syncing}
-              sx={{ whiteSpace: 'nowrap' }}
-            >
-              {syncing ? 'Syncing…' : 'Sync'}
-            </Button>
-          </Box>
+          {syncUrlConfigured ? (
+            <Box sx={{
+              display: 'flex', alignItems: 'center', gap: 1.5, mb: 1.5, p: 1.25,
+              border: '1px solid #e2e8f0', borderRadius: 1.5, bgcolor: '#f8fafc',
+            }}>
+              <GoogleIcon fontSize="small" sx={{ color: '#0f9d58', flexShrink: 0 }} />
+              <MuiLink
+                href={syncUrl}
+                target="_blank"
+                rel="noopener noreferrer"
+                sx={{ flex: 1, minWidth: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}
+              >
+                {syncUrl}
+              </MuiLink>
+              <Button size="small" onClick={() => setSyncUrlConfigured(false)} sx={{ whiteSpace: 'nowrap' }}>
+                Change Link
+              </Button>
+              <Button
+                variant="contained"
+                size="small"
+                startIcon={<SyncIcon sx={syncing ? { animation: 'spin 1s linear infinite', '@keyframes spin': { to: { transform: 'rotate(360deg)' } } } : undefined} />}
+                onClick={handleSync}
+                loading={syncing}
+                sx={{ whiteSpace: 'nowrap' }}
+              >
+                {syncing ? 'Syncing…' : 'Sync'}
+              </Button>
+            </Box>
+          ) : (
+            <Box sx={{ display: 'flex', gap: 1, mb: 1.5 }}>
+              <TextField
+                fullWidth
+                value={syncUrl}
+                onChange={(e) => setSyncUrl(e.target.value)}
+                onKeyDown={(e) => e.key === 'Enter' && handleSync()}
+                disabled={syncing}
+                autoFocus
+                placeholder="https://docs.google.com/spreadsheets/d/…  or  https://drive.google.com/file/d/…"
+                slotProps={{ input: { startAdornment: <GoogleIcon fontSize="small" sx={{ color: 'text.disabled', mr: 1 }} /> } }}
+              />
+              <Button
+                variant="contained"
+                startIcon={<SyncIcon sx={syncing ? { animation: 'spin 1s linear infinite', '@keyframes spin': { to: { transform: 'rotate(360deg)' } } } : undefined} />}
+                onClick={handleSync}
+                loading={syncing}
+                sx={{ whiteSpace: 'nowrap' }}
+              >
+                {syncing ? 'Syncing…' : 'Sync'}
+              </Button>
+            </Box>
+          )}
 
           {syncResult && (
             <Alert severity={syncResult.status} onClose={() => setSyncResult(null)} sx={{ mb: 1 }}>

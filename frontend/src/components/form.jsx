@@ -928,7 +928,7 @@ export default function CustomerForm({
             )}
             {typeof onAddPayment === 'function' && (
               <Button type="button" variant="outlined" onClick={openPaymentDialog} disabled={submitting}>
-                Paid
+                Add Payment
               </Button>
             )}
             <Button type="submit" variant="contained" loading={submitting}>

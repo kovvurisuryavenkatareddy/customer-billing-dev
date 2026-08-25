@@ -589,7 +589,7 @@ def import_billing(
     return _process_workbook(wb, file.filename)
 
 
-def _process_workbook(wb, filename: str, source_type: str = 'excel') -> Dict[str, Any]:
+def _process_workbook(wb, filename: str, source_type: str = 'excel', source_url: Optional[str] = None) -> Dict[str, Any]:
     """Run the IOP import over an already-loaded workbook and persist results.
 
     `source_type` is 'excel' for an uploaded file or 'google' for a Sheets/Drive
@@ -786,6 +786,9 @@ def _process_workbook(wb, filename: str, source_type: str = 'excel') -> Dict[str
         cur.execute(
             "ALTER TABLE import_logs ADD COLUMN IF NOT EXISTS source_type TEXT DEFAULT 'excel'"
         )
+        cur.execute(
+            "ALTER TABLE import_logs ADD COLUMN IF NOT EXISTS source_url TEXT"
+        )
         total_billed_sum = round(sum(
             sum(e.get('amount_billed', 0) for e in log.get('entries_added', []))
             for log in customer_logs
@@ -801,13 +804,13 @@ def _process_workbook(wb, filename: str, source_type: str = 'excel') -> Dict[str
             """INSERT INTO import_logs
                (filename, entries_added, entries_skipped, total_billed,
                 customers_new, customers_existing, customer_logs, error_count,
-                entries_invalid, source_type)
-               VALUES (?,?,?,?,?,?,?,?,?,?) RETURNING id""",
+                entries_invalid, source_type, source_url)
+               VALUES (?,?,?,?,?,?,?,?,?,?,?) RETURNING id""",
             (
                 filename, total_entries, total_skipped, total_billed_sum,
                 customers_new_count, customers_existing_count,
                 json.dumps(customer_logs), len(errors), total_invalid,
-                source_type,
+                source_type, source_url,
             )
         )
         log_id = cur.fetchone()['id']
@@ -860,6 +863,9 @@ def _ensure_import_logs_table(cur, conn):
     cur.execute(
         "ALTER TABLE import_logs ADD COLUMN IF NOT EXISTS source_type TEXT DEFAULT 'excel'"
     )
+    cur.execute(
+        "ALTER TABLE import_logs ADD COLUMN IF NOT EXISTS source_url TEXT"
+    )
     conn.commit()
 
 
@@ -877,7 +883,8 @@ def get_import_logs(
             """SELECT id, filename, imported_at, entries_added, entries_skipped,
                       total_billed, customers_new, customers_existing, customer_logs, error_count,
                       COALESCE(entries_invalid, 0) AS entries_invalid,
-                      COALESCE(source_type, 'excel') AS source_type
+                      COALESCE(source_type, 'excel') AS source_type,
+                      source_url
                FROM import_logs
                ORDER BY imported_at DESC
                LIMIT ?""",
@@ -1365,7 +1372,7 @@ def sync_from_url(
         conn.close()
 
     wb, filename = _fetch_workbook_from_url(url)
-    result = _process_workbook(wb, filename, source_type='google')
+    result = _process_workbook(wb, filename, source_type='google', source_url=url)
     result['synced_from'] = url
     result['filename'] = filename
     return result
