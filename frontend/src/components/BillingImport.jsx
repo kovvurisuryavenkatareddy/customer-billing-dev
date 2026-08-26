@@ -314,8 +314,11 @@ function FileCell({ record }) {
 }
 
 function HistoryRow({ record, expanded, onToggle, onEditInvalid }) {
+  // Show any customer worth surfacing: has entries, has invalid cells, or was
+  // newly added this import (even with zero billing data — otherwise a
+  // newly-created customer just vanishes from history with no explanation).
   const changed = (record.customer_logs || []).filter(
-    (l) => !l.is_error && ((l.entries_added?.length > 0) || hasInvalidEntries(l))
+    (l) => !l.is_error && ((l.entries_added?.length > 0) || hasInvalidEntries(l) || l.is_new_customer)
   );
   const invalidCellCount = changed.reduce((s, l) => s + (l.entries_invalid?.length ?? 0), 0);
 

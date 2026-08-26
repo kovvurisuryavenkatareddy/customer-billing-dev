@@ -143,6 +143,31 @@ class FindMemberBlocksTests(unittest.TestCase):
         self.assertEqual(len(blocks), 1)
         self.assertEqual(blocks[0][1], [1, 2, 3, 4, 5, 6])
 
+    def test_8_missing_serial_number_still_splits_into_separate_members(self):
+        """A member whose column-A serial number is blank must not be
+        swallowed into the preceding member's block, and back-to-back members
+        that are BOTH missing their serial number must still split into two
+        separate blocks — detected via a second name-row appearing where the
+        current block already captured one."""
+        ws = _sheet_from_rows([
+            [None, 'KABA', 'KOUROUMA', 'F16.20'],       # no serial number
+            [None, 'MD000027354'],
+            [None, 'placeholder-dob'],
+            [None, '5900 YORK RD, 21211'],
+            [None, 'KOUROUMA', 'KABA', 'F16.20'],        # also no serial number
+            [None, 'MD502345510'],
+            [3, 'BUIE', 'DARIUS', 'F12.20'],             # has a real serial number
+            [None, 'MD502187614'],
+        ])
+        blocks = _find_member_blocks(ws)
+        self.assertEqual(len(blocks), 3)
+        parsed = [_extract_customer_info(sr, gr, ws) for sr, gr in blocks]
+        self.assertEqual([(p[0], p[1], p[4]) for p in parsed], [
+            ('KABA', 'KOUROUMA', 'MD000027354'),
+            ('KOUROUMA', 'KABA', 'MD502345510'),
+            ('BUIE', 'DARIUS', 'MD502187614'),
+        ])
+
     def test_7_numeric_billing_values_do_not_start_new_member(self):
         """A plain number (e.g. 35, an auth-unit count) or a date living in a
         *service* column (7-17) must not be mistaken for a member number —

@@ -334,11 +334,27 @@ def _parse_h0038_cell(raw_val, year: int, rate: float) -> Tuple[List[Dict[str, A
 # Member block detection
 # ---------------------------------------------------------------------------
 
+_NAME_ROW_MD_RE = re.compile(r'^MD\d+$', re.IGNORECASE)
+
+
+def _row_looks_like_name_row(ws, r: int) -> bool:
+    """True if row r has both col B and col C as non-empty strings that
+    aren't an MD id (e.g. 'HARMON' / 'ALPHONSO') — the signature of a row
+    that starts a member's name/diagnosis line."""
+    b = ws.cell(r, 2).value
+    c = ws.cell(r, 3).value
+    if isinstance(b, str) and isinstance(c, str):
+        b_val, c_val = b.strip(), c.strip()
+        if b_val and c_val and not _NAME_ROW_MD_RE.match(b_val):
+            return True
+    return False
+
+
 def _find_member_blocks(ws) -> List[Tuple[int, List[int]]]:
     """
     Scan a worksheet and group rows into member blocks.
 
-    A member block starts at any row where col A holds a positive integer
+    Primarily, a block starts at any row where col A holds a positive integer
     (the spreadsheet's member number — NOT the application's customer/user
     identity, see _resolve_customer) and runs up to — but not including —
     the next such row, or the end of the sheet. Blank rows, and rows whose
@@ -346,24 +362,53 @@ def _find_member_blocks(ws) -> List[Tuple[int, List[int]]]:
     of rows, all stay inside the same block; only another valid member-number
     row (or the end of the sheet) closes it.
 
+    Fallback: some members are missing their serial number in column A
+    entirely. To avoid silently swallowing that member's identity and service
+    rows into the PRECEDING member's block, a block is also split wherever a
+    second name-row (col B + col C both non-empty, non-MD-id strings) shows up
+    after the current block has already captured one — a member's name row
+    only ever appears once, so a second one is a new person, not a
+    continuation of the current block.
+
     Returns a list of (start_row, group_rows) tuples, one per member block,
     in sheet order.
     """
-    member_number_rows = []
+    blocks: List[Tuple[int, List[int]]] = []
+    current_start: Optional[int] = None
+    current_rows: List[int] = []
+    seen_name_in_block = False
+
     for r in range(1, ws.max_row + 1):
         a_val = ws.cell(r, 1).value
-        if a_val is None:
-            continue
-        try:
-            if int(float(str(a_val))) > 0:
-                member_number_rows.append(r)
-        except (ValueError, TypeError):
-            pass
+        has_member_no = False
+        if a_val is not None:
+            try:
+                has_member_no = int(float(str(a_val))) > 0
+            except (ValueError, TypeError):
+                has_member_no = False
 
-    blocks = []
-    for i, start_row in enumerate(member_number_rows):
-        end_row = member_number_rows[i + 1] - 1 if i + 1 < len(member_number_rows) else ws.max_row
-        blocks.append((start_row, list(range(start_row, end_row + 1))))
+        row_is_name = _row_looks_like_name_row(ws, r)
+
+        starts_new_block = (
+            has_member_no
+            or (row_is_name and current_start is not None and seen_name_in_block)
+            or (row_is_name and current_start is None)
+        )
+
+        if starts_new_block:
+            if current_start is not None:
+                blocks.append((current_start, current_rows))
+            current_start = r
+            current_rows = [r]
+            seen_name_in_block = row_is_name
+        elif current_start is not None:
+            current_rows.append(r)
+            if row_is_name:
+                seen_name_in_block = True
+
+    if current_start is not None:
+        blocks.append((current_start, current_rows))
+
     return blocks
 
 
@@ -637,7 +682,7 @@ def _process_workbook(wb, filename: str, source_type: str = 'excel', source_url:
                         f"sheet '{sheet_name}'): no customer name found anywhere in the block. "
                         f"Detected — memberId: {md_id or 'none'}, dob: {dob or 'none'}."
                     )
-                    logger.warning(reason)
+                    print(f"WARNING: {reason}")
                     customer_logs.append({
                         'customer_name':   f"Unidentified member (rows {group_rows[0]}-{group_rows[-1]})",
                         'customer_id':     None,
@@ -650,9 +695,10 @@ def _process_workbook(wb, filename: str, source_type: str = 'excel', source_url:
                 year                          = _infer_year(group_rows, ws)
                 service_entries, invalid_entries = _collect_service_entries(group_rows, ws, year, rates)
 
-                if not service_entries and not invalid_entries:
-                    continue
-
+                # A customer with an identifiable name (and usually an MD id)
+                # gets added/matched regardless of whether this import has any
+                # billable service data for them — identity is based on
+                # member id / name, not on having billing rows this round.
                 created_at = datetime.utcnow().isoformat()
 
                 # ----------------------------------------------------------
