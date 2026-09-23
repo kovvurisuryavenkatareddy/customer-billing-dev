@@ -141,12 +141,10 @@ export default function CustomerList({
       const first = entries[0];
       const daysSum = entries.reduce((s, e) => s + (Number(e.days) || 0), 0);
       const billedSum = entries.reduce((s, e) => s + (Number(e.amount_billed) || 0), 0);
-      const perServicePaidSum = entries.reduce((s, e) => s + (Number(e.amount_paid) || 0), 0);
-      // Once a customer has any lump-sum "Paid" log entries (logged via the
-      // edit-customer dialog), they replace the per-service Amount Paid sum
-      // as the source of truth — same rule used in the edit dialog itself.
-      const paymentsCount = Number(first.payments_count) || 0;
-      const paidSum = paymentsCount > 0 ? (Number(first.payments_total) || 0) : perServicePaidSum;
+      // Total Paid/Due always come from the per-service amount_paid fields.
+      // The Payment History log (first.payments_total) is a separate audit
+      // trail shown in the edit dialog and never feeds these totals.
+      const paidSum = entries.reduce((s, e) => s + (Number(e.amount_paid) || 0), 0);
       const serviceNames = [...new Set(entries.map(e => e.service_name || e.serviceName || '—').filter(Boolean))];
       const serviceName = serviceNames.length === 0
         ? 'No service'

@@ -133,10 +133,21 @@ class ServiceWrapper(BaseModel):
     service: ServiceModel
 
 
+class PaymentToAddModel(BaseModel):
+    amount: float
+    date: Optional[str] = None
+
+
 class BulkServicesPayload(BaseModel):
     customer: Optional[CustomerModel] = None
     services: List[ServiceModel] = []
     removedServiceIds: Optional[List[int]] = None
+    # Manual "Paid" entries staged in the Edit Customer dialog — only logged
+    # once this save actually happens, not when the payment dialog itself was closed.
+    paymentsToAdd: Optional[List[PaymentToAddModel]] = None
+    # Payment History entries the user clicked "Remove" on — only actually
+    # deleted once this save actually happens, not on the click itself.
+    removedPaymentIds: Optional[List[int]] = None
 
 
 class PaymentLogPayload(BaseModel):
@@ -340,10 +351,10 @@ def ensure_customer_entries_columns():
 
 def ensure_customer_payments_table():
     """Lump-sum payment log per customer — a running list of {date, amount}
-    logged via the 'Paid' button in the edit-customer dialog. Once a customer
-    has any rows here, they become the source of truth for that customer's
-    Total Paid, taking over from the sum of individual service amount_paid
-    fields (which stay visible per row for reference)."""
+    logged via the 'Paid' button in the edit-customer dialog. This is a
+    separate audit trail only: Total Paid / Total Due are driven entirely by
+    the per-service amount_paid/amount_billed fields on customer_entries, not
+    by this log."""
     conn = get_db_connection()
     cur = conn.cursor()
     try:
@@ -353,14 +364,56 @@ def ensure_customer_payments_table():
                 customer_id INTEGER REFERENCES customers(id) ON DELETE CASCADE,
                 amount DOUBLE PRECISION NOT NULL,
                 payment_date TEXT,
+                note TEXT,
                 created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
             )
         ''')
+        cur.execute("ALTER TABLE customer_payments ADD COLUMN IF NOT EXISTS note TEXT")
         conn.commit()
     except Exception as e:
         logger.debug("ensure_customer_payments_table: %s", e)
     finally:
         conn.close()
+
+
+def _log_amount_paid_increase(cur, customer_id: int, delta: float) -> None:
+    """When a service's Amount Paid goes up (new entry, or an existing one
+    increased), log that increase into Payment History dated today — so the
+    log always shows when money was actually marked paid, without the caller
+    having to press the separate 'Paid' button for it.
+
+    `delta` is the TOTAL increase being saved, not one service's share of it:
+    a save that raises two services by $100 each is one $200 payment as far as
+    the log is concerned, so callers handling several services at once must sum
+    their increases and call this once rather than once per service.
+
+    If Payment History already has money logged that isn't reflected on any
+    service yet (e.g. a lump sum logged via the 'Paid' button before it was
+    split out across services), this increase is applied against that
+    unattributed amount FIRST instead of being logged again on top of it —
+    otherwise every service edit that "accounts for" an earlier lump payment
+    would double it in the log instead of reconciling the two totals.
+
+    Must be called AFTER the per-service amount_paid update/insert has been
+    executed (but not yet committed), so the per-service sum below already
+    includes this delta.
+    """
+    if delta is None or delta <= 0.01:
+        return
+    cur.execute('SELECT COALESCE(SUM(amount_paid), 0) as total FROM customer_entries WHERE customer_id = ?', (customer_id,))
+    per_service_total_after = float(cur.fetchone()['total'] or 0)
+    per_service_total_before = per_service_total_after - delta
+
+    cur.execute('SELECT COALESCE(SUM(amount), 0) as total FROM customer_payments WHERE customer_id = ?', (customer_id,))
+    logged_total = float(cur.fetchone()['total'] or 0)
+
+    unattributed_gap = max(0.0, logged_total - per_service_total_before)
+    amount_to_log = round(delta - min(delta, unattributed_gap), 2)
+    if amount_to_log > 0.01:
+        cur.execute(
+            'INSERT INTO customer_payments (customer_id, amount, payment_date) VALUES (?, ?, ?)',
+            (customer_id, amount_to_log, datetime.utcnow().strftime('%Y-%m-%d'))
+        )
 
 
 def ensure_all_tables():
@@ -1063,8 +1116,9 @@ def update_customer_service(customer_id: int, service_id: int, payload: ServiceW
         entry_row = cur.fetchone()
         if entry_row:
             # Preserve existing optional fields when not provided
-            cur.execute('SELECT denial_codes, date_submitted FROM customer_entries WHERE id = ? AND customer_id = ?', (service_id, customer_id))
+            cur.execute('SELECT denial_codes, date_submitted, amount_paid FROM customer_entries WHERE id = ? AND customer_id = ?', (service_id, customer_id))
             existing_entry = cur.fetchone() or {}
+            old_paid = float(existing_entry.get('amount_paid') or 0)
 
             denial_codes_val = None
             if isinstance(service, dict) and 'denialCodes' in service:
@@ -1101,6 +1155,8 @@ def update_customer_service(customer_id: int, service_id: int, payload: ServiceW
                     service_id,
                 )
             )
+            new_paid = float(service.get('amountPaid') or 0)
+            _log_amount_paid_increase(cur, customer_id, new_paid - old_paid)
         else:
             cur.execute('SELECT id FROM customer_services WHERE id = ? AND customer_id = ?', (service_id, customer_id))
             if not cur.fetchone():
@@ -1152,6 +1208,8 @@ def bulk_update_customer_services(customer_id: int, payload: BulkServicesPayload
     customer = data.get('customer')
     services = data.get('services') or []
     removed_ids = [i for i in (data.get('removedServiceIds') or []) if i is not None]
+    payments_to_add = data.get('paymentsToAdd') or []
+    removed_payment_ids = [i for i in (data.get('removedPaymentIds') or []) if i is not None]
 
     conn = get_db_connection()
     cur = conn.cursor()
@@ -1202,6 +1260,10 @@ def bulk_update_customer_services(customer_id: int, payload: BulkServicesPayload
         # 3. Upserts — update existing entries (has id), insert new ones (no id)
         batch_id_to_use = None
         result_ids = []
+        # Every Amount Paid increase in this save adds up to ONE Payment History
+        # entry — raising two services by $100 each is a single $200 payment,
+        # not two $100 rows.
+        total_paid_increase = 0.0
         for s in services:
             denial_codes_val = s.get('denialCodes')
             if isinstance(denial_codes_val, list):
@@ -1210,10 +1272,13 @@ def bulk_update_customer_services(customer_id: int, payload: BulkServicesPayload
                 denial_codes_val = None
 
             entry_id = s.get('id')
+            new_paid = float(s.get('amountPaid') or 0)
             if entry_id:
-                cur.execute('SELECT id FROM customer_entries WHERE id = ? AND customer_id = ?', (entry_id, customer_id))
-                if not cur.fetchone():
+                cur.execute('SELECT amount_paid FROM customer_entries WHERE id = ? AND customer_id = ?', (entry_id, customer_id))
+                found = cur.fetchone()
+                if not found:
                     raise HTTPException(status_code=404, detail=f'service entry {entry_id} not found for this customer')
+                old_paid = float((found.get('amount_paid') if isinstance(found, dict) else found['amount_paid']) or 0)
                 cur.execute(
                     '''UPDATE customer_entries
                        SET service_name = ?, start_date = ?, end_date = ?, days = ?, units = ?, rate_per_day = ?,
@@ -1226,6 +1291,7 @@ def bulk_update_customer_services(customer_id: int, payload: BulkServicesPayload
                         s.get('dateSubmitted'), denial_codes_val, entry_id,
                     )
                 )
+                total_paid_increase += max(0.0, new_paid - old_paid)
                 result_ids.append(entry_id)
             else:
                 if batch_id_to_use is None:
@@ -1242,6 +1308,7 @@ def bulk_update_customer_services(customer_id: int, payload: BulkServicesPayload
                         batch_id_to_use,
                     )
                 )
+                total_paid_increase += max(0.0, new_paid)
                 result_ids.append(cur.fetchone()['id'])
 
         # Recompute cached total (non-critical if column absent)
@@ -1251,6 +1318,33 @@ def bulk_update_customer_services(customer_id: int, payload: BulkServicesPayload
             cur.execute('UPDATE customers SET total_amount_due = ? WHERE id = ?', (total, customer_id))
         except Exception as e:
             logger.debug("Skipping total_amount_due update: %s", e)
+
+        # 4. Manual "Paid" entries staged in the dialog — only logged now,
+        # as part of this same save, never when the dialog itself closed.
+        for p in payments_to_add:
+            amount = float(p.get('amount') or 0)
+            if amount <= 0.01:
+                continue
+            payment_date = p.get('date') or datetime.utcnow().strftime('%Y-%m-%d')
+            cur.execute(
+                'INSERT INTO customer_payments (customer_id, amount, payment_date) VALUES (?, ?, ?)',
+                (customer_id, round(amount, 2), payment_date)
+            )
+
+        # 5. Payment History entries the user clicked "Remove" on — only
+        # actually deleted now, as part of this same save.
+        if removed_payment_ids:
+            cur.execute(
+                'DELETE FROM customer_payments WHERE customer_id = ? AND id = ANY(?)',
+                (customer_id, removed_payment_ids)
+            )
+
+        # 6. One log entry for everything the services gained in this save.
+        # Deliberately last: the manual additions and removals above have
+        # already landed, so the gap this increase absorbs is measured against
+        # the log as the user actually left it — the same comparison the edit
+        # dialog shows them live.
+        _log_amount_paid_increase(cur, customer_id, round(total_paid_increase, 2))
 
         conn.commit()
     except HTTPException:
@@ -1310,12 +1404,14 @@ def delete_customer_service(customer_id: int, service_id: int, current_user: dic
 @router.get("/{customer_id}/payments")
 def list_customer_payments(customer_id: int, current_user: dict = Depends(get_current_user)):
     """List the lump-sum payment log for a customer (the 'Paid' button in the
-    edit dialog), newest first, plus the running total."""
+    edit dialog), newest first, plus the running total. This log is a
+    separate audit trail — it does not drive Total Paid / Total Due, which
+    come from the per-service amount_paid/amount_billed fields."""
     conn = get_db_connection()
     cur = conn.cursor()
     try:
         cur.execute(
-            'SELECT id, amount, payment_date, created_at FROM customer_payments '
+            'SELECT id, amount, payment_date, note, created_at FROM customer_payments '
             'WHERE customer_id = ? ORDER BY payment_date DESC, id DESC',
             (customer_id,)
         )
@@ -1342,9 +1438,9 @@ def add_customer_payment(customer_id: int, payload: PaymentLogPayload, current_u
 
         payment_date = payload.date or datetime.utcnow().strftime('%Y-%m-%d')
         cur.execute(
-            'INSERT INTO customer_payments (customer_id, amount, payment_date) '
-            'VALUES (?, ?, ?) RETURNING id, amount, payment_date, created_at',
-            (customer_id, payload.amount, payment_date)
+            'INSERT INTO customer_payments (customer_id, amount, payment_date, note) '
+            'VALUES (?, ?, ?, ?) RETURNING id, amount, payment_date, note, created_at',
+            (customer_id, payload.amount, payment_date, None)
         )
         new_row = cur.fetchone()
         conn.commit()
@@ -1487,6 +1583,7 @@ def add_customer_service(customer_id: int, payload: ServiceWrapper, current_user
         )
         entry_id = cur.fetchone()['id']
         logger.info(f"Entry created with id: {entry_id}")
+        _log_amount_paid_increase(cur, customer_id, float(service.get('amountPaid', 0) or 0))
 
         # Also insert into legacy `customer_services` for backward compatibility with older endpoints.
         legacy_service_id = None

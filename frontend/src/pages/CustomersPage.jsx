@@ -344,6 +344,8 @@ export default function CustomersPage({ showAddForm = false, onNavigate }) {
           customer: payload.customer,
           services: servicesList,
           removedServiceIds: (payload.removedServiceIds || []).map(Number),
+          paymentsToAdd: payload.paymentsToAdd || [],
+          removedPaymentIds: (payload.removedPaymentIds || []).map(Number),
         }),
       });
       if (res.status === 401) {

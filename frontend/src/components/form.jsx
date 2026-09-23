@@ -77,6 +77,10 @@ export default function CustomerForm({
   // only when the form is actually submitted, so closing without saving
   // leaves the server untouched.
   const [removedServiceIds, setRemovedServiceIds] = useState([]);
+  // Snapshot of the per-service Amount Paid total as last loaded/saved —
+  // used to detect unsaved edits so the Payment History table can show a
+  // live "*" preview row before the form is actually saved.
+  const [savedAmountPaidTotal, setSavedAmountPaidTotal] = useState(0);
 
   // Helper: get rate for selected service (from services prop)
   const getRateForService = useCallback((type) => {
@@ -213,21 +217,48 @@ export default function CustomerForm({
 
   // Calculate total amounts for all services
   const totalAmountBilled = services.reduce((sum, service) => sum + (service.amountBilled || 0), 0);
-  const perServicePaidTotal = services.reduce((sum, service) => sum + parseFloat(service.amountPaid || 0), 0);
-  // Once the customer has any lump-sum "Paid" log entries, they become the
-  // source of truth for Total Paid — the per-service Amount Paid fields stay
-  // visible per row for reference but stop feeding the aggregate.
-  const loggedPaidTotal = paymentLogs.reduce((sum, p) => sum + (parseFloat(p.amount) || 0), 0);
-  const hasPaymentLogs = paymentLogs.length > 0;
-  const totalAmountPaid = hasPaymentLogs ? loggedPaidTotal : perServicePaidTotal;
+  // Total Paid / Total Due always reflect what the service rows show — the
+  // Payment History Logs list below is a separate record of amounts logged
+  // via the "Paid" button and never overrides these totals.
+  const totalAmountPaid = services.reduce((sum, service) => sum + (Number(service.amountPaid) || 0), 0);
   const totalDue = totalAmountBilled - totalAmountPaid;
+  const isOverpaid = totalDue < -0.01;
 
-  // "Paid" button — lump-sum payment dialog
+  // Live preview: as the user edits a service's Amount Paid before saving,
+  // reflect the change immediately in the Payment History table (marked
+  // with "*") so it doesn't look like the log silently disagrees.
+  const liveAmountPaidDelta = Math.round((totalAmountPaid - savedAmountPaidTotal) * 100) / 100;
+
+  // "Paid" button — lump-sum payment dialog. Entries are staged locally
+  // (pendingPayments) and only sent to the server when the user clicks the
+  // main Save button — never on "Save Payment" alone.
   const [paymentDialogOpen, setPaymentDialogOpen] = useState(false);
   const [paymentAmount, setPaymentAmount] = useState('');
   const [paymentDate, setPaymentDate] = useState(dayjs());
-  const [paymentSubmitting, setPaymentSubmitting] = useState(false);
   const [paymentError, setPaymentError] = useState('');
+  const [pendingPayments, setPendingPayments] = useState([]);
+  // Already-saved Payment History entries the user clicked "Remove" on —
+  // only actually deleted once the main Save button is clicked, not now.
+  const [pendingPaymentRemovals, setPendingPaymentRemovals] = useState([]);
+
+  // Reconciliation between what the services show as paid (A) and what the
+  // Payment History log adds up to (B) — an informational message only.
+  // Both sides are LIVE: A follows the service rows as they're edited, and B
+  // follows the log as it looks on screen right now (saved entries, minus any
+  // marked for removal, plus any staged-but-unsaved ones). Comparing live
+  // against live is what keeps the message honest — mixing a live total with
+  // a saved one reports the same unsaved amount twice.
+  const paymentLogsTotal = paymentLogs.reduce((sum, p) => (
+    pendingPaymentRemovals.includes(p.id) ? sum : sum + (parseFloat(p.amount) || 0)
+  ), 0) + pendingPayments.reduce((sum, p) => sum + (Number(p.amount) || 0), 0);
+  const paymentReconcileDiff = Math.round((totalAmountPaid - paymentLogsTotal) * 100) / 100;
+
+  // Discard any staged-but-unsaved payment changes whenever a different
+  // customer is loaded into the form.
+  useEffect(() => {
+    setPendingPayments([]);
+    setPendingPaymentRemovals([]);
+  }, [initial]);
 
   const openPaymentDialog = () => {
     setPaymentAmount('');
@@ -236,23 +267,32 @@ export default function CustomerForm({
     setPaymentDialogOpen(true);
   };
 
-  const submitPayment = async () => {
+  const submitPayment = () => {
     const amt = Number(paymentAmount);
     if (!paymentAmount || Number.isNaN(amt) || amt <= 0) {
       setPaymentError('Enter an amount greater than 0.');
       return;
     }
-    if (typeof onAddPayment !== 'function') return;
-    setPaymentSubmitting(true);
-    setPaymentError('');
-    try {
-      await onAddPayment(amt, paymentDate ? paymentDate.format('YYYY-MM-DD') : null);
-      setPaymentDialogOpen(false);
-    } catch (err) {
-      setPaymentError(err?.message || 'Failed to log payment.');
-    } finally {
-      setPaymentSubmitting(false);
-    }
+    // Paying more than what's due is allowed (advance payment, rounding,
+    // etc.) — the backend flags the extra portion on the entry itself
+    // instead of blocking it here.
+    setPendingPayments(prev => ([
+      ...prev,
+      { id: `pending-${Date.now()}`, amount: amt, date: paymentDate ? paymentDate.format('YYYY-MM-DD') : null },
+    ]));
+    setPaymentDialogOpen(false);
+  };
+
+  const removePendingPayment = (id) => {
+    setPendingPayments(prev => prev.filter(p => p.id !== id));
+  };
+
+  const markPaymentForRemoval = (id) => {
+    setPendingPaymentRemovals(prev => (prev.includes(id) ? prev : [...prev, id]));
+  };
+
+  const undoPaymentRemoval = (id) => {
+    setPendingPaymentRemovals(prev => prev.filter(x => x !== id));
   };
 
   // Initialize with one service row only when adding services for an existing customer.
@@ -304,6 +344,7 @@ export default function CustomerForm({
         };
       });
       setServices(populatedServices);
+      setSavedAmountPaidTotal(populatedServices.reduce((sum, s) => sum + (Number(s.amountPaid) || 0), 0));
     } else if (initial.service) {
       // Handle single service from old format
       const s = initial.service;
@@ -327,6 +368,7 @@ export default function CustomerForm({
         isOpen: true,
       };
       setServices([singleService]);
+      setSavedAmountPaidTotal(Number(singleService.amountPaid) || 0);
     }
   }, [initial]);
 
@@ -407,6 +449,8 @@ export default function CustomerForm({
       const paid = Number(service.amountPaid);
       if (service.amountPaid !== '' && (Number.isNaN(paid) || paid < 0)) {
         errs.push(`${servicePrefix}Amount paid must be a non-negative number`);
+      } else if (service.amountPaid !== '' && !Number.isNaN(paid) && paid > billed) {
+        errs.push(`${servicePrefix}Amount paid ($${paid.toFixed(2)}) cannot be greater than the billed amount ($${billed.toFixed(2)})`);
       }
     });
 
@@ -471,6 +515,12 @@ export default function CustomerForm({
       services: servicesPayload,
       removedServiceIds,
       isResubmission: isResubmission,
+      // Manual "Paid" entries added during this edit session — only sent to
+      // the server (and logged) once the user actually clicks Save here.
+      paymentsToAdd: pendingPayments.map(p => ({ amount: p.amount, date: p.date })),
+      // Payment History entries marked "Remove" during this edit session —
+      // only actually deleted once the user clicks Save here.
+      removedPaymentIds: pendingPaymentRemovals,
     };
 
     if (typeof onSubmit === 'function') {
@@ -663,7 +713,7 @@ export default function CustomerForm({
             label="Amount paid ($)"
             value={service.amountPaid}
             onChange={(e) => updateService(service.id, 'amountPaid', e.target.value)}
-            slotProps={{ htmlInput: { min: 0, step: 0.01 } }}
+            slotProps={{ htmlInput: { min: 0, max: service.amountBilled || 0, step: 0.01 } }}
           />
         </Box>
 
@@ -834,12 +884,18 @@ export default function CustomerForm({
             </Box>
           </Paper>
 
+          {isOverpaid && (
+            <Alert severity="warning" sx={{ mt: 2 }}>
+              Paid {formatCurrency(Math.abs(totalDue))} more than billed — check for a duplicate payment entry.
+            </Alert>
+          )}
+
           {/* Payment History — kept visually separate from the services list */}
-          {typeof onAddPayment === 'function' && paymentLogs.length > 0 && (
+          {typeof onAddPayment === 'function' && (paymentLogs.length > 0 || pendingPayments.length > 0 || Math.abs(liveAmountPaidDelta) > 0.01) && (
             <Paper variant="outlined" sx={{ mt: 2, borderRadius: 3, overflow: 'hidden' }}>
               <Box sx={{ px: 2, py: 1.25, bgcolor: '#f8fafc' }}>
                 <Typography variant="subtitle2" fontWeight={700} color="text.secondary">
-                  Payment History
+                  Payment History Logs
                 </Typography>
               </Box>
               <Divider />
@@ -853,33 +909,115 @@ export default function CustomerForm({
                     </TableRow>
                   </TableHead>
                   <TableBody>
-                    {paymentLogs.map((p) => (
-                      <TableRow key={p.id} hover>
-                        <TableCell>{formatMMDDYYYY(p.payment_date) || p.payment_date || ''}</TableCell>
+                    {Math.abs(liveAmountPaidDelta) > 0.01 && (
+                      <TableRow hover sx={{ bgcolor: '#fffbeb' }}>
+                        <TableCell>
+                          {/* A pending increase really will be logged under
+                              today's date, so show that date rather than a
+                              placeholder. A decrease logs nothing — it just
+                              leaves the log ahead of Total Paid — so labelling
+                              it with a date would promise an entry that never
+                              appears. */}
+                          {liveAmountPaidDelta > 0
+                            ? formatMMDDYYYY(dayjs().format('YYYY-MM-DD'))
+                            : 'No entry'}
+                          <Typography variant="caption" color="text.secondary" sx={{ display: 'block' }}>
+                            {liveAmountPaidDelta > 0
+                              ? '* New amount paid on a service'
+                              : '* Amount paid reduced on a service'}
+                          </Typography>
+                        </TableCell>
+                        <TableCell>
+                          {liveAmountPaidDelta > 0 ? '+' : '-'}{formatCurrency(Math.abs(liveAmountPaidDelta))}
+                        </TableCell>
+                        <TableCell align="right" />
+                      </TableRow>
+                    )}
+                    {pendingPayments.map((p) => (
+                      <TableRow key={p.id} hover sx={{ bgcolor: '#fffbeb' }}>
+                        <TableCell>
+                          {formatMMDDYYYY(p.date) || p.date || ''}
+                          <Typography variant="caption" color="text.secondary" sx={{ display: 'block' }}>
+                            * Not saved yet
+                          </Typography>
+                        </TableCell>
                         <TableCell>{formatCurrency(p.amount)}</TableCell>
                         <TableCell align="right">
-                          {typeof onDeletePayment === 'function' && (
-                            <Button
-                              type="button"
-                              size="small"
-                              color="error"
-                              onClick={() => onDeletePayment(p.id)}
-                            >
-                              Remove
-                            </Button>
-                          )}
+                          <Button
+                            type="button"
+                            size="small"
+                            color="error"
+                            onClick={() => removePendingPayment(p.id)}
+                          >
+                            Remove
+                          </Button>
                         </TableCell>
                       </TableRow>
                     ))}
+                    {paymentLogs.map((p) => {
+                      const markedForRemoval = pendingPaymentRemovals.includes(p.id);
+                      return (
+                        <TableRow key={p.id} hover sx={markedForRemoval ? { bgcolor: '#fef2f2' } : undefined}>
+                          <TableCell sx={markedForRemoval ? { textDecoration: 'line-through', color: 'text.disabled' } : undefined}>
+                            {formatMMDDYYYY(p.payment_date) || p.payment_date || ''}
+                            {p.note && (
+                              <Typography variant="caption" color="text.secondary" sx={{ display: 'block' }}>
+                                {p.note}
+                              </Typography>
+                            )}
+                            {markedForRemoval && (
+                              <Typography variant="caption" color="error" sx={{ display: 'block' }}>
+                                * Will be removed on Save
+                              </Typography>
+                            )}
+                          </TableCell>
+                          <TableCell sx={markedForRemoval ? { textDecoration: 'line-through', color: 'text.disabled' } : undefined}>
+                            {formatCurrency(p.amount)}
+                          </TableCell>
+                          <TableCell align="right">
+                            {typeof onDeletePayment === 'function' && (
+                              markedForRemoval ? (
+                                <Button type="button" size="small" onClick={() => undoPaymentRemoval(p.id)}>
+                                  Undo
+                                </Button>
+                              ) : (
+                                <Button
+                                  type="button"
+                                  size="small"
+                                  color="error"
+                                  onClick={() => markPaymentForRemoval(p.id)}
+                                >
+                                  Remove
+                                </Button>
+                              )
+                            )}
+                          </TableCell>
+                        </TableRow>
+                      );
+                    })}
                   </TableBody>
                 </Table>
               </TableContainer>
             </Paper>
           )}
+
+          {/* Sits directly below the Payment History Logs table so the
+              difference reads as a note on that list. Updates live — no save
+              needed — because both sides of paymentReconcileDiff are live. */}
+          {paymentReconcileDiff > 0.01 && (
+            <Alert severity="info" sx={{ mt: 2 }}>
+              Payment History Log is missing an entry for {formatCurrency(paymentReconcileDiff)}.
+            </Alert>
+          )}
+          {paymentReconcileDiff < -0.01 && (
+            <Alert severity="info" sx={{ mt: 2 }}>
+              Payment History log has excess amount of {formatCurrency(Math.abs(paymentReconcileDiff))} compared to total paid amount.
+            </Alert>
+          )}
         </Box>
 
         {typeof onAddPayment === 'function' && (
-          <Dialog open={paymentDialogOpen} onClose={() => (paymentSubmitting ? null : setPaymentDialogOpen(false))} maxWidth="xs" fullWidth>
+          <Dialog open={paymentDialogOpen} onClose={() => setPaymentDialogOpen(false)} maxWidth="xs" fullWidth>
             <DialogTitle>Log a Payment</DialogTitle>
             <DialogContent>
               <Box sx={{ display: 'flex', flexDirection: 'column', gap: 2, mt: 1 }}>
@@ -896,14 +1034,15 @@ export default function CustomerForm({
                   autoFocus
                   value={paymentAmount}
                   onChange={(e) => setPaymentAmount(e.target.value)}
+                  helperText={`Total Due: ${formatCurrency(totalDue)}`}
                   slotProps={{ htmlInput: { min: 0, step: '0.01' } }}
                 />
                 {paymentError && <Alert severity="error">{paymentError}</Alert>}
               </Box>
             </DialogContent>
             <DialogActions>
-              <Button type="button" onClick={() => setPaymentDialogOpen(false)} disabled={paymentSubmitting}>Cancel</Button>
-              <Button type="button" variant="contained" onClick={submitPayment} loading={paymentSubmitting}>Save Payment</Button>
+              <Button type="button" onClick={() => setPaymentDialogOpen(false)}>Cancel</Button>
+              <Button type="button" variant="contained" onClick={submitPayment}>Add to Payment History</Button>
             </DialogActions>
           </Dialog>
         )}
