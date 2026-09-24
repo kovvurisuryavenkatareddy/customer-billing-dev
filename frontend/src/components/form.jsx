@@ -241,17 +241,31 @@ export default function CustomerForm({
   // only actually deleted once the main Save button is clicked, not now.
   const [pendingPaymentRemovals, setPendingPaymentRemovals] = useState([]);
 
-  // Reconciliation between what the services show as paid (A) and what the
-  // Payment History log adds up to (B) — an informational message only.
-  // Both sides are LIVE: A follows the service rows as they're edited, and B
-  // follows the log as it looks on screen right now (saved entries, minus any
-  // marked for removal, plus any staged-but-unsaved ones). Comparing live
-  // against live is what keeps the message honest — mixing a live total with
-  // a saved one reports the same unsaved amount twice.
+  // The log as it stands on screen: saved entries, minus any marked for
+  // removal, plus any staged-but-unsaved ones.
   const paymentLogsTotal = paymentLogs.reduce((sum, p) => (
     pendingPaymentRemovals.includes(p.id) ? sum : sum + (parseFloat(p.amount) || 0)
   ), 0) + pendingPayments.reduce((sum, p) => sum + (Number(p.amount) || 0), 0);
-  const paymentReconcileDiff = Math.round((totalAmountPaid - paymentLogsTotal) * 100) / 100;
+
+  // How much of an unsaved service increase will actually become a new log
+  // entry on Save. Mirrors the backend: an increase is first applied against
+  // any amount already logged that no service accounts for yet, and only the
+  // remainder is logged. So raising a service to cover an earlier lump sum
+  // adds no row — it just closes the gap.
+  const unattributedLoggedAmount = Math.max(0, paymentLogsTotal - savedAmountPaidTotal);
+  const liveAmountToBeLogged = liveAmountPaidDelta > 0
+    ? Math.round((liveAmountPaidDelta - Math.min(liveAmountPaidDelta, unattributedLoggedAmount)) * 100) / 100
+    : 0;
+
+  // Reconciliation between what the services show as paid (A) and what the
+  // Payment History log adds up to (B) — an informational message only.
+  // Both sides are LIVE, and B counts the unsaved increase that's already
+  // previewed in the table as though it were logged. Without that, editing a
+  // service and seeing it appear in the log would still be reported as
+  // "missing an entry" for the very amount sitting right above the message.
+  const paymentReconcileDiff = Math.round(
+    (totalAmountPaid - (paymentLogsTotal + liveAmountToBeLogged)) * 100
+  ) / 100;
 
   // Discard any staged-but-unsaved payment changes whenever a different
   // customer is loaded into the form.
@@ -912,19 +926,20 @@ export default function CustomerForm({
                     {Math.abs(liveAmountPaidDelta) > 0.01 && (
                       <TableRow hover sx={{ bgcolor: '#fffbeb' }}>
                         <TableCell>
-                          {/* A pending increase really will be logged under
-                              today's date, so show that date rather than a
-                              placeholder. A decrease logs nothing — it just
-                              leaves the log ahead of Total Paid — so labelling
-                              it with a date would promise an entry that never
-                              appears. */}
-                          {liveAmountPaidDelta > 0
+                          {/* Show today's date only when a new entry really
+                              will be written under it. A decrease, or an
+                              increase that merely covers an already-logged
+                              amount, adds no row — dating those would promise
+                              an entry that never appears. */}
+                          {liveAmountToBeLogged > 0.01
                             ? formatMMDDYYYY(dayjs().format('YYYY-MM-DD'))
                             : 'No entry'}
                           <Typography variant="caption" color="text.secondary" sx={{ display: 'block' }}>
-                            {liveAmountPaidDelta > 0
-                              ? '* New amount paid on a service'
-                              : '* Amount paid reduced on a service'}
+                            {liveAmountPaidDelta < 0
+                              ? '* Amount paid reduced on a service'
+                              : liveAmountToBeLogged > 0.01
+                                ? '* New amount paid on a service'
+                                : '* Covers an amount already logged'}
                           </Typography>
                         </TableCell>
                         <TableCell>
